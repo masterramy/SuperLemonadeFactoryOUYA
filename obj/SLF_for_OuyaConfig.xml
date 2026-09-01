@@ -21,7 +21,7 @@
     <library-path append="true" />
   </compiler>
   <file-specs>
-    <path-element>../src/SLF.as</path-element>
+    <path-element>src/SLF.as</path-element>
   </file-specs>
   <default-background-color>#FFFFFF</default-background-color>
   <default-frame-rate>30</default-frame-rate>
