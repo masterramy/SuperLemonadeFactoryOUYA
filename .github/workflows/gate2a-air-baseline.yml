@@ -33,9 +33,6 @@ jobs:
         uses: joshtynjala/setup-adobe-air-action@v2
         with:
           air-version: "51.3.4.1"
-          # Ramy explicitly accepted the HARMAN AIR SDK License Agreement during
-          # three prior manual benchmark dispatches on 2026-09-01. Reuse that
-          # established acceptance for this same bounded benchmark.
           accept-license: true
 
       - name: Record tool versions
@@ -51,9 +48,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path bin | Out-Null
           Remove-Item -Force -ErrorAction SilentlyContinue bin/SLFforOuya.swf
-          amxmlc `
-            -load-config+=gate2a-flex-config.xml `
-            -output=bin/SLFforOuya.swf
+          amxmlc -load-config+=gate2a-flex-config.xml
 
       - name: Upload baseline SWF if produced
         if: always()
