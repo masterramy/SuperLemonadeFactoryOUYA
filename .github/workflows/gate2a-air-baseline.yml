@@ -57,11 +57,38 @@ jobs:
           adt -certificate -validityPeriod 1 -cn "Gate2A Benchmark" 2048-RSA gate2a-benchmark.p12 gate2a
 
       - name: Baseline Android APK package - original descriptor and OUYA extension
-        shell: cmd
+        id: android_package
+        shell: pwsh
         run: |
-          if not exist dist mkdir dist
-          if exist dist\SLF-baseline.apk del /f /q dist\SLF-baseline.apk
-          adt -package -target apk -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist\SLF-baseline.apk application.xml -C bin SLFforOuya.swf -C icons\android . -extdir lib
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-baseline.apk
+
+          $output = & adt -package -target apk -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-baseline.apk application.xml -C bin SLFforOuya.swf -C icons/android . -extdir lib 2>&1
+          $exitCode = $LASTEXITCODE
+
+          $output | ForEach-Object { Write-Host $_ }
+          $output | Set-Content -Path adt-package.log -Encoding utf8
+
+          $summaryLines = @($output | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ } | Select-Object -First 3)
+          $summary = ($summaryLines -join ' -- ') -replace '[^A-Za-z0-9 ._()-]', '_'
+          if ([string]::IsNullOrWhiteSpace($summary)) { $summary = 'no-output' }
+          if ($summary.Length -gt 160) { $summary = $summary.Substring(0, 160) }
+
+          "exit_code=$exitCode" >> $env:GITHUB_OUTPUT
+          "error_summary=$summary" >> $env:GITHUB_OUTPUT
+
+      - name: Upload ADT package diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adt-package-${{ steps.android_package.outputs.exit_code }}-${{ steps.android_package.outputs.error_summary }}
+          path: adt-package.log
+          if-no-files-found: error
+
+      - name: Fail if baseline Android package failed
+        if: steps.android_package.outputs.exit_code != '0'
+        shell: pwsh
+        run: exit 1
 
       - name: Upload fresh SWF if produced
         if: always()
