@@ -47,6 +47,7 @@ jobs:
             -source-path+=src `
             -include-libraries+=lib/OUYAControllerANELib/OUYAControllerANE.ane `
             -output=bin/SLFforOuya.swf `
+            -- `
             src/SLF.as
 
       - name: Upload baseline SWF if produced
