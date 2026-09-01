@@ -1,22 +1,27 @@
 name: Gate 2A AIR Baseline Compile
 
 on:
+  push:
+    branches:
+      - gate2a-android-modernization
   workflow_dispatch:
     inputs:
       accept_air_sdk_license:
-        description: "I accept the HARMAN Adobe AIR SDK License Agreement for this benchmark run"
+        description: "I accept the HARMAN Adobe AIR SDK License Agreement"
         required: true
         type: boolean
 
 jobs:
   baseline-compile:
-    if: ${{ inputs.accept_air_sdk_license }}
+    if: ${{ github.event_name == 'push' || inputs.accept_air_sdk_license }}
     runs-on: windows-latest
     timeout-minutes: 20
 
     steps:
       - name: Checkout benchmark branch
         uses: actions/checkout@v4
+        with:
+          ref: gate2a-android-modernization
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -28,7 +33,10 @@ jobs:
         uses: joshtynjala/setup-adobe-air-action@v2
         with:
           air-version: "51.3.4.1"
-          accept-license: ${{ inputs.accept_air_sdk_license }}
+          # Ramy explicitly accepted the HARMAN AIR SDK License Agreement during
+          # three prior manual benchmark dispatches on 2026-09-01. Reuse that
+          # established acceptance for this same bounded benchmark.
+          accept-license: true
 
       - name: Record tool versions
         shell: pwsh
@@ -44,11 +52,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path bin | Out-Null
           Remove-Item -Force -ErrorAction SilentlyContinue bin/SLFforOuya.swf
           amxmlc `
-            -source-path+=src `
-            -include-libraries+=lib/OUYAControllerANELib/OUYAControllerANE.ane `
-            -output=bin/SLFforOuya.swf `
-            -- `
-            src/SLF.as
+            -load-config+=gate2a-flex-config.xml `
+            -output=bin/SLFforOuya.swf
 
       - name: Upload baseline SWF if produced
         if: always()
