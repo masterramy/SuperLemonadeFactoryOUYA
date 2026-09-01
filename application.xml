@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<application xmlns="http://ns.adobe.com/air/application/3.8">
+<application xmlns="http://ns.adobe.com/air/application/51.3">
   <id>com.initialsgames.SLF</id>
   <versionNumber>1.9</versionNumber>
   <supportedProfiles>mobileDevice</supportedProfiles>
