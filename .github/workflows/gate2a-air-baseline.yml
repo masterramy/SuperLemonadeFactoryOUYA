@@ -1,0 +1,56 @@
+name: Gate 2A AIR Baseline Compile
+
+on:
+  workflow_dispatch:
+    inputs:
+      accept_air_sdk_license:
+        description: "I accept the HARMAN Adobe AIR SDK License Agreement for this benchmark run"
+        required: true
+        type: boolean
+
+jobs:
+  baseline-compile:
+    if: ${{ inputs.accept_air_sdk_license }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout benchmark branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: ${{ inputs.accept_air_sdk_license }}
+
+      - name: Record tool versions
+        shell: pwsh
+        run: |
+          Write-Host "AIR_HOME=$env:AIR_HOME"
+          Get-Command amxmlc | Format-List *
+          java -version
+
+      - name: Baseline compile - unchanged game source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          amxmlc src/SLF.as `
+            -source-path+=src `
+            -include-libraries+=lib/OUYAControllerANELib/OUYAControllerANE.ane `
+            -output=bin/SLFforOuya.swf
+
+      - name: Upload baseline SWF if produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-baseline-swf
+          path: bin/SLFforOuya.swf
+          if-no-files-found: ignore
