@@ -173,10 +173,15 @@ jobs:
           fi
 
           # Make CI deterministic: do not let Android's first-run immersive tutorial or
-          # Monkey's random event stream stand between the screenshot and the game.
+          # system UI noise stand between the screenshot and the game. Pixel Launcher
+          # has repeatedly ANR'd in this headless API-35 image, so suppress its dialogs
+          # and stop it before directly launching AIR.
           adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
           adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
           adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 > smoke/system-dialog-policy.txt 2>&1 || true
+          adb shell settings get global hide_error_dialogs >> smoke/system-dialog-policy.txt 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher > smoke/launcher-force-stop.txt 2>&1 || true
           adb shell wm user-rotation lock 1 > smoke/rotation-command.txt 2>&1 || true
           adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
           adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
