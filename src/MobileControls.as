@@ -19,6 +19,8 @@ package
 	 */
 	public class MobileControls
 	{
+		private static const GAME_W:Number = 1920;
+		private static const GAME_H:Number = 1080;
 		private static const KEY_LEFT:uint = 37;
 		private static const KEY_UP:uint = 38;
 		private static const KEY_RIGHT:uint = 39;
@@ -88,10 +90,18 @@ package
 		private function gameBounds():Rectangle
 		{
 			if (root.stage == null) return new Rectangle();
-			var bounds:Rectangle = root.getBounds(root.stage);
-			if (bounds.width <= 0 || bounds.height <= 0)
-				return new Rectangle(0, 0, root.stage.stageWidth, root.stage.stageHeight);
-			return bounds;
+			var stageW:Number = root.stage.stageWidth;
+			var stageH:Number = root.stage.stageHeight;
+			if (stageW <= 0 || stageH <= 0) return new Rectangle();
+
+			// The viewport is the mathematical 1920x1080 fit used by SLF itself.
+			// Do not use root.getBounds(stage): that reports the extents of whichever
+			// children happen to be painted in the current state and made the HUD
+			// shrink/drift as cameras and levels changed.
+			var fit:Number = Math.min(stageW / GAME_W, stageH / GAME_H);
+			var viewportW:Number = GAME_W * fit;
+			var viewportH:Number = GAME_H * fit;
+			return new Rectangle((stageW - viewportW) * 0.5, (stageH - viewportH) * 0.5, viewportW, viewportH);
 		}
 
 		private function onFrame(e:Event):void
