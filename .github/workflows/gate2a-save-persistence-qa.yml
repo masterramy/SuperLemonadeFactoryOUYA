@@ -28,23 +28,23 @@ jobs:
           air-version: "51.3.4.1"
           accept-license: true
 
-      - name: Add test-only keyboard exit teleport
+      - name: Add test-only deterministic Level 2 completion hook
         shell: pwsh
         run: |
           @'
           from pathlib import Path
-          p = Path("src/PlayState.as")
+          p = Path("src/PCPlayState.as")
           data = p.read_bytes()
-          old = b"if (FlxG.debug==true) {"
-          new = b"if (FlxG.debug==true || FlxG.keys.justPressed(\"G\")) {"
+          old = b"if (levelFinished) {"
+          new = b"if (Registry.levelNumber == 2 && !levelFinished) levelOver();\n\t\t\tif (levelFinished) {"
           count = data.count(old)
           if count != 1:
-              raise SystemExit(f"Expected exactly one debug teleport gate, found {count}")
+              raise SystemExit(f"Expected exactly one levelFinished update gate, found {count}")
           p.write_bytes(data.replace(old, new, 1))
           '@ | Set-Content -Path gate2a_qa_patch.py -Encoding ascii
           python gate2a_qa_patch.py
           git diff --check
-          git diff -- src/PlayState.as
+          git diff -- src/PCPlayState.as
 
       - name: Compile QA source
         shell: cmd
@@ -86,7 +86,7 @@ jobs:
           name: gate2a-save-qa-x64-apk
           path: runtime-apk
 
-      - name: Write completion and persistence harness
+      - name: Write deterministic completion and persistence harness
         shell: bash
         run: |
           cat > save-qa.sh <<'EOF'
@@ -120,35 +120,33 @@ jobs:
             return 0
           }
 
-          to_level2() {
+          enter_menu_and_level_select() {
             adb shell input keyevent KEYCODE_X
             sleep 2
             adb shell input keyevent KEYCODE_X
             sleep 8
             adb shell input keyevent KEYCODE_X
-            sleep 4
-            adb shell input keyevent KEYCODE_DPAD_RIGHT
-            sleep 1
-            adb shell input keyevent KEYCODE_X
-            sleep 12
-            adb shell input keyevent KEYCODE_X
-            sleep 12
+            sleep 5
           }
 
           adb logcat -c
           launch_game || fail "initial launch"
           shot 01-intro.png
-          to_level2
-          [ -n "$(alive)" ] || fail "process died entering Level 2"
-          shot 02-level2-before-complete.png
-          adb logcat -d > evidence/logcat-before-complete.txt 2>&1
+          enter_menu_and_level_select
+          shot 02-level-select-before-completion.png
 
-          # QA-only hook: G enters the game's existing debug teleport block, moving
-          # both characters onto the real exit so normal overlap logic calls levelOver().
-          adb shell input keyevent KEYCODE_G
+          # Fresh save starts on Level 1; RIGHT highlights Level 2. The QA-only build
+          # calls the real PCPlayState.levelOver() immediately after Level 2 creates.
+          # One bounded fallback X tolerates AIR occasionally missing the first X.
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_X
+          sleep 8
+          adb shell input keyevent KEYCODE_X
           sleep 10
-          [ -n "$(alive)" ] || fail "process died during Level 2 completion/save"
-          shot 03-after-level2-complete.png
+
+          [ -n "$(alive)" ] || fail "process died during deterministic Level 2 completion/save"
+          shot 03-after-deterministic-level2-completion.png
           adb logcat -d > evidence/logcat-after-complete.txt 2>&1
           dumpfocus > evidence/focus-after-complete.txt
 
@@ -156,23 +154,19 @@ jobs:
             fail "fatal/security/AS3 error signature after level completion"
           fi
 
-          # Best-effort direct proof of the backup location. Google API images may not
-          # permit adb root; inability to inspect is not itself a failure.
-          adb root > evidence/adb-root.txt 2>&1 || true
-          sleep 2
-          adb shell find "/data/data/$PACKAGE" -name progress_backup.slf -print > evidence/backup-find.txt 2>&1 || true
+          # Best-effort sandbox inspection. The persistence proof itself is the cold
+          # restart + Level 3 unlock below; run-as availability varies by AIR build.
+          adb shell run-as "$PACKAGE" find . -name progress_backup.slf -print > evidence/backup-find-run-as.txt 2>&1 || true
 
-          # Cold restart: if FlxSave persisted the completion, Level 3 must now be
-          # selectable. We re-enter Factory Floor, move Level1 -> Level3, and activate.
+          # Cold restart and revisit level select. A successful real levelOver() save
+          # must change Warehouse Level 3 from grey/locked to purple/unlocked.
           launch_game || fail "cold relaunch after completion"
-          adb shell input keyevent KEYCODE_X
-          sleep 2
-          adb shell input keyevent KEYCODE_X
-          sleep 8
-          adb shell input keyevent KEYCODE_X
-          sleep 5
-          shot 04-level-select-after-restart.png
+          enter_menu_and_level_select
+          shot 04-level-select-after-cold-restart.png
 
+          # Level 1 is highlighted. Move to Level 3 and activate it. If the save did
+          # not persist, the game remains on Level Select and displays its legacy
+          # locked-level purchase prompt; if it persisted, Level 3 gameplay starts.
           adb shell input keyevent KEYCODE_DPAD_RIGHT
           sleep 1
           adb shell input keyevent KEYCODE_DPAD_RIGHT
@@ -190,7 +184,7 @@ jobs:
             fail "fatal/security/AS3 error signature after cold persistence test"
           fi
 
-          echo "PASS-CANDIDATE: Level 2 completion/save path stayed alive without fatal/security/AS3 signatures; app cold-relaunched and attempted persisted Level 3. Visual review of screenshots is mandatory." | tee evidence/result.txt
+          echo "PASS-CANDIDATE: deterministic QA hook exercised real PCPlayState.levelOver()/FlxSave/saveFile path for Level 2; app cold-relaunched and attempted Level 3. Visual review of 04 and 05 is mandatory and must show Level 3 unlocked/gameplay before acceptance." | tee evidence/result.txt
           EOF
           chmod +x save-qa.sh
 
@@ -200,7 +194,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Boot Android and exercise completion persistence
+      - name: Boot Android and exercise deterministic completion persistence
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
