@@ -387,7 +387,34 @@ jobs:
             exit 44
           fi
 
-          echo "PASS-CANDIDATE: app installed, intro and menu path stayed focused in landscape, Factory Floor was activated through the legacy keyboard input path, Level Select remained healthy, Level 2 was selected with RIGHT+X, and the process remained healthy in the gameplay candidate. Visual screenshot review is still required before gameplay proof." | tee smoke/result.txt
+          # Run 27 visually proved RIGHT landed but the first activation X could be
+          # missed by AIR. Send exactly one bounded fallback X, then capture a distinct
+          # final proof frame. If gameplay was already entered, X is harmless in-game.
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+
+          PID_FINAL=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_FINAL" > smoke/pid-after-fallback-x.txt
+          adb shell dumpsys window > smoke/window-after-fallback-x.txt 2>&1
+          adb exec-out screencap -p > smoke/05-final-gameplay-proof.png
+          adb logcat -d > smoke/logcat-after-fallback-x.txt 2>&1
+
+          if [ -z "$PID_FINAL" ]; then
+            echo "App process died after fallback Level 2 activation" | tee smoke/result.txt
+            exit 51
+          fi
+          CURRENT_FOCUS_FINAL=$(grep -m1 'mCurrentFocus=' smoke/window-after-fallback-x.txt || true)
+          echo "$CURRENT_FOCUS_FINAL" > smoke/current-focus-after-fallback-x.txt
+          if ! echo "$CURRENT_FOCUS_FINAL" | grep -q "$PACKAGE"; then
+            echo "App lost visible focus after fallback Level 2 activation: $CURRENT_FOCUS_FINAL" | tee smoke/result.txt
+            exit 52
+          fi
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-fallback-x.txt > smoke/fatal-scan-fallback-x.txt; then
+            echo "Fatal runtime signature found after fallback Level 2 activation" | tee smoke/result.txt
+            exit 53
+          fi
+
+          echo "PASS-CANDIDATE: app installed, intro and menu path stayed focused in landscape, Level Select remained healthy, Level 2 received RIGHT+X plus one bounded fallback X, and the process remained healthy through the final proof frame. Visual review of 05-final-gameplay-proof.png is required before gameplay proof." | tee smoke/result.txt
           EOF
           chmod +x smoke-runtime.sh
 
