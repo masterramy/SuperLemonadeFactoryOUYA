@@ -15,8 +15,8 @@ package
 
 	/**
 	 * Android/mobile compatibility layer derived from the title's original iOS
-	 * control semantics. It translates native multitouch into the legacy keyboard
-	 * inputs already consumed by the game, leaving gameplay logic untouched.
+	 * control semantics. Native touch is translated into the legacy keyboard
+	 * inputs already consumed by the game, leaving state/gameplay logic untouched.
 	 */
 	public class MobileControls
 	{
@@ -116,18 +116,24 @@ package
 
 		private function onTouchBegin(e:TouchEvent):void
 		{
-			if (!gameplayActive()) return;
 			var id:String = String(e.touchPointID);
+			var bounds:Rectangle = gameBounds();
+			if (!bounds.contains(e.stageX, e.stageY)) return;
+
+			// Menus/cinematics already understand arrows + X. Capture the gesture and
+			// translate it on TOUCH_END so Android never depends on touch-to-mouse synthesis.
+			if (!gameplayActive())
+			{
+				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:true};
+				return;
+			}
+
 			var key:uint = controlKey(e.stageX, e.stageY);
 			touchKeys[id] = key;
 			if (key != 0)
 				pressKey(key);
-			else
-			{
-				var bounds:Rectangle = gameBounds();
-				if (bounds.contains(e.stageX, e.stageY) && e.stageY < bounds.y + bounds.height * 0.75)
-					touchStarts[id] = {x:e.stageX, y:e.stageY};
-			}
+			else if (e.stageY < bounds.y + bounds.height * 0.75)
+				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:false};
 		}
 
 		private function onTouchMove(e:TouchEvent):void
@@ -154,11 +160,8 @@ package
 				delete touchKeys[id];
 			}
 
-			if (!gameplayActive() || touchStarts[id] === undefined || root.stage == null)
-			{
-				delete touchStarts[id];
+			if (touchStarts[id] === undefined || root.stage == null)
 				return;
-			}
 
 			var start:Object = touchStarts[id];
 			delete touchStarts[id];
@@ -167,6 +170,21 @@ package
 			var ax:Number = Math.abs(dx);
 			var ay:Number = Math.abs(dy);
 			var bounds:Rectangle = gameBounds();
+
+			if (Boolean(start.navigation))
+			{
+				var threshold:Number = Math.min(bounds.width, bounds.height) * 0.08;
+				if (Math.max(ax, ay) < threshold)
+					pulseKey(KEY_X);
+				else if (ax >= ay)
+					pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
+				else
+					pulseKey(dy < 0 ? KEY_UP : KEY_DOWN);
+				return;
+			}
+
+			// Gameplay upper-area gestures preserve the previously validated semantics.
+			if (!gameplayActive()) return;
 			if (ax > ay && ax >= bounds.width * 0.12)
 				pulseKey(KEY_V);
 			else if (ay > ax && ay >= bounds.height * 0.12)
