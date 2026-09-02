@@ -22,12 +22,33 @@ package io.arkeus.ouya.control {
 		}
 
 		public function get released():Boolean {
-			
 			return updatedAt >= ControllerInput.previous && !held && changed;
 		}
 
 		public function get held():Boolean {
 			return value >= minimum && value <= maximum;
+		}
+
+		/**
+		 * Mobile compatibility hook: emulate one controller transition without a
+		 * physical GameInputControl. This keeps legacy state logic authoritative
+		 * while allowing an explicit touchscreen affordance to invoke it.
+		 */
+		public function emulatePress():void {
+			value = maximum;
+			updatedAt = ControllerInput.now;
+			changed = true;
+		}
+
+		public function emulateRelease():void {
+			value = 0;
+			updatedAt = ControllerInput.now;
+			changed = true;
+		}
+
+		override public function reset():void {
+			super.reset();
+			changed = false;
 		}
 
 		override protected function onChange(event:Event):void {
