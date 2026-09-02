@@ -167,36 +167,105 @@ jobs:
           adb install -r "$APK" > smoke/install.txt 2>&1
           INSTALL_EXIT=$?
           adb shell pm path "$PACKAGE" > smoke/package-path.txt 2>&1
-          adb shell wm size > smoke/wm-size.txt 2>&1
-          adb shell settings put system accelerometer_rotation 0
-          adb shell settings put system user_rotation 1
-          adb logcat -c
-
-          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > smoke/launch-command.txt 2>&1
-          sleep 12
-
-          PID_LAUNCH=$(adb shell pidof "$PACKAGE" | tr -d '\r')
-          echo "$PID_LAUNCH" > smoke/pid-after-launch.txt
-          adb exec-out screencap -p > smoke/01-after-launch.png
-          adb shell dumpsys window > smoke/window-after-launch.txt 2>&1
-          adb logcat -d > smoke/logcat-after-launch.txt 2>&1
-
           if [ "$INSTALL_EXIT" -ne 0 ]; then
             echo "APK install failed with exit $INSTALL_EXIT" | tee smoke/result.txt
             exit 10
           fi
+
+          # Make CI deterministic: do not let Android's first-run immersive tutorial or
+          # Monkey's random event stream stand between the screenshot and the game.
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 > smoke/rotation-command.txt 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          sleep 5
+
+          dismiss_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml smoke/window-ui.xml >/dev/null 2>&1 || return 0
+            local coords
+            coords=$(python3 - "$wanted" <<'PY'
+          import re, sys, xml.etree.ElementTree as ET
+          wanted = sys.argv[1]
+          try:
+              root = ET.parse('smoke/window-ui.xml').getroot()
+          except Exception:
+              sys.exit(0)
+          for node in root.iter('node'):
+              if node.attrib.get('text') != wanted:
+                  continue
+              m = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2 = map(int,m.groups())
+                  print(f'{(x1+x2)//2} {(y1+y2)//2}')
+                  break
+          PY
+            )
+            if [ -n "$coords" ]; then
+              adb shell input tap $coords >/dev/null 2>&1 || true
+              echo "dismissed=$wanted at $coords" >> smoke/dismissed-overlays.txt
+              sleep 1
+            fi
+          }
+
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > smoke/launch-command.txt 2>&1
+          LAUNCH_EXIT=$?
+          echo "launch_exit=$LAUNCH_EXIT" >> smoke/harness.txt
+          sleep 4
+
+          # Dismiss only known emulator/system affordances, never game UI.
+          for _ in 1 2 3 4; do
+            dismiss_text "Got it"
+            dismiss_text "Wait"
+            sleep 1
+          done
+          sleep 8
+
+          PID_LAUNCH=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_LAUNCH" > smoke/pid-after-launch.txt
+          adb shell dumpsys window > smoke/window-after-launch.txt 2>&1
+          adb exec-out screencap -p > smoke/01-after-launch.png
+          adb logcat -d > smoke/logcat-after-launch.txt 2>&1
+
           if [ -z "$PID_LAUNCH" ]; then
-            echo "App process was not alive 12 seconds after launch" | tee smoke/result.txt
+            echo "App process was not alive after deterministic launch" | tee smoke/result.txt
             exit 11
           fi
 
-          SIZE=$(adb shell wm size | tail -n 1 | grep -oE '[0-9]+x[0-9]+' | tail -n 1)
-          WIDTH=${SIZE%x*}
-          HEIGHT=${SIZE#*x}
-          X=$((WIDTH / 2))
-          Y=$((HEIGHT / 2))
-          echo "tap-center=$X,$Y size=$SIZE" > smoke/tap-coordinates.txt
+          CURRENT_FOCUS=$(grep -m1 'mCurrentFocus=' smoke/window-after-launch.txt || true)
+          echo "$CURRENT_FOCUS" > smoke/current-focus-after-launch.txt
+          if ! echo "$CURRENT_FOCUS" | grep -q "$PACKAGE"; then
+            echo "App was alive but not the focused visible window: $CURRENT_FOCUS" | tee smoke/result.txt
+            exit 12
+          fi
 
+          read SHOT_W SHOT_H < <(python3 - <<'PY'
+          import struct
+          with open('smoke/01-after-launch.png','rb') as f:
+              data=f.read(24)
+          if len(data) >= 24 and data[:8] == b'\x89PNG\r\n\x1a\n':
+              print(*struct.unpack('>II', data[16:24]))
+          else:
+              print('0 0')
+          PY
+          )
+          echo "launch_screenshot=${SHOT_W}x${SHOT_H}" > smoke/screenshot-dimensions.txt
+          if [ "$SHOT_W" -le "$SHOT_H" ]; then
+            echo "Visible app did not present in landscape: ${SHOT_W}x${SHOT_H}" | tee smoke/result.txt
+            exit 13
+          fi
+
+          X=$((SHOT_W / 2))
+          Y=$((SHOT_H / 2))
+          echo "tap-center=$X,$Y screenshot=${SHOT_W}x${SHOT_H}" > smoke/tap-coordinates.txt
+
+          # PCIntroState accepts FlxG.mouse.justPressed(), which AIR mobile touch
+          # synthesizes on this legacy branch. Two presses should execute intro -> menu.
           adb shell input tap "$X" "$Y"
           sleep 2
           adb shell input tap "$X" "$Y"
@@ -204,21 +273,44 @@ jobs:
 
           PID_MENU=$(adb shell pidof "$PACKAGE" | tr -d '\r')
           echo "$PID_MENU" > smoke/pid-after-two-taps.txt
-          adb exec-out screencap -p > smoke/02-after-two-taps.png
           adb shell dumpsys window > smoke/window-after-two-taps.txt 2>&1
+          adb exec-out screencap -p > smoke/02-after-two-taps.png
           adb logcat -d > smoke/logcat-after-two-taps.txt 2>&1
 
           if [ -z "$PID_MENU" ]; then
-            echo "App process died after the two intro taps / menu transition" | tee smoke/result.txt
+            echo "App process died after the two intro presses" | tee smoke/result.txt
             exit 21
           fi
 
-          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-two-taps.txt > smoke/fatal-scan.txt; then
-            echo "Fatal runtime signature found after menu transition" | tee smoke/result.txt
+          CURRENT_FOCUS_MENU=$(grep -m1 'mCurrentFocus=' smoke/window-after-two-taps.txt || true)
+          echo "$CURRENT_FOCUS_MENU" > smoke/current-focus-after-two-taps.txt
+          if ! echo "$CURRENT_FOCUS_MENU" | grep -q "$PACKAGE"; then
+            echo "App lost visible focus after intro presses: $CURRENT_FOCUS_MENU" | tee smoke/result.txt
             exit 22
           fi
 
-          echo "PASS: app installed, launched, survived 12 seconds, accepted two intro taps, and remained alive after menu transition" | tee smoke/result.txt
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-two-taps.txt > smoke/fatal-scan.txt; then
+            echo "Fatal runtime signature found after intro presses" | tee smoke/result.txt
+            exit 23
+          fi
+
+          read MENU_W MENU_H < <(python3 - <<'PY'
+          import struct
+          with open('smoke/02-after-two-taps.png','rb') as f:
+              data=f.read(24)
+          if len(data) >= 24 and data[:8] == b'\x89PNG\r\n\x1a\n':
+              print(*struct.unpack('>II', data[16:24]))
+          else:
+              print('0 0')
+          PY
+          )
+          echo "menu_candidate_screenshot=${MENU_W}x${MENU_H}" >> smoke/screenshot-dimensions.txt
+          if [ "$MENU_W" -le "$MENU_H" ]; then
+            echo "Post-intro app did not remain landscape: ${MENU_W}x${MENU_H}" | tee smoke/result.txt
+            exit 24
+          fi
+
+          echo "PASS-CANDIDATE: app installed, deterministic activity launch stayed focused in landscape, system overlays were cleared, two intro presses were delivered, and the process remained healthy. Visual screenshot review is still required before menu proof." | tee smoke/result.txt
           EOF
           chmod +x smoke-runtime.sh
 
