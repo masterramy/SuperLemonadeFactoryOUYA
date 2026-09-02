@@ -19,6 +19,8 @@ package
 
 	public class SLF extends FlxGame
 	{
+		private var mobileControls:MobileControls;
+
 		public function SLF()
 		{
 			// RIGHT ONE
@@ -29,6 +31,10 @@ package
 			// install an inert typed controller until PCIntroState discovers real input.
 			if (FlxG.ouyaController == null)
 				FlxG.ouyaController = new OuyaController(null);
+
+			// Preserve the title's original mobile semantics without rewriting gameplay:
+			// native touch zones/gestures translate into the existing keyboard controls.
+			mobileControls = new MobileControls(this);
 			
 			FlxG.debug = forceDebugger = false;
 			Registry.isPCVersion = true;
