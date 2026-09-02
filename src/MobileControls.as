@@ -16,7 +16,8 @@ package
 
 	/**
 	 * Android/mobile compatibility layer. Native touch is translated into the
-	 * exact legacy inputs consumed by the shipping game.
+	 * exact legacy inputs consumed by the shipping game, with a native mobile
+	 * pause surface where the historical input edge is not reliable on Android.
 	 */
 	public class MobileControls
 	{
@@ -28,7 +29,6 @@ package
 		private static const KEY_DOWN:uint = 40;
 		private static const KEY_B:uint = 66;
 		private static const KEY_C:uint = 67;
-		private static const KEY_P:uint = 80;
 		private static const KEY_V:uint = 86;
 		private static const KEY_X:uint = 88;
 
@@ -96,10 +96,6 @@ package
 			var stageH:Number = root.stage.stageHeight;
 			if (stageW <= 0 || stageH <= 0) return new Rectangle();
 
-			// The viewport is the mathematical 1920x1080 fit used by SLF itself.
-			// Do not use root.getBounds(stage): that reports the extents of whichever
-			// children happen to be painted in the current state and made the HUD
-			// shrink/drift as cameras and levels changed.
 			var fit:Number = Math.min(stageW / GAME_W, stageH / GAME_H);
 			var viewportW:Number = GAME_W * fit;
 			var viewportH:Number = GAME_H * fit;
@@ -156,10 +152,29 @@ package
 				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:true};
 				return;
 			}
+
+			if (FlxG.paused)
+			{
+				touchKeys[id] = 0;
+				if (isPauseTarget(e.stageX, e.stageY))
+				{
+					toggleMobilePause();
+					return;
+				}
+				var state:PlayState = FlxG.state as PlayState;
+				if (state != null && e.stageY >= bounds.y + bounds.height * 0.58 && e.stageY <= bounds.y + bounds.height * 0.80)
+				{
+					FlxG.paused = false;
+					if (e.stageX < bounds.x + bounds.width * 0.5) state.resetLevel();
+					else state.goToMenu(false);
+				}
+				return;
+			}
+
 			if (isPauseTarget(e.stageX, e.stageY))
 			{
 				touchKeys[id] = 0;
-				pulseKey(KEY_P);
+				toggleMobilePause();
 				return;
 			}
 			var key:uint = controlKey(e.stageX, e.stageY);
@@ -170,7 +185,7 @@ package
 		private function onTouchMove(e:TouchEvent):void
 		{
 			suppressSynthesizedMouse(e);
-			if (!gameplayActive()) return;
+			if (!gameplayActive() || FlxG.paused) return;
 			var id:String = String(e.touchPointID);
 			if (touchKeys[id] === undefined) return;
 			var oldKey:uint = uint(touchKeys[id]);
@@ -216,6 +231,17 @@ package
 				}
 				else if (ax >= ay) pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
 				else pulseKey(dy < 0 ? KEY_UP : KEY_DOWN);
+			}
+		}
+
+		private function toggleMobilePause():void
+		{
+			if (!(FlxG.state is PlayState)) return;
+			FlxG.paused = !FlxG.paused;
+			if (FlxG.music != null)
+			{
+				if (FlxG.paused) FlxG.music.pause();
+				else FlxG.music.play();
 			}
 		}
 
@@ -291,6 +317,16 @@ package
 		{
 			clearOverlay(bounds, mode);
 			var zoneW:Number = bounds.width / 6.0;
+			if (mode == "gameplay-paused")
+			{
+				overlay.graphics.lineStyle(0, 0, 0);
+				overlay.graphics.beginFill(0x000000, 0.56); overlay.graphics.drawRect(bounds.x, bounds.y, bounds.width, bounds.height); overlay.graphics.endFill();
+				drawHint(bounds.x + bounds.width * 0.20, bounds.y + bounds.height * 0.20, bounds.width * 0.60, bounds.height * 0.13, "PAUSED", 0x000000, 0.72, 0xffffff);
+				drawHint(bounds.x + bounds.width * 0.12, bounds.y + bounds.height * 0.58, bounds.width * 0.34, bounds.height * 0.22, "RESTART LEVEL", 0x7725a1, 0.95, 0xffffff);
+				drawHint(bounds.x + bounds.width * 0.54, bounds.y + bounds.height * 0.58, bounds.width * 0.34, bounds.height * 0.22, "TO MENU", 0x7725a1, 0.95, 0xffffff);
+				drawZone(bounds.x + zoneW * 5, bounds.y, zoneW, bounds.height * 0.17, "RESUME");
+				return;
+			}
 			var zoneY:Number = bounds.y + bounds.height * 0.75;
 			var zoneH:Number = bounds.height * 0.25;
 			drawZone(bounds.x, zoneY, zoneW, zoneH, "LEFT");
@@ -300,8 +336,6 @@ package
 			drawZone(bounds.x + zoneW * 4, zoneY, zoneW, zoneH, "ACTION");
 			drawZone(bounds.x + zoneW * 5, zoneY, zoneW, zoneH, "JUMP");
 			drawZone(bounds.x + zoneW * 5, bounds.y, zoneW, bounds.height * 0.17, "PAUSE");
-			if (mode == "gameplay-paused")
-				drawHint(bounds.x + bounds.width * 0.25, bounds.y + bounds.height * 0.045, bounds.width * 0.55, bounds.height * 0.095, "PAUSED  -  TAP PAUSE TO RESUME", 0x000000, 1.0, 0xffffff);
 		}
 
 		private function drawNavigationOverlay(bounds:Rectangle, mode:String):void
