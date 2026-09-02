@@ -56,7 +56,7 @@ package
 			
 			
 			
-			Registry.DEMO = true;
+			Registry.DEMO = false;
 			
 			
 			//forceDebugger = false;

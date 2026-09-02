@@ -45,7 +45,7 @@ jobs:
           Get-Command adt | Format-List *
           java -version
 
-      - name: Baseline compile - unchanged game source
+      - name: Compile runtime-safe game source
         shell: cmd
         run: |
           if not exist bin mkdir bin
@@ -58,12 +58,12 @@ jobs:
           if exist gate2a-benchmark.p12 del /f /q gate2a-benchmark.p12
           adt -certificate -validityPeriod 1 -cn "Gate2A Benchmark" 2048-RSA gate2a-benchmark.p12 gate2a
 
-      - name: Android APK package - omit obsolete OUYA native payload
+      - name: Android APK package - runtime-safe without obsolete OUYA native payload
         id: android_package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-baseline.apk
+          Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-runtime-safe.apk
 
           $androidSdk = $env:ANDROID_SDK_ROOT
           if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
@@ -74,11 +74,15 @@ jobs:
 
           $PSNativeCommandUseErrorActionPreference = $false
           $ErrorActionPreference = 'Continue'
-          $output = & adt -package -target apk -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-baseline.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk 2>&1
+          $output = & adt -package -target apk -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-runtime-safe.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk 2>&1
           $exitCode = $LASTEXITCODE
 
           $output | ForEach-Object { Write-Host $_ }
-          $output | Set-Content -Path adt-package.log -Encoding utf8
+          if ($null -eq $output -or @($output).Count -eq 0) {
+            "ADT exited $exitCode with no console output." | Set-Content -Path adt-package.log -Encoding utf8
+          } else {
+            $output | Set-Content -Path adt-package.log -Encoding utf8
+          }
 
           $summaryLines = @($output | ForEach-Object { $_.ToString().Trim() } | Where-Object { $_ } | Select-Object -First 3)
           $summary = ($summaryLines -join ' -- ') -replace '[^A-Za-z0-9 ._()-]', '_'
@@ -97,7 +101,7 @@ jobs:
           path: adt-package.log
           if-no-files-found: error
 
-      - name: Fail if baseline Android package failed
+      - name: Fail if Android package failed
         if: steps.android_package.outputs.exit_code != '0'
         shell: pwsh
         run: exit 1
@@ -106,14 +110,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gate2a-baseline-swf
+          name: gate2a-runtime-safe-swf
           path: bin/SLFforOuya.swf
           if-no-files-found: ignore
 
-      - name: Upload baseline APK if produced
+      - name: Upload runtime-safe APK if produced
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gate2a-baseline-apk
-          path: dist/SLF-baseline.apk
+          name: gate2a-runtime-safe-apk
+          path: dist/SLF-runtime-safe.apk
           if-no-files-found: ignore
