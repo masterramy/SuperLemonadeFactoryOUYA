@@ -1,4 +1,4 @@
-name: Gate 2A Display Scale QA
+name: Gate 2A Display Scale and Touch QA
 
 on:
   push:
@@ -22,38 +22,38 @@ jobs:
         with:
           air-version: "51.3.4.1"
           accept-license: true
-      - name: Compile scaled shipping SWF
+      - name: Compile scaled touch shipping SWF
         shell: cmd
         run: |
           if not exist bin mkdir bin
           if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
           amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-      - name: Package x64 scaled APK with transient repository retry
+      - name: Package x64 QA APK with transient repository retry
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          & adt -certificate -validityPeriod 1 -cn "Gate2A Display QA" 2048-RSA gate2a-display-qa.p12 gate2a
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Touch QA" 2048-RSA gate2a-touch-qa.p12 gate2a
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $androidSdk = $env:ANDROID_SDK_ROOT
           if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
           $ok = $false
           for ($attempt = 1; $attempt -le 3; $attempt++) {
-            if (Test-Path dist/SLF-display-qa.apk) { Remove-Item -Force dist/SLF-display-qa.apk }
-            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-display-qa.p12 -storepass gate2a dist/SLF-display-qa.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+            if (Test-Path dist/SLF-touch-qa.apk) { Remove-Item -Force dist/SLF-touch-qa.apk }
+            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-touch-qa.p12 -storepass gate2a dist/SLF-touch-qa.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
             if ($LASTEXITCODE -eq 0) { $ok = $true; break }
             if ($attempt -lt 3) { Start-Sleep -Seconds 45 }
           }
           if (-not $ok) { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
-          name: gate2a-display-qa-apk
-          path: dist/SLF-display-qa.apk
+          name: gate2a-touch-qa-apk
+          path: dist/SLF-touch-qa.apk
           if-no-files-found: error
 
-  runtime-display:
+  runtime-touch:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: gate2a-display-qa-apk
+          name: gate2a-touch-qa-apk
           path: runtime-apk
       - run: python3 -m pip install --quiet pillow
       - name: Enable KVM
@@ -69,15 +69,15 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Write scale/touch harness
+      - name: Write touch-only harness
         shell: bash
         run: |
-          cat > display-qa.sh <<'EOF'
+          cat > touch-qa.sh <<'EOF'
           #!/usr/bin/env bash
           set +e
-          OUT="display-api-${API_LEVEL}"
+          OUT="touch-api-${API_LEVEL}"
           mkdir -p "$OUT"
-          APK="runtime-apk/SLF-display-qa.apk"
+          APK="runtime-apk/SLF-touch-qa.apk"
           PACKAGE="air.com.initialsgames.SLF"
           FAIL=0
           adb install -r "$APK" > "$OUT/install.txt" 2>&1 || exit 10
@@ -87,7 +87,17 @@ jobs:
           adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
           adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
           adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
-          echo "label,width,height,pid,focused,diff_touch,fatal" > "$OUT/metrics.csv"
+          echo "label,width,height,pid,focused,route_diff,move_diff,pause_diff,resume_diff,fatal" > "$OUT/metrics.csv"
+
+          diff_ratio() {
+            python3 - "$1" "$2" <<'PY'
+          import sys
+          from PIL import Image,ImageChops
+          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
+          d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); total=sum(h); changed=total-h[0]
+          print(f"{changed/total if total else 0:.6f}")
+          PY
+          }
 
           labels=(sixteen-nine ultra-wide pixel-wide)
           portrait_sizes=(1080x1920 1080x2400 1440x3120)
@@ -97,75 +107,112 @@ jobs:
             adb shell wm size "$PS" >/dev/null 2>&1 || true
             sleep 2
             adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true
             adb logcat -c
             adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/${LABEL}-launch.txt" 2>&1
             sleep 8
-            adb exec-out screencap -p > "$OUT/${LABEL}-intro.png"
-
-            # Shipping intro -> menu -> level select -> Level 2 gameplay.
-            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
-            sleep 2
-            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
-            sleep 5
-            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
-            sleep 4
-            adb shell input keyevent KEYCODE_DPAD_RIGHT >/dev/null 2>&1
-            sleep 1
-            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
-            sleep 10
-            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
-            sleep 5
-
-            PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
-            adb shell dumpsys window > "$OUT/${LABEL}-window.txt" 2>&1
-            FOCUS=$(grep -m1 'mCurrentFocus=' "$OUT/${LABEL}-window.txt" || true)
-            FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
-            adb exec-out screencap -p > "$OUT/${LABEL}-game-before-touch.png"
-            read W H < <(python3 - "$OUT/${LABEL}-game-before-touch.png" <<'PY'
+            adb exec-out screencap -p > "$OUT/${LABEL}-01-intro.png"
+            read W H < <(python3 - "$OUT/${LABEL}-01-intro.png" <<'PY'
           import sys
           from PIL import Image
           im=Image.open(sys.argv[1]); print(im.width, im.height)
           PY
             )
             if [ "$W" -le "$H" ]; then echo "NOT_LANDSCAPE $LABEL ${W}x${H}" >> "$OUT/failures.txt"; FAIL=1; fi
-            # SHOW_ALL 16:9 content should fill height and center horizontally on wider screens.
-            CONTENT_W=$(( H * 16 / 9 ))
-            XOFF=$(( (W - CONTENT_W) / 2 ))
-            [ "$XOFF" -lt 0 ] && XOFF=0
-            TX=$(( XOFF + CONTENT_W / 4 ))
-            TY=$(( H * 7 / 8 ))
-            adb shell input swipe "$TX" "$TY" "$TX" "$TY" 900 >/dev/null 2>&1
+            CX=$(( W / 2 )); CY=$(( H / 2 ))
+
+            # TOUCH ONLY: intro tap 1, intro tap 2 -> menu.
+            adb shell input tap "$CX" "$CY" >/dev/null 2>&1
             sleep 2
-            adb exec-out screencap -p > "$OUT/${LABEL}-game-after-touch.png"
-            DIFF=$(python3 - "$OUT/${LABEL}-game-before-touch.png" "$OUT/${LABEL}-game-after-touch.png" <<'PY'
+            adb shell input tap "$CX" "$CY" >/dev/null 2>&1
+            sleep 5
+            adb exec-out screencap -p > "$OUT/${LABEL}-02-menu.png"
+
+            # TOUCH ONLY: tap default Factory Floor -> level select.
+            adb shell input tap "$CX" "$CY" >/dev/null 2>&1
+            sleep 5
+            adb exec-out screencap -p > "$OUT/${LABEL}-03-level-select.png"
+
+            # TOUCH ONLY: swipe right to Level 2, then tap to choose.
+            adb shell input swipe $((W*40/100)) "$CY" $((W*68/100)) "$CY" 350 >/dev/null 2>&1
+            sleep 2
+            adb exec-out screencap -p > "$OUT/${LABEL}-04-level-select-right.png"
+            adb shell input tap "$CX" "$CY" >/dev/null 2>&1
+            sleep 14
+            adb exec-out screencap -p > "$OUT/${LABEL}-05-gameplay.png"
+
+            PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            adb shell dumpsys window > "$OUT/${LABEL}-window.txt" 2>&1
+            FOCUS=$(grep -m1 'mCurrentFocus=' "$OUT/${LABEL}-window.txt" || true)
+            FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
+            [ -z "$PID" ] && FAIL=1
+            [ "$FOCUSED" -ne 1 ] && FAIL=1
+
+            # SHOW_ALL 16:9 content fills height and is centered on wider screens.
+            CONTENT_W=$(( H * 16 / 9 ))
+            if [ "$CONTENT_W" -gt "$W" ]; then CONTENT_W=$W; fi
+            XOFF=$(( (W - CONTENT_W) / 2 ))
+            ZW=$(( CONTENT_W / 6 ))
+            BOTTOM_Y=$(( H * 7 / 8 ))
+            RIGHT_X=$(( XOFF + ZW + ZW/2 ))
+            SWITCH_X=$(( XOFF + ZW*2 + ZW/2 ))
+            PIGGY_X=$(( XOFF + ZW*3 + ZW/2 ))
+            ACTION_X=$(( XOFF + ZW*4 + ZW/2 ))
+            JUMP_X=$(( XOFF + ZW*5 + ZW/2 ))
+            PAUSE_X=$JUMP_X
+            PAUSE_Y=$(( H * 8 / 100 ))
+
+            # Exercise each visible gameplay control using actual Android touch events.
+            adb shell input swipe "$RIGHT_X" "$BOTTOM_Y" "$RIGHT_X" "$BOTTOM_Y" 900 >/dev/null 2>&1
+            sleep 2
+            adb exec-out screencap -p > "$OUT/${LABEL}-06-after-right.png"
+            MOVE_DIFF=$(diff_ratio "$OUT/${LABEL}-05-gameplay.png" "$OUT/${LABEL}-06-after-right.png")
+
+            adb shell input tap "$SWITCH_X" "$BOTTOM_Y" >/dev/null 2>&1
+            sleep 1
+            adb exec-out screencap -p > "$OUT/${LABEL}-07-after-switch.png"
+            adb shell input tap "$PIGGY_X" "$BOTTOM_Y" >/dev/null 2>&1
+            sleep 1
+            adb exec-out screencap -p > "$OUT/${LABEL}-08-after-piggy.png"
+            adb shell input tap "$ACTION_X" "$BOTTOM_Y" >/dev/null 2>&1
+            sleep 1
+            adb shell input tap "$JUMP_X" "$BOTTOM_Y" >/dev/null 2>&1
+            sleep 2
+            adb exec-out screencap -p > "$OUT/${LABEL}-09-after-action-jump.png"
+
+            # Dedicated PAUSE must show the real pause UI and the same target must resume it.
+            adb shell input swipe "$PAUSE_X" "$PAUSE_Y" "$PAUSE_X" "$PAUSE_Y" 350 >/dev/null 2>&1
+            sleep 2
+            adb exec-out screencap -p > "$OUT/${LABEL}-10-paused.png"
+            PAUSE_DIFF=$(diff_ratio "$OUT/${LABEL}-09-after-action-jump.png" "$OUT/${LABEL}-10-paused.png")
+            adb shell input swipe "$PAUSE_X" "$PAUSE_Y" "$PAUSE_X" "$PAUSE_Y" 350 >/dev/null 2>&1
+            sleep 2
+            adb exec-out screencap -p > "$OUT/${LABEL}-11-resumed.png"
+            RESUME_DIFF=$(diff_ratio "$OUT/${LABEL}-10-paused.png" "$OUT/${LABEL}-11-resumed.png")
+
+            ROUTE_DIFF=$(diff_ratio "$OUT/${LABEL}-02-menu.png" "$OUT/${LABEL}-05-gameplay.png")
+            python3 - "$ROUTE_DIFF" "$MOVE_DIFF" "$PAUSE_DIFF" "$RESUME_DIFF" <<'PY'
           import sys
-          from PIL import Image,ImageChops
-          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
-          d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); total=sum(h); changed=total-h[0]
-          print(f"{changed/total if total else 0:.6f}")
+          route,move,pause,resume=map(float,sys.argv[1:])
+          raise SystemExit(0 if route>=0.03 and move>=0.0005 and pause>=0.005 and resume>=0.005 else 1)
           PY
-            )
-            python3 - "$DIFF" <<'PY'
-          import sys
-          raise SystemExit(0 if float(sys.argv[1]) >= 0.0005 else 1)
-          PY
-            if [ $? -ne 0 ]; then echo "TOUCH_NO_VISIBLE_EFFECT $LABEL diff=$DIFF" >> "$OUT/failures.txt"; FAIL=1; fi
+            if [ $? -ne 0 ]; then echo "TOUCH_VISUAL_ASSERTION $LABEL route=$ROUTE_DIFF move=$MOVE_DIFF pause=$PAUSE_DIFF resume=$RESUME_DIFF" >> "$OUT/failures.txt"; FAIL=1; fi
+
             adb logcat -d > "$OUT/${LABEL}-logcat.txt" 2>&1
             FATAL=0
             if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/${LABEL}-logcat.txt" > "$OUT/${LABEL}-fatal.txt"; then FATAL=1; FAIL=1; else : > "$OUT/${LABEL}-fatal.txt"; fi
-            [ -z "$PID" ] && FAIL=1
-            [ "$FOCUSED" -ne 1 ] && FAIL=1
-            echo "$LABEL,$W,$H,$PID,$FOCUSED,$DIFF,$FATAL" >> "$OUT/metrics.csv"
+            echo "$LABEL,$W,$H,$PID,$FOCUSED,$ROUTE_DIFF,$MOVE_DIFF,$PAUSE_DIFF,$RESUME_DIFF,$FATAL" >> "$OUT/metrics.csv"
           done
+
           adb shell wm size reset >/dev/null 2>&1 || true
           [ -f "$OUT/failures.txt" ] && cat "$OUT/failures.txt" > "$OUT/summary.txt" || : > "$OUT/summary.txt"
           echo "api=$API_LEVEL" >> "$OUT/summary.txt"
           echo "fail=$FAIL" >> "$OUT/summary.txt"
           if [ "$FAIL" -ne 0 ]; then exit 20; fi
-          echo "PASS-CANDIDATE: scaled shipping build survived 16:9, 20:9, and 13:6-ish landscape shapes with real Level 2 gameplay and visible touch-zone effect; manual screenshot review required for presentation." >> "$OUT/summary.txt"
+          echo "PASS-CANDIDATE: on all three display shapes the app reached real Level 2 from cold launch using touch only, then exercised RIGHT/SWITCH/PIGGY/ACTION/JUMP/PAUSE/RESUME through native Android touch with healthy process/focus/fatal scans. Manual screenshot review required." >> "$OUT/summary.txt"
           EOF
-          chmod +x display-qa.sh
-      - name: Run display/touch QA
+          chmod +x touch-qa.sh
+      - name: Run touch-only route and complete HUD QA
         uses: reactivecircus/android-emulator-runner@v2
         env:
           API_LEVEL: ${{ matrix.api }}
@@ -176,11 +223,11 @@ jobs:
           profile: pixel_7_pro
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: bash display-qa.sh
-      - name: Upload display evidence
+          script: bash touch-qa.sh
+      - name: Upload touch evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gate2a-display-api-${{ matrix.api }}
-          path: display-api-${{ matrix.api }}
+          name: gate2a-touch-api-${{ matrix.api }}
+          path: touch-api-${{ matrix.api }}
           if-no-files-found: error
