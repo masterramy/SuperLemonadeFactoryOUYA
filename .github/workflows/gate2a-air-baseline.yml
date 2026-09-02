@@ -264,11 +264,11 @@ jobs:
           Y=$((SHOT_H / 2))
           echo "tap-center=$X,$Y screenshot=${SHOT_W}x${SHOT_H}" > smoke/tap-coordinates.txt
 
-          # PCIntroState accepts FlxG.mouse.justPressed(), which AIR mobile touch
-          # synthesizes on this legacy branch. Two presses should execute intro -> menu.
-          adb shell input tap "$X" "$Y"
+          # Run 25 proved AIR's synthesized touch-to-mouse path is nondeterministic
+          # in this emulator. KEYCODE_X reliably reaches Registry.p1Action instead.
+          adb shell input keyevent KEYCODE_X
           sleep 2
-          adb shell input tap "$X" "$Y"
+          adb shell input keyevent KEYCODE_X
           sleep 8
 
           PID_MENU=$(adb shell pidof "$PACKAGE" | tr -d '\r')
