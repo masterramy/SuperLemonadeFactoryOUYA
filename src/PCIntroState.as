@@ -278,7 +278,10 @@ package
 			}
 
 				
-			FlxG.ouyaController.o.reset();
+			if (FlxG.ouyaController != null)
+			{
+				FlxG.ouyaController.o.reset();
+			}
 				
 		}
 	}
