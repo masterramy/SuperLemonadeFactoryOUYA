@@ -23,8 +23,8 @@ package
 
 		public function SLF()
 		{
-			// RIGHT ONE
-			super(640, 360, PCIntroState, 3, 60, 30);
+			// QA-only branch: boot directly into exhaustive campaign harness.
+			super(640, 360, QACampaignState, 3, 60, 30);
 
 			// Legacy gameplay polls FlxG.ouyaController directly in many states.
 			// A modern Android device may have no OUYA/GameInput hardware at all, so
