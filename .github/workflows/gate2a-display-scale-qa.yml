@@ -1,0 +1,186 @@
+name: Gate 2A Display Scale QA
+
+on:
+  push:
+    branches:
+      - gate2a-display-scale-staging
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2a-display-scale-staging
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile scaled shipping SWF
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package x64 scaled APK with transient repository retry
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Display QA" 2048-RSA gate2a-display-qa.p12 gate2a
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          $ok = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            if (Test-Path dist/SLF-display-qa.apk) { Remove-Item -Force dist/SLF-display-qa.apk }
+            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-display-qa.p12 -storepass gate2a dist/SLF-display-qa.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 45 }
+          }
+          if (-not $ok) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-display-qa-apk
+          path: dist/SLF-display-qa.apk
+          if-no-files-found: error
+
+  runtime-display:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [23, 35]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-display-qa-apk
+          path: runtime-apk
+      - run: python3 -m pip install --quiet pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write scale/touch harness
+        shell: bash
+        run: |
+          cat > display-qa.sh <<'EOF'
+          #!/usr/bin/env bash
+          set +e
+          OUT="display-api-${API_LEVEL}"
+          mkdir -p "$OUT"
+          APK="runtime-apk/SLF-display-qa.apk"
+          PACKAGE="air.com.initialsgames.SLF"
+          FAIL=0
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1 || exit 10
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          echo "label,width,height,pid,focused,diff_touch,fatal" > "$OUT/metrics.csv"
+
+          labels=(sixteen-nine ultra-wide pixel-wide)
+          portrait_sizes=(1080x1920 1080x2400 1440x3120)
+          for I in 0 1 2; do
+            LABEL=${labels[$I]}
+            PS=${portrait_sizes[$I]}
+            adb shell wm size "$PS" >/dev/null 2>&1 || true
+            sleep 2
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb logcat -c
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/${LABEL}-launch.txt" 2>&1
+            sleep 8
+            adb exec-out screencap -p > "$OUT/${LABEL}-intro.png"
+
+            # Shipping intro -> menu -> level select -> Level 2 gameplay.
+            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
+            sleep 2
+            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
+            sleep 5
+            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
+            sleep 4
+            adb shell input keyevent KEYCODE_DPAD_RIGHT >/dev/null 2>&1
+            sleep 1
+            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
+            sleep 10
+            adb shell input keyevent KEYCODE_X >/dev/null 2>&1
+            sleep 5
+
+            PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            adb shell dumpsys window > "$OUT/${LABEL}-window.txt" 2>&1
+            FOCUS=$(grep -m1 'mCurrentFocus=' "$OUT/${LABEL}-window.txt" || true)
+            FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
+            adb exec-out screencap -p > "$OUT/${LABEL}-game-before-touch.png"
+            read W H < <(python3 - "$OUT/${LABEL}-game-before-touch.png" <<'PY'
+          import sys
+          from PIL import Image
+          im=Image.open(sys.argv[1]); print(im.width, im.height)
+          PY
+            )
+            if [ "$W" -le "$H" ]; then echo "NOT_LANDSCAPE $LABEL ${W}x${H}" >> "$OUT/failures.txt"; FAIL=1; fi
+            # SHOW_ALL 16:9 content should fill height and center horizontally on wider screens.
+            CONTENT_W=$(( H * 16 / 9 ))
+            XOFF=$(( (W - CONTENT_W) / 2 ))
+            [ "$XOFF" -lt 0 ] && XOFF=0
+            TX=$(( XOFF + CONTENT_W / 4 ))
+            TY=$(( H * 7 / 8 ))
+            adb shell input swipe "$TX" "$TY" "$TX" "$TY" 900 >/dev/null 2>&1
+            sleep 2
+            adb exec-out screencap -p > "$OUT/${LABEL}-game-after-touch.png"
+            DIFF=$(python3 - "$OUT/${LABEL}-game-before-touch.png" "$OUT/${LABEL}-game-after-touch.png" <<'PY'
+          import sys
+          from PIL import Image,ImageChops
+          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
+          d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); total=sum(h); changed=total-h[0]
+          print(f"{changed/total if total else 0:.6f}")
+          PY
+            )
+            python3 - "$DIFF" <<'PY'
+          import sys
+          raise SystemExit(0 if float(sys.argv[1]) >= 0.0005 else 1)
+          PY
+            if [ $? -ne 0 ]; then echo "TOUCH_NO_VISIBLE_EFFECT $LABEL diff=$DIFF" >> "$OUT/failures.txt"; FAIL=1; fi
+            adb logcat -d > "$OUT/${LABEL}-logcat.txt" 2>&1
+            FATAL=0
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/${LABEL}-logcat.txt" > "$OUT/${LABEL}-fatal.txt"; then FATAL=1; FAIL=1; else : > "$OUT/${LABEL}-fatal.txt"; fi
+            [ -z "$PID" ] && FAIL=1
+            [ "$FOCUSED" -ne 1 ] && FAIL=1
+            echo "$LABEL,$W,$H,$PID,$FOCUSED,$DIFF,$FATAL" >> "$OUT/metrics.csv"
+          done
+          adb shell wm size reset >/dev/null 2>&1 || true
+          [ -f "$OUT/failures.txt" ] && cat "$OUT/failures.txt" > "$OUT/summary.txt" || : > "$OUT/summary.txt"
+          echo "api=$API_LEVEL" >> "$OUT/summary.txt"
+          echo "fail=$FAIL" >> "$OUT/summary.txt"
+          if [ "$FAIL" -ne 0 ]; then exit 20; fi
+          echo "PASS-CANDIDATE: scaled shipping build survived 16:9, 20:9, and 13:6-ish landscape shapes with real Level 2 gameplay and visible touch-zone effect; manual screenshot review required for presentation." >> "$OUT/summary.txt"
+          EOF
+          chmod +x display-qa.sh
+      - name: Run display/touch QA
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          API_LEVEL: ${{ matrix.api }}
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash display-qa.sh
+      - name: Upload display evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-display-api-${{ matrix.api }}
+          path: display-api-${{ matrix.api }}
+          if-no-files-found: error
