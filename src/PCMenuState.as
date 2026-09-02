@@ -365,7 +365,10 @@ package
 			latestText.alignment = "right";
 			add(latestText);	*/		
 			
-			FlxG.ouyaController.o.reset();
+			if (FlxG.ouyaController != null)
+			{
+				FlxG.ouyaController.o.reset();
+			}
 			
 			buttonEmitter = new FlxEmitter(0,FlxG.height);
 			buttonEmitter.setSize(80,20);
@@ -427,7 +430,7 @@ package
 				FlxG.play(Registry.SndBlip, 0.3);
 			}
 			
-			if (FlxG.keys.justPressed(Registry.p1Action) || FlxG.ouyaController.o.pressed || FlxG.keys.justPressed(Registry.p1Switch) || FlxG.keys.justPressed(Registry.p1Jump) || FlxG.joystick.j1ButtonAJustPressed  ) {
+			if (FlxG.keys.justPressed(Registry.p1Action) || (FlxG.ouyaController != null && FlxG.ouyaController.o.pressed) || FlxG.keys.justPressed(Registry.p1Switch) || FlxG.keys.justPressed(Registry.p1Jump) || FlxG.joystick.j1ButtonAJustPressed  ) {
 				FlxG.play(Registry.SndPing, Registry.pingVolume);
 				if (currentButton<4)
 					this.beginFade();
@@ -481,10 +484,13 @@ package
 			fading = true;
 			FlxG.fade(0xff000000, 0.4, completeFade);
 			
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PRODUCT, onProduct );
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PURCHASE, onPurchase );
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.RECEIPT, onReceipt );
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.GAMER, onGamer );
+			if (this.ouyaIap != null)
+			{
+				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PRODUCT, onProduct );
+				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PURCHASE, onPurchase );
+				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.RECEIPT, onReceipt );
+				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.GAMER, onGamer );
+			}
 		}
 		
 		protected function completeFade():void
