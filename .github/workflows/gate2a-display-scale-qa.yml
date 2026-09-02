@@ -53,11 +53,11 @@ jobs:
   runtime-touch:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        api: [21, 36]
+        api: [23, 36]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -69,7 +69,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Write touch-only harness
+      - name: Write state-aware touch harness
         shell: bash
         run: |
           cat > touch-qa.sh <<'EOF'
@@ -87,13 +87,15 @@ jobs:
           adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
           adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
           adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
-          echo "label,width,height,pid,focused,route_diff,move_diff,pause_diff,resume_diff,fatal" > "$OUT/metrics.csv"
+          echo "label,width,height,pid,focused,intro_menu,menu_level,level_nav,level_game,right_diff,left_diff,switch_diff,jump_diff,action_diff,pause_diff,resume_diff,fatal" > "$OUT/metrics.csv"
 
           diff_ratio() {
             python3 - "$1" "$2" <<'PY'
           import sys
           from PIL import Image,ImageChops
           a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
+          if a.size != b.size:
+              print("1.000000"); raise SystemExit(0)
           d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); total=sum(h); changed=total-h[0]
           print(f"{changed/total if total else 0:.6f}")
           PY
@@ -105,6 +107,8 @@ jobs:
             LABEL=${labels[$I]}
             PS=${portrait_sizes[$I]}
             adb shell wm size "$PS" >/dev/null 2>&1 || true
+            adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+            adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
             sleep 2
             adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
             adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true
@@ -118,38 +122,51 @@ jobs:
           im=Image.open(sys.argv[1]); print(im.width, im.height)
           PY
             )
-            if [ "$W" -le "$H" ]; then echo "NOT_LANDSCAPE $LABEL ${W}x${H}" >> "$OUT/failures.txt"; FAIL=1; fi
+            if [ "$W" -le "$H" ]; then echo "NOT_LANDSCAPE $LABEL ${W}x${H}" >> "$OUT/failures.txt"; FAIL=1; continue; fi
             CX=$(( W / 2 )); CY=$(( H / 2 ))
 
-            # TOUCH ONLY: intro tap 1, intro tap 2 -> menu.
+            # One physical tap intentionally performs the intro's historical two-beat start.
             adb shell input tap "$CX" "$CY" >/dev/null 2>&1
-            sleep 2
-            adb shell input tap "$CX" "$CY" >/dev/null 2>&1
-            sleep 5
+            sleep 4
             adb exec-out screencap -p > "$OUT/${LABEL}-02-menu.png"
 
-            # TOUCH ONLY: tap default Factory Floor -> level select.
+            # Tap the default Play/Factory Floor selection exactly once.
             adb shell input tap "$CX" "$CY" >/dev/null 2>&1
-            sleep 5
+            sleep 4
             adb exec-out screencap -p > "$OUT/${LABEL}-03-level-select.png"
 
-            # TOUCH ONLY: swipe right to Level 2, then tap to choose.
+            # Swipe right from Level 1 to Level 2; then tap the highlighted Level 2.
             adb shell input swipe $((W*40/100)) "$CY" $((W*68/100)) "$CY" 350 >/dev/null 2>&1
             sleep 2
-            adb exec-out screencap -p > "$OUT/${LABEL}-04-level-select-right.png"
+            adb exec-out screencap -p > "$OUT/${LABEL}-04-level-2-selected.png"
             adb shell input tap "$CX" "$CY" >/dev/null 2>&1
-            sleep 14
+            sleep 9
             adb exec-out screencap -p > "$OUT/${LABEL}-05-gameplay.png"
 
-            PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            INTRO_MENU=$(diff_ratio "$OUT/${LABEL}-01-intro.png" "$OUT/${LABEL}-02-menu.png")
+            MENU_LEVEL=$(diff_ratio "$OUT/${LABEL}-02-menu.png" "$OUT/${LABEL}-03-level-select.png")
+            LEVEL_NAV=$(diff_ratio "$OUT/${LABEL}-03-level-select.png" "$OUT/${LABEL}-04-level-2-selected.png")
+            LEVEL_GAME=$(diff_ratio "$OUT/${LABEL}-04-level-2-selected.png" "$OUT/${LABEL}-05-gameplay.png")
+            python3 - "$INTRO_MENU" "$MENU_LEVEL" "$LEVEL_NAV" "$LEVEL_GAME" <<'PY'
+          import sys
+          intro_menu,menu_level,level_nav,level_game=map(float,sys.argv[1:])
+          ok=intro_menu>=0.05 and menu_level>=0.03 and level_nav>=0.0002 and level_game>=0.05
+          raise SystemExit(0 if ok else 1)
+          PY
+            if [ $? -ne 0 ]; then
+              echo "ROUTE_STATE_ASSERTION $LABEL intro_menu=$INTRO_MENU menu_level=$MENU_LEVEL level_nav=$LEVEL_NAV level_game=$LEVEL_GAME" >> "$OUT/failures.txt"
+              FAIL=1
+              continue
+            fi
+
+            PID=$(adb shell ps | tr -d '\r' | awk -v p="$PACKAGE" '$NF==p {print $2; exit}')
             adb shell dumpsys window > "$OUT/${LABEL}-window.txt" 2>&1
             FOCUS=$(grep -m1 'mCurrentFocus=' "$OUT/${LABEL}-window.txt" || true)
             FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
             [ -z "$PID" ] && FAIL=1
             [ "$FOCUSED" -ne 1 ] && FAIL=1
 
-            # Compute the centered SHOW_ALL 16:9 content rectangle for both wide
-            # phones (side bars) and narrow/tablet/foldable landscapes (top/bottom bars).
+            # Centered SHOW_ALL 16:9 content rectangle for wide and narrow shapes.
             if [ $(( W * 9 )) -ge $(( H * 16 )) ]; then
               CONTENT_H=$H
               CONTENT_W=$(( H * 16 / 9 ))
@@ -163,6 +180,7 @@ jobs:
             fi
             ZW=$(( CONTENT_W / 6 ))
             BOTTOM_Y=$(( YOFF + CONTENT_H * 7 / 8 ))
+            LEFT_X=$(( XOFF + ZW/2 ))
             RIGHT_X=$(( XOFF + ZW + ZW/2 ))
             SWITCH_X=$(( XOFF + ZW*2 + ZW/2 ))
             PIGGY_X=$(( XOFF + ZW*3 + ZW/2 ))
@@ -171,46 +189,68 @@ jobs:
             PAUSE_X=$JUMP_X
             PAUSE_Y=$(( YOFF + CONTENT_H * 8 / 100 ))
 
-            # Exercise every visible gameplay control using actual Android touch events.
+            # RIGHT then LEFT holds exercise continuous native touch movement.
             adb shell input swipe "$RIGHT_X" "$BOTTOM_Y" "$RIGHT_X" "$BOTTOM_Y" 900 >/dev/null 2>&1
-            sleep 2
+            sleep 1
             adb exec-out screencap -p > "$OUT/${LABEL}-06-after-right.png"
-            MOVE_DIFF=$(diff_ratio "$OUT/${LABEL}-05-gameplay.png" "$OUT/${LABEL}-06-after-right.png")
+            RIGHT_DIFF=$(diff_ratio "$OUT/${LABEL}-05-gameplay.png" "$OUT/${LABEL}-06-after-right.png")
+            adb shell input swipe "$LEFT_X" "$BOTTOM_Y" "$LEFT_X" "$BOTTOM_Y" 650 >/dev/null 2>&1
+            sleep 1
+            adb exec-out screencap -p > "$OUT/${LABEL}-07-after-left.png"
+            LEFT_DIFF=$(diff_ratio "$OUT/${LABEL}-06-after-right.png" "$OUT/${LABEL}-07-after-left.png")
 
+            # SWITCH must visibly change which character is controlled.
             adb shell input tap "$SWITCH_X" "$BOTTOM_Y" >/dev/null 2>&1
             sleep 1
-            adb exec-out screencap -p > "$OUT/${LABEL}-07-after-switch.png"
-            adb shell input tap "$PIGGY_X" "$BOTTOM_Y" >/dev/null 2>&1
-            sleep 1
-            adb exec-out screencap -p > "$OUT/${LABEL}-08-after-piggy.png"
-            adb shell input tap "$ACTION_X" "$BOTTOM_Y" >/dev/null 2>&1
-            sleep 1
+            adb exec-out screencap -p > "$OUT/${LABEL}-08-after-switch.png"
+            SWITCH_DIFF=$(diff_ratio "$OUT/${LABEL}-07-after-left.png" "$OUT/${LABEL}-08-after-switch.png")
+
+            # JUMP on Liselot should visibly move/animate her.
             adb shell input tap "$JUMP_X" "$BOTTOM_Y" >/dev/null 2>&1
-            sleep 2
-            adb exec-out screencap -p > "$OUT/${LABEL}-09-after-action-jump.png"
+            sleep 0.35
+            adb exec-out screencap -p > "$OUT/${LABEL}-09-after-jump.png"
+            JUMP_DIFF=$(diff_ratio "$OUT/${LABEL}-08-after-switch.png" "$OUT/${LABEL}-09-after-jump.png")
+            sleep 1
+
+            # Switch back to Andre; ACTION is his dash and must visibly affect gameplay.
+            adb shell input tap "$SWITCH_X" "$BOTTOM_Y" >/dev/null 2>&1
+            sleep 0.5
+            adb exec-out screencap -p > "$OUT/${LABEL}-10-before-action.png"
+            adb shell input swipe "$ACTION_X" "$BOTTOM_Y" "$ACTION_X" "$BOTTOM_Y" 260 >/dev/null 2>&1
+            sleep 0.35
+            adb exec-out screencap -p > "$OUT/${LABEL}-11-after-action.png"
+            ACTION_DIFF=$(diff_ratio "$OUT/${LABEL}-10-before-action.png" "$OUT/${LABEL}-11-after-action.png")
+
+            # PIGGY is mapped to the canonical B input; it is only actionable when characters overlap.
+            adb shell input tap "$PIGGY_X" "$BOTTOM_Y" >/dev/null 2>&1
+            sleep 0.5
+            adb exec-out screencap -p > "$OUT/${LABEL}-12-after-piggy-input.png"
 
             # Dedicated PAUSE must show the real pause UI and the same target must resume it.
             adb shell input swipe "$PAUSE_X" "$PAUSE_Y" "$PAUSE_X" "$PAUSE_Y" 350 >/dev/null 2>&1
             sleep 2
-            adb exec-out screencap -p > "$OUT/${LABEL}-10-paused.png"
-            PAUSE_DIFF=$(diff_ratio "$OUT/${LABEL}-09-after-action-jump.png" "$OUT/${LABEL}-10-paused.png")
+            adb exec-out screencap -p > "$OUT/${LABEL}-13-paused.png"
+            PAUSE_DIFF=$(diff_ratio "$OUT/${LABEL}-12-after-piggy-input.png" "$OUT/${LABEL}-13-paused.png")
             adb shell input swipe "$PAUSE_X" "$PAUSE_Y" "$PAUSE_X" "$PAUSE_Y" 350 >/dev/null 2>&1
             sleep 2
-            adb exec-out screencap -p > "$OUT/${LABEL}-11-resumed.png"
-            RESUME_DIFF=$(diff_ratio "$OUT/${LABEL}-10-paused.png" "$OUT/${LABEL}-11-resumed.png")
+            adb exec-out screencap -p > "$OUT/${LABEL}-14-resumed.png"
+            RESUME_DIFF=$(diff_ratio "$OUT/${LABEL}-13-paused.png" "$OUT/${LABEL}-14-resumed.png")
 
-            ROUTE_DIFF=$(diff_ratio "$OUT/${LABEL}-02-menu.png" "$OUT/${LABEL}-05-gameplay.png")
-            python3 - "$ROUTE_DIFF" "$MOVE_DIFF" "$PAUSE_DIFF" "$RESUME_DIFF" <<'PY'
+            python3 - "$RIGHT_DIFF" "$LEFT_DIFF" "$SWITCH_DIFF" "$JUMP_DIFF" "$ACTION_DIFF" "$PAUSE_DIFF" "$RESUME_DIFF" <<'PY'
           import sys
-          route,move,pause,resume=map(float,sys.argv[1:])
-          raise SystemExit(0 if route>=0.03 and move>=0.0005 and pause>=0.005 and resume>=0.005 else 1)
+          right,left,switch,jump,action,pause,resume=map(float,sys.argv[1:])
+          ok=(right>=0.0005 and left>=0.0005 and switch>=0.0002 and jump>=0.0005 and action>=0.0005 and pause>=0.005 and resume>=0.005)
+          raise SystemExit(0 if ok else 1)
           PY
-            if [ $? -ne 0 ]; then echo "TOUCH_VISUAL_ASSERTION $LABEL route=$ROUTE_DIFF move=$MOVE_DIFF pause=$PAUSE_DIFF resume=$RESUME_DIFF" >> "$OUT/failures.txt"; FAIL=1; fi
+            if [ $? -ne 0 ]; then
+              echo "CONTROL_VISUAL_ASSERTION $LABEL right=$RIGHT_DIFF left=$LEFT_DIFF switch=$SWITCH_DIFF jump=$JUMP_DIFF action=$ACTION_DIFF pause=$PAUSE_DIFF resume=$RESUME_DIFF" >> "$OUT/failures.txt"
+              FAIL=1
+            fi
 
             adb logcat -d > "$OUT/${LABEL}-logcat.txt" 2>&1
             FATAL=0
             if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/${LABEL}-logcat.txt" > "$OUT/${LABEL}-fatal.txt"; then FATAL=1; FAIL=1; else : > "$OUT/${LABEL}-fatal.txt"; fi
-            echo "$LABEL,$W,$H,$PID,$FOCUSED,$ROUTE_DIFF,$MOVE_DIFF,$PAUSE_DIFF,$RESUME_DIFF,$FATAL" >> "$OUT/metrics.csv"
+            echo "$LABEL,$W,$H,$PID,$FOCUSED,$INTRO_MENU,$MENU_LEVEL,$LEVEL_NAV,$LEVEL_GAME,$RIGHT_DIFF,$LEFT_DIFF,$SWITCH_DIFF,$JUMP_DIFF,$ACTION_DIFF,$PAUSE_DIFF,$RESUME_DIFF,$FATAL" >> "$OUT/metrics.csv"
           done
 
           adb shell wm size reset >/dev/null 2>&1 || true
@@ -218,10 +258,10 @@ jobs:
           echo "api=$API_LEVEL" >> "$OUT/summary.txt"
           echo "fail=$FAIL" >> "$OUT/summary.txt"
           if [ "$FAIL" -ne 0 ]; then exit 20; fi
-          echo "PASS-CANDIDATE: on five phone/tablet/foldable display shapes the app reached real Level 2 from cold launch using touch only, then exercised RIGHT/SWITCH/PIGGY/ACTION/JUMP/PAUSE/RESUME through native Android touch with healthy process/focus/fatal scans. Manual screenshot review required." >> "$OUT/summary.txt"
+          echo "PASS-CANDIDATE: five display shapes reached real Level 2 from cold launch using touch only, with distinct Intro/Menu/Level Select/Level 2/gameplay state transitions plus RIGHT/LEFT/SWITCH/JUMP/ACTION/PAUSE/RESUME and clean process/focus/fatal checks. PIGGY input was dispatched on the exact canonical B mapping; overlap-specific behavior is covered separately. Manual screenshot review required." >> "$OUT/summary.txt"
           EOF
           chmod +x touch-qa.sh
-      - name: Run touch-only route and complete HUD QA
+      - name: Run state-aware touch and display QA
         uses: reactivecircus/android-emulator-runner@v2
         env:
           API_LEVEL: ${{ matrix.api }}
@@ -239,4 +279,78 @@ jobs:
         with:
           name: gate2a-touch-api-${{ matrix.api }}
           path: touch-api-${{ matrix.api }}
+          if-no-files-found: error
+
+  runtime-minsdk21:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-touch-qa-apk
+          path: runtime-apk
+      - run: python3 -m pip install --quiet pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write API 21 minimum-SDK launch smoke
+        shell: bash
+        run: |
+          cat > minsdk21.sh <<'EOF'
+          #!/usr/bin/env bash
+          set +e
+          OUT="minsdk21"
+          mkdir -p "$OUT"
+          APK="runtime-apk/SLF-touch-qa.apk"
+          PACKAGE="air.com.initialsgames.SLF"
+          FAIL=0
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1 || exit 10
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
+          sleep 12
+          adb exec-out screencap -p > "$OUT/launch.png"
+          PID=$(adb shell ps | tr -d '\r' | awk -v p="$PACKAGE" '$NF==p {print $2; exit}')
+          adb shell dumpsys window > "$OUT/window.txt" 2>&1
+          FOCUS=$(grep -m1 'mCurrentFocus=' "$OUT/window.txt" || true)
+          FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
+          python3 - "$OUT/launch.png" <<'PY'
+          import sys
+          from PIL import Image,ImageStat
+          im=Image.open(sys.argv[1]).convert('RGB')
+          v=sum(ImageStat.Stat(im).var)
+          raise SystemExit(0 if im.width>0 and im.height>0 and v>25 else 1)
+          PY
+          [ $? -ne 0 ] && FAIL=1
+          [ -z "$PID" ] && FAIL=1
+          [ "$FOCUSED" -ne 1 ] && FAIL=1
+          adb logcat -d > "$OUT/logcat.txt" 2>&1
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/logcat.txt" > "$OUT/fatal.txt"; then FAIL=1; else : > "$OUT/fatal.txt"; fi
+          echo "api=21" > "$OUT/summary.txt"
+          echo "pid=$PID" >> "$OUT/summary.txt"
+          echo "focused=$FOCUSED" >> "$OUT/summary.txt"
+          echo "fail=$FAIL" >> "$OUT/summary.txt"
+          [ "$FAIL" -ne 0 ] && exit 20
+          echo "PASS: declared minimum Android API 21 installs, launches, renders nonblank content, retains focus/process, and has no fatal runtime signature. Full modern touch/display matrix is intentionally exercised on API 23 and API 36 because current emulator tooling mishandles API-21 rotation/resize." >> "$OUT/summary.txt"
+          EOF
+          chmod +x minsdk21.sh
+      - name: Run API 21 minimum-SDK smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 21
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash minsdk21.sh
+      - name: Upload API 21 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-minsdk21
+          path: minsdk21
           if-no-files-found: error
