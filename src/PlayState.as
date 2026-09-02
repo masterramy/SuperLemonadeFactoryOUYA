@@ -3,8 +3,6 @@ package
 	import flash.external.ExternalInterface;
 	import org.flixel.*;
 	import flash.utils.getDefinitionByName;
-	import flash.net.URLLoader;
-	import flash.net.URLRequest;
 	
 
 	public class PlayState extends FlxState
@@ -1916,17 +1914,6 @@ package
 			
 			if (Sprite2 is SoftDrink) {
 				hasCollectedCap = true;
-				
-				try {
-					var load_php:URLLoader = new URLLoader(new URLRequest("http://initialscommand.com/php/add.php"));
-				}
-				catch (error:Error) {
-					
-				}
-				finally {
-					
-				}
-				
 			}
 			
 			if (Sprite2 is SugarBag) {
