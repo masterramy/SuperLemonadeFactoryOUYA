@@ -1,0 +1,220 @@
+name: Gate 2A Completion Persistence QA
+
+on:
+  push:
+    branches:
+      - gate2a-save-path-staging
+
+jobs:
+  build-qa-apk:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout clean save-path staging head
+        uses: actions/checkout@v4
+        with:
+          ref: gate2a-save-path-staging
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+
+      - name: Apply test-only completion instrumentation
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          play = Path('src/PlayState.as')
+          text = play.read_text(encoding='utf-8')
+          pattern = re.compile(r'/\*\s*(if \(FlxG\.keys\.G\) \{\s*player1\.x = player2\.x = exit\.x;\s*player1\.y = player2\.y = exit\.y;\s*\})\*/')
+          text2, n = pattern.subn(r'\1', text, count=1)
+          if n != 1:
+              raise SystemExit(f'Expected one dormant G teleport block, replaced {n}')
+          play.write_text(text2, encoding='utf-8', newline='')
+
+          pc = Path('src/PCPlayState.as')
+          pct = pc.read_text(encoding='utf-8')
+          needle = '\t\t\tfileStream.close();'
+          if pct.count(needle) != 1:
+              raise SystemExit(f'Expected exactly one FileStream close, found {pct.count(needle)}')
+          assertion = needle + '\n\t\t\tif (!file.exists || file.size <= 0) {\n\t\t\t\tthrow new Error("GATE2A_QA_BACKUP_MISSING_OR_EMPTY");\n\t\t\t}'
+          pct = pct.replace(needle, assertion, 1)
+          pc.write_text(pct, encoding='utf-8', newline='')
+
+          print('Test-only instrumentation applied: G teleport enabled; app-private backup asserted non-empty.')
+          '@ | python -
+
+      - name: Compile instrumented QA SWF
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Create ephemeral QA certificate
+        shell: cmd
+        run: adt -certificate -validityPeriod 1 -cn "Gate2A Completion QA" 2048-RSA gate2a-qa.p12 gate2a
+
+      - name: Package x64 emulator QA APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) { throw "No Android SDK path" }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-qa.p12 -storepass gate2a dist/SLF-completion-qa.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-completion-persistence-qa-apk
+          path: dist/SLF-completion-qa.apk
+
+  completion-persistence-runtime:
+    needs: build-qa-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download QA APK
+        uses: actions/download-artifact@v4
+        with:
+          name: gate2a-completion-persistence-qa-apk
+          path: qa-apk
+
+      - name: Write completion/persistence runtime script
+        shell: bash
+        run: |
+          cat > qa-runtime.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p qa
+          APK="qa-apk/SLF-completion-qa.apk"
+          PACKAGE="air.com.initialsgames.SLF"
+
+          fail() { echo "FAIL: $*" | tee qa/result.txt; exit 1; }
+          shot() { adb exec-out screencap -p > "qa/$1"; }
+          focus_ok() {
+            adb shell dumpsys window > qa/window-current.txt 2>&1 || true
+            grep -m1 'mCurrentFocus=' qa/window-current.txt | tee qa/focus-current.txt
+            grep -q "$PACKAGE" qa/focus-current.txt
+          }
+          fatal_scan() {
+            adb logcat -d > "qa/$1-logcat.txt" 2>&1 || true
+            if grep -E "GATE2A_QA_BACKUP_MISSING_OR_EMPTY|FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|Error #[0-9]+|TypeError:|ReferenceError:|RangeError:|VerifyError:" "qa/$1-logcat.txt" > "qa/$1-fatal-scan.txt"; then
+              cat "qa/$1-fatal-scan.txt"
+              return 1
+            fi
+            : > "qa/$1-fatal-scan.txt"
+          }
+          key() { adb shell input keyevent "$1" >/dev/null 2>&1 || true; }
+
+          adb install -r "$APK" > qa/install.txt 2>&1 || fail "APK install failed"
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          key KEYCODE_WAKEUP
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+          # Fresh install -> intro -> main menu -> Factory Floor -> Level 2.
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa/launch-1.txt 2>&1 || fail "first launch failed"
+          sleep 14
+          focus_ok || fail "app not focused after first launch"
+          shot 01-intro.png
+
+          key KEYCODE_X; sleep 2
+          key KEYCODE_X; sleep 8
+          shot 02-menu.png
+          focus_ok || fail "app lost focus at menu"
+
+          key KEYCODE_X; sleep 5
+          shot 03-level-select-before-level2.png
+          key KEYCODE_DPAD_RIGHT; sleep 1
+          key KEYCODE_X; sleep 12
+          key KEYCODE_X; sleep 8
+          shot 04-level2-before-completion.png
+          focus_ok || fail "app lost focus entering Level 2"
+          fatal_scan precompletion || fail "runtime error before completion"
+
+          # Test-only dormant G block teleports both characters to the real Exit.
+          adb shell input keyevent --longpress KEYCODE_G > qa/g-teleport.txt 2>&1 || true
+          sleep 10
+          shot 05-after-real-level2-completion.png
+          focus_ok || fail "app lost focus after Level 2 completion"
+          fatal_scan completion || fail "runtime/save error during Level 2 completion"
+
+          # Best-effort host-side inspection. run-as may be unavailable on a release-style AIR APK;
+          # the in-app assertion above is authoritative for backup existence/non-empty.
+          adb shell run-as "$PACKAGE" sh -c 'find . -type f -name progress_backup.slf -print -exec wc -c {} \;' > qa/run-as-backup.txt 2>&1 || true
+
+          # Cold restart: FlxSave must persist the unlock. Navigate back to Factory Floor.
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          sleep 2
+          adb logcat -c
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa/launch-2.txt 2>&1 || fail "cold relaunch failed"
+          sleep 14
+          focus_ok || fail "app not focused after cold relaunch"
+          shot 06-cold-restart-intro.png
+
+          key KEYCODE_X; sleep 2
+          key KEYCODE_X; sleep 8
+          shot 07-cold-restart-menu.png
+          key KEYCODE_X; sleep 5
+          shot 08-cold-restart-level-select.png
+
+          # Fresh Level Select starts at Level 1. Two RIGHT presses target newly-unlocked Level 3.
+          key KEYCODE_DPAD_RIGHT; sleep 1
+          key KEYCODE_DPAD_RIGHT; sleep 2
+          shot 09-level3-highlight-candidate.png
+          key KEYCODE_X; sleep 12
+          key KEYCODE_X; sleep 8
+          shot 10-level3-gameplay-candidate.png
+          focus_ok || fail "app lost focus entering persisted Level 3"
+          fatal_scan level3 || fail "runtime error entering persisted Level 3"
+
+          PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          [ -n "$PID" ] || fail "app process missing at final Level 3 candidate"
+          echo "$PID" > qa/final-pid.txt
+          echo "PASS-CANDIDATE: real Level 2 completion executed with in-app non-empty app-private backup assertion, cold restart succeeded, and persisted Level 3 selection/gameplay candidate remained alive. Visual review of 05, 09 and 10 is required." | tee qa/result.txt
+          EOF
+          chmod +x qa-runtime.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and prove completion/persistence
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash qa-runtime.sh
+
+      - name: Upload completion/persistence evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-completion-persistence-evidence
+          path: qa
+          if-no-files-found: warn
