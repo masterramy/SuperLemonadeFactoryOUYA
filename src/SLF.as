@@ -1,5 +1,7 @@
 package
 {
+	import flash.display.StageScaleMode;
+	import flash.events.Event;
 	import org.flixel.*;
 	import io.arkeus.ouya.ControllerInput;
 	import io.arkeus.ouya.controller.OuyaController;
@@ -26,6 +28,11 @@ package
 			// RIGHT ONE
 			super(640, 360, PCIntroState, 3, 60, 30);
 
+			// Modern Android screens can be much larger than the historical 1920x1080
+			// SWF stage. Scale the complete title uniformly to the largest 16:9 area
+			// instead of leaving the original canvas at native pixel size.
+			addEventListener(Event.ADDED_TO_STAGE, configureModernStage);
+
 			// Legacy gameplay polls FlxG.ouyaController directly in many states.
 			// A modern Android device may have no OUYA/GameInput hardware at all, so
 			// install an inert typed controller until PCIntroState discovers real input.
@@ -44,6 +51,13 @@ package
 
 			// Run 22 falsified the buffer-locking hypothesis; restore historical setting.
 			FlxG.useBufferLocking = false;
+		}
+
+		private function configureModernStage(event:Event):void
+		{
+			removeEventListener(Event.ADDED_TO_STAGE, configureModernStage);
+			stage.scaleMode = StageScaleMode.SHOW_ALL;
+			stage.align = "";
 		}
 	}
 }
