@@ -24,6 +24,8 @@ package
 		private static const KEY_UP:uint = 38;
 		private static const KEY_RIGHT:uint = 39;
 		private static const KEY_DOWN:uint = 40;
+		private static const KEY_C:uint = 67;
+		private static const KEY_P:uint = 80;
 		private static const KEY_V:uint = 86;
 		private static const KEY_X:uint = 88;
 		private static const KEY_Z:uint = 90;
@@ -103,15 +105,21 @@ package
 		private function controlKey(x:Number, y:Number):uint
 		{
 			var bounds:Rectangle = gameBounds();
+			if (!bounds.contains(x, y)) return 0;
+
+			// Dedicated pause/resume target stays available while Flixel is paused.
+			if (x >= bounds.x + bounds.width * 5.0 / 6.0 && y <= bounds.y + bounds.height * 0.17)
+				return KEY_P;
+
 			var zoneY:Number = bounds.y + bounds.height * 0.75;
-			if (!bounds.contains(x, y) || y < zoneY)
-				return 0;
+			if (y < zoneY) return 0;
 			var nx:Number = (x - bounds.x) / bounds.width;
 			if (nx < 1.0 / 6.0) return KEY_LEFT;
 			if (nx < 2.0 / 6.0) return KEY_RIGHT;
-			if (nx >= 4.0 / 6.0 && nx < 5.0 / 6.0) return KEY_X;
-			if (nx >= 5.0 / 6.0) return KEY_Z;
-			return 0;
+			if (nx < 3.0 / 6.0) return KEY_C;
+			if (nx < 4.0 / 6.0) return KEY_V;
+			if (nx < 5.0 / 6.0) return KEY_X;
+			return KEY_Z;
 		}
 
 		private function onTouchBegin(e:TouchEvent):void
@@ -183,7 +191,7 @@ package
 				return;
 			}
 
-			// Gameplay upper-area gestures preserve the previously validated semantics.
+			// Gameplay upper-area gesture shortcuts remain available in addition to HUD buttons.
 			if (!gameplayActive()) return;
 			if (ax > ay && ax >= bounds.width * 0.12)
 				pulseKey(KEY_V);
@@ -247,26 +255,29 @@ package
 			var zoneH:Number = bounds.height * 0.25;
 			drawZone(bounds.x, zoneY, zoneW, zoneH, "LEFT");
 			drawZone(bounds.x + zoneW, zoneY, zoneW, zoneH, "RIGHT");
+			drawZone(bounds.x + zoneW * 2, zoneY, zoneW, zoneH, "SWITCH");
+			drawZone(bounds.x + zoneW * 3, zoneY, zoneW, zoneH, "PIGGY");
 			drawZone(bounds.x + zoneW * 4, zoneY, zoneW, zoneH, "ACTION");
 			drawZone(bounds.x + zoneW * 5, zoneY, zoneW, zoneH, "JUMP");
+			drawZone(bounds.x + zoneW * 5, bounds.y, zoneW, bounds.height * 0.17, "PAUSE");
 		}
 
 		private function drawZone(x:Number, y:Number, w:Number, h:Number, label:String):void
 		{
-			var inset:Number = Math.max(8, Math.min(w, h) * 0.08);
+			var inset:Number = Math.max(6, Math.min(w, h) * 0.08);
 			overlay.graphics.lineStyle(3, 0xffffff, 0.45);
 			overlay.graphics.beginFill(0x000000, 0.20);
-			overlay.graphics.drawRoundRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 24, 24);
+			overlay.graphics.drawRoundRect(x + inset, y + inset, w - inset * 2, h - inset * 2, 20, 20);
 			overlay.graphics.endFill();
 
 			var tf:TextField = new TextField();
 			tf.mouseEnabled = false;
 			tf.selectable = false;
 			tf.width = w;
-			tf.height = 44;
+			tf.height = 40;
 			tf.x = x;
-			tf.y = y + (h - 44) * 0.5;
-			tf.defaultTextFormat = new TextFormat("_sans", Math.max(18, h * 0.10), 0xffffff, true, null, null, null, null, "center");
+			tf.y = y + (h - 40) * 0.5;
+			tf.defaultTextFormat = new TextFormat("_sans", Math.max(14, Math.min(24, h * 0.10)), 0xffffff, true, null, null, null, null, "center");
 			tf.text = label;
 			overlay.addChild(tf);
 		}
