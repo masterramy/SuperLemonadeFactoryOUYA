@@ -151,6 +151,77 @@ jobs:
           name: gate2a-emulator-x64-apk
           path: runtime-apk
 
+      - name: Write runtime smoke script
+        shell: bash
+        run: |
+          cat > smoke-runtime.sh <<'EOF'
+          #!/usr/bin/env bash
+          set +e
+          mkdir -p smoke
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          PACKAGE="air.com.initialsgames.SLF"
+
+          echo "apk=$APK" > smoke/harness.txt
+          ls -l runtime-apk >> smoke/harness.txt 2>&1
+
+          adb install -r "$APK" > smoke/install.txt 2>&1
+          INSTALL_EXIT=$?
+          adb shell pm path "$PACKAGE" > smoke/package-path.txt 2>&1
+          adb shell wm size > smoke/wm-size.txt 2>&1
+          adb shell settings put system accelerometer_rotation 0
+          adb shell settings put system user_rotation 1
+          adb logcat -c
+
+          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > smoke/launch-command.txt 2>&1
+          sleep 12
+
+          PID_LAUNCH=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_LAUNCH" > smoke/pid-after-launch.txt
+          adb exec-out screencap -p > smoke/01-after-launch.png
+          adb shell dumpsys window > smoke/window-after-launch.txt 2>&1
+          adb logcat -d > smoke/logcat-after-launch.txt 2>&1
+
+          if [ "$INSTALL_EXIT" -ne 0 ]; then
+            echo "APK install failed with exit $INSTALL_EXIT" | tee smoke/result.txt
+            exit 10
+          fi
+          if [ -z "$PID_LAUNCH" ]; then
+            echo "App process was not alive 12 seconds after launch" | tee smoke/result.txt
+            exit 11
+          fi
+
+          SIZE=$(adb shell wm size | tail -n 1 | grep -oE '[0-9]+x[0-9]+' | tail -n 1)
+          WIDTH=${SIZE%x*}
+          HEIGHT=${SIZE#*x}
+          X=$((WIDTH / 2))
+          Y=$((HEIGHT / 2))
+          echo "tap-center=$X,$Y size=$SIZE" > smoke/tap-coordinates.txt
+
+          adb shell input tap "$X" "$Y"
+          sleep 2
+          adb shell input tap "$X" "$Y"
+          sleep 8
+
+          PID_MENU=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_MENU" > smoke/pid-after-two-taps.txt
+          adb exec-out screencap -p > smoke/02-after-two-taps.png
+          adb shell dumpsys window > smoke/window-after-two-taps.txt 2>&1
+          adb logcat -d > smoke/logcat-after-two-taps.txt 2>&1
+
+          if [ -z "$PID_MENU" ]; then
+            echo "App process died after the two intro taps / menu transition" | tee smoke/result.txt
+            exit 21
+          fi
+
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-two-taps.txt > smoke/fatal-scan.txt; then
+            echo "Fatal runtime signature found after menu transition" | tee smoke/result.txt
+            exit 22
+          fi
+
+          echo "PASS: app installed, launched, survived 12 seconds, accepted two intro taps, and remained alive after menu transition" | tee smoke/result.txt
+          EOF
+          chmod +x smoke-runtime.sh
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -164,69 +235,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_7_pro
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: |
-            set +e
-            mkdir -p smoke
-            APK="runtime-apk/SLF-emulator-x64.apk"
-            PACKAGE="air.com.initialsgames.SLF"
-
-            adb install -r "$APK" > smoke/install.txt 2>&1
-            INSTALL_EXIT=$?
-            adb shell pm path "$PACKAGE" > smoke/package-path.txt 2>&1
-            adb shell wm size > smoke/wm-size.txt 2>&1
-            adb shell settings put system accelerometer_rotation 0
-            adb shell settings put system user_rotation 1
-            adb logcat -c
-
-            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > smoke/launch-command.txt 2>&1
-            sleep 12
-
-            PID_LAUNCH=$(adb shell pidof "$PACKAGE" | tr -d '\r')
-            echo "$PID_LAUNCH" > smoke/pid-after-launch.txt
-            adb exec-out screencap -p > smoke/01-after-launch.png
-            adb shell dumpsys window > smoke/window-after-launch.txt 2>&1
-            adb logcat -d > smoke/logcat-after-launch.txt 2>&1
-
-            if [ "$INSTALL_EXIT" -ne 0 ]; then
-              echo "APK install failed with exit $INSTALL_EXIT" | tee smoke/result.txt
-              exit 10
-            fi
-            if [ -z "$PID_LAUNCH" ]; then
-              echo "App process was not alive 12 seconds after launch" | tee smoke/result.txt
-              exit 11
-            fi
-
-            SIZE=$(adb shell wm size | tail -n 1 | grep -oE '[0-9]+x[0-9]+' | tail -n 1)
-            WIDTH=${SIZE%x*}
-            HEIGHT=${SIZE#*x}
-            X=$((WIDTH / 2))
-            Y=$((HEIGHT / 2))
-            echo "tap-center=$X,$Y size=$SIZE" > smoke/tap-coordinates.txt
-
-            adb shell input tap "$X" "$Y"
-            sleep 2
-            adb shell input tap "$X" "$Y"
-            sleep 8
-
-            PID_MENU=$(adb shell pidof "$PACKAGE" | tr -d '\r')
-            echo "$PID_MENU" > smoke/pid-after-two-taps.txt
-            adb exec-out screencap -p > smoke/02-after-two-taps.png
-            adb shell dumpsys window > smoke/window-after-two-taps.txt 2>&1
-            adb logcat -d > smoke/logcat-after-two-taps.txt 2>&1
-
-            if [ -z "$PID_MENU" ]; then
-              echo "App process died after the two intro taps / menu transition" | tee smoke/result.txt
-              exit 21
-            fi
-
-            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-two-taps.txt > smoke/fatal-scan.txt; then
-              echo "Fatal runtime signature found after menu transition" | tee smoke/result.txt
-              exit 22
-            fi
-
-            echo "PASS: app installed, launched, survived 12 seconds, accepted two intro taps, and remained alive after menu transition" | tee smoke/result.txt
+          script: bash smoke-runtime.sh
 
       - name: Upload runtime smoke evidence
         if: always()
