@@ -126,6 +126,12 @@ package
 			return bounds.contains(x, y) && x >= bounds.x + bounds.width * 5.0 / 6.0 && y <= bounds.y + bounds.height * 0.17;
 		}
 
+		private function isCinematicSkipTarget(x:Number, y:Number):Boolean
+		{
+			var bounds:Rectangle = gameBounds();
+			return bounds.contains(x, y) && x >= bounds.x + bounds.width * 0.72 && y <= bounds.y + bounds.height * 0.18;
+		}
+
 		private function controlKey(x:Number, y:Number):uint
 		{
 			var bounds:Rectangle = gameBounds();
@@ -149,6 +155,11 @@ package
 			if (!bounds.contains(e.stageX, e.stageY)) return;
 			if (!gameplayActive())
 			{
+				if (FlxG.state is PCCinematicState && isCinematicSkipTarget(e.stageX, e.stageY))
+				{
+					skipCinematic();
+					return;
+				}
 				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:true};
 				return;
 			}
@@ -225,8 +236,6 @@ package
 						pulseKey(KEY_X);
 						setTimeout(function():void { if (FlxG.state is PCIntroState) pulseKey(KEY_X); }, 180);
 					}
-					else if (FlxG.state is PCCinematicState && Number(start.x) >= bounds.x + bounds.width * 0.72 && Number(start.y) <= bounds.y + bounds.height * 0.18)
-						skipCinematic();
 					else pulseKey(KEY_X);
 				}
 				else if (ax >= ay) pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
@@ -250,7 +259,7 @@ package
 			var cinematic:PCCinematicState = FlxG.state as PCCinematicState;
 			if (cinematic == null) return;
 			stopTransientSounds();
-			FlxG.fade(0xff000000, 1, cinematic.fadeComplete);
+			FlxG.fade(0xff000000, 0.35, cinematic.fadeComplete, true);
 		}
 
 		private function stopTransientSounds():void
