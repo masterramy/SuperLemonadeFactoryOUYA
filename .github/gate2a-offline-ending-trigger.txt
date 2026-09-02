@@ -1,0 +1,1 @@
+Trigger only for disposable offline-ending QA branch.
