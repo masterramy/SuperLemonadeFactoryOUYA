@@ -1,0 +1,373 @@
+name: Gate 2A Release Cert v2
+
+on:
+  push:
+    branches:
+      - gate2a-display-scale-staging
+  workflow_dispatch:
+
+concurrency:
+  group: gate2a-release-cert-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2a-display-scale-staging
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package candidate APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Release Cert v2" 2048-RSA gate2a-cert-v2.p12 gate2a
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) { $sdk = $env:ANDROID_HOME }
+          $ok = $false
+          for ($attempt=1; $attempt -le 3; $attempt++) {
+            if (Test-Path dist/SLF-cert-v2.apk) { Remove-Item -Force dist/SLF-cert-v2.apk }
+            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-cert-v2.p12 -storepass gate2a dist/SLF-cert-v2.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 45 }
+          }
+          if (-not $ok) { exit 1 }
+      - name: Build disposable adjacent-spawn piggyback APK
+        shell: pwsh
+        run: |
+          $path = "data/SLF_levelEditor/PC/level2.oel"
+          $text = [IO.File]::ReadAllText($path)
+          $patched = $text.Replace('<liselot x="580" y="470"', '<liselot x="82" y="470"')
+          if ($patched -eq $text) { throw "Level 2 Liselot spawn patch did not match" }
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText($path, $patched, $utf8)
+          if (Test-Path bin/SLFforOuya.swf) { Remove-Item -Force bin/SLFforOuya.swf }
+          & amxmlc -load-config+=obj/SLF_for_OuyaConfig.xml -output=bin/SLFforOuya.swf
+          if ($LASTEXITCODE -ne 0) { git checkout -- $path; exit $LASTEXITCODE }
+          $sdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) { $sdk = $env:ANDROID_HOME }
+          $ok = $false
+          for ($attempt=1; $attempt -le 3; $attempt++) {
+            if (Test-Path dist/SLF-cert-v2-piggy.apk) { Remove-Item -Force dist/SLF-cert-v2-piggy.apk }
+            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-cert-v2.p12 -storepass gate2a dist/SLF-cert-v2-piggy.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            if ($attempt -lt 3) { Start-Sleep -Seconds 45 }
+          }
+          git checkout -- $path
+          if (-not $ok) { exit 1 }
+          git diff --quiet -- $path
+          if ($LASTEXITCODE -ne 0) { throw "Disposable level patch was not restored" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-release-cert-v2-apks
+          path: |
+            dist/SLF-cert-v2.apk
+            dist/SLF-cert-v2-piggy.apk
+          if-no-files-found: error
+
+  native-touch:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [23, 36]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-release-cert-v2-apks
+          path: runtime-apk
+      - run: python3 -m pip install --quiet pillow numpy
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write native touch cert
+        shell: bash
+        run: |
+          cat > cert-touch.sh <<'EOF_SCRIPT'
+          #!/usr/bin/env bash
+          set +e
+          OUT="cert-touch-api-${API_LEVEL}"; mkdir -p "$OUT"
+          APK="runtime-apk/SLF-cert-v2.apk"; PACKAGE="air.com.initialsgames.SLF"; FAIL=0
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1 || exit 10
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+
+          diff_ratio() { python3 - "$1" "$2" <<'PY'
+          import sys
+          from PIL import Image,ImageChops
+          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
+          if a.size != b.size: print('1.000000'); raise SystemExit
+          d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); t=sum(h); print(f"{(t-h[0])/t if t else 0:.6f}")
+          PY
+          }
+          viewport() { python3 - "$1" "$2" <<'PY'
+          import sys
+          w,h=map(int,sys.argv[1:]); vw=min(float(w),float(h)*16/9); vh=vw*9/16
+          print(int(round((w-vw)/2)),int(round((h-vh)/2)),int(round(vw)),int(round(vh)))
+          PY
+          }
+          pause_darkness() { python3 - "$1" "$2" "$3" "$4" "$5" "$6" <<'PY'
+          import sys,numpy as np
+          from PIL import Image
+          a=np.asarray(Image.open(sys.argv[1]).convert('RGB')).mean(2); b=np.asarray(Image.open(sys.argv[2]).convert('RGB')).mean(2)
+          x0,y0,vw,vh=map(int,sys.argv[3:7]); aa=a[y0:y0+vh,x0:x0+vw].mean(); bb=b[y0:y0+vh,x0:x0+vw].mean(); print(f"{bb/aa if aa else 1:.5f}")
+          PY
+          }
+          route_level2() {
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true; adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true; adb logcat -c
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1; sleep 8
+            adb exec-out screencap -p > "$OUT/01-intro.png"
+            read W H < <(python3 - "$OUT/01-intro.png" <<'PY'
+          import sys
+          from PIL import Image
+          im=Image.open(sys.argv[1]); print(im.width,im.height)
+          PY
+            )
+            [ "$W" -le "$H" ] && return 40
+            read X0 Y0 VW VH < <(viewport "$W" "$H")
+            CX=$((X0+VW/2)); CY=$((Y0+VH/2)); GY=$((Y0+VH*7/8)); ZW=$((VW/6))
+            LEFT_X=$((X0+ZW/2)); RIGHT_X=$((X0+ZW+ZW/2)); SWITCH_X=$((X0+ZW*2+ZW/2)); PIGGY_X=$((X0+ZW*3+ZW/2)); ACTION_X=$((X0+ZW*4+ZW/2)); JUMP_X=$((X0+ZW*5+ZW/2)); PAUSE_X=$JUMP_X; PAUSE_Y=$((Y0+VH*8/100))
+            export W H X0 Y0 VW VH CX CY GY LEFT_X RIGHT_X SWITCH_X PIGGY_X ACTION_X JUMP_X PAUSE_X PAUSE_Y
+            adb shell input tap "$CX" "$CY"; sleep 4; adb exec-out screencap -p > "$OUT/02-menu.png"
+            adb shell input tap "$CX" "$CY"; sleep 4; adb exec-out screencap -p > "$OUT/03-level-select.png"
+            adb shell input swipe $((X0+VW*40/100)) "$CY" $((X0+VW*68/100)) "$CY" 350; sleep 2; adb exec-out screencap -p > "$OUT/04-level2-selected.png"
+            adb shell input tap "$CX" "$CY"; sleep 9; adb exec-out screencap -p > "$OUT/05-gameplay.png"
+          }
+
+          route_level2 || { echo route_failed > "$OUT/failures.txt"; exit 20; }
+          R1=$(diff_ratio "$OUT/01-intro.png" "$OUT/02-menu.png"); R2=$(diff_ratio "$OUT/02-menu.png" "$OUT/03-level-select.png"); R3=$(diff_ratio "$OUT/03-level-select.png" "$OUT/04-level2-selected.png"); R4=$(diff_ratio "$OUT/04-level2-selected.png" "$OUT/05-gameplay.png")
+          python3 - "$R1" "$R2" "$R3" "$R4" <<'PY'
+          import sys
+          a,b,c,d=map(float,sys.argv[1:]); raise SystemExit(0 if a>=.05 and b>=.03 and c>=.0002 and d>=.03 else 1)
+          PY
+          [ $? -ne 0 ] && echo "ROUTE $R1 $R2 $R3 $R4" >> "$OUT/failures.txt" && FAIL=1
+
+          adb shell input swipe "$RIGHT_X" "$GY" "$RIGHT_X" "$GY" 900; sleep 1; adb exec-out screencap -p > "$OUT/06-right.png"; RIGHT=$(diff_ratio "$OUT/05-gameplay.png" "$OUT/06-right.png")
+          adb shell input swipe "$LEFT_X" "$GY" "$LEFT_X" "$GY" 650; sleep 1; adb exec-out screencap -p > "$OUT/07-left.png"; LEFT=$(diff_ratio "$OUT/06-right.png" "$OUT/07-left.png")
+          adb shell input tap "$SWITCH_X" "$GY"; sleep 1; adb exec-out screencap -p > "$OUT/08-switch.png"; SWITCH=$(diff_ratio "$OUT/07-left.png" "$OUT/08-switch.png")
+          adb shell input tap "$JUMP_X" "$GY"; sleep .35; adb exec-out screencap -p > "$OUT/09-jump.png"; JUMP=$(diff_ratio "$OUT/08-switch.png" "$OUT/09-jump.png"); sleep 1
+          adb shell input tap "$SWITCH_X" "$GY"; sleep .5; adb exec-out screencap -p > "$OUT/10-before-action.png"
+          adb shell input swipe "$ACTION_X" "$GY" "$ACTION_X" "$GY" 260; sleep .35; adb exec-out screencap -p > "$OUT/11-action.png"; ACTION=$(diff_ratio "$OUT/10-before-action.png" "$OUT/11-action.png")
+          adb shell input tap "$PAUSE_X" "$PAUSE_Y"; sleep 2; adb exec-out screencap -p > "$OUT/12-paused.png"; PAUSE=$(diff_ratio "$OUT/11-action.png" "$OUT/12-paused.png"); DARK=$(pause_darkness "$OUT/11-action.png" "$OUT/12-paused.png" "$X0" "$Y0" "$VW" "$VH")
+          adb shell input tap "$PAUSE_X" "$PAUSE_Y"; sleep 2; adb exec-out screencap -p > "$OUT/13-resumed.png"; RESUME=$(diff_ratio "$OUT/12-paused.png" "$OUT/13-resumed.png")
+          python3 - "$RIGHT" "$LEFT" "$SWITCH" "$JUMP" "$ACTION" "$PAUSE" "$RESUME" "$DARK" <<'PY'
+          import sys
+          r,l,s,j,a,p,u,d=map(float,sys.argv[1:]); raise SystemExit(0 if r>=.001 and l>=.001 and s>=.002 and j>=.001 and a>=.001 and p>=.10 and u>=.10 and d<=.90 else 1)
+          PY
+          [ $? -ne 0 ] && echo "CONTROLS right=$RIGHT left=$LEFT switch=$SWITCH jump=$JUMP action=$ACTION pause=$PAUSE resume=$RESUME dark=$DARK" >> "$OUT/failures.txt" && FAIL=1
+
+          PID_BEFORE=$(adb shell ps | tr -d '\r' | awk -v p="$PACKAGE" '$NF==p {print $2; exit}')
+          adb shell input keyevent 3; sleep 3; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/relaunch.txt" 2>&1; sleep 4
+          PID_AFTER=$(adb shell ps | tr -d '\r' | awk -v p="$PACKAGE" '$NF==p {print $2; exit}'); adb shell dumpsys window > "$OUT/window.txt" 2>&1; FOCUS=$(grep -m1 'mCurrentFocus=' "$OUT/window.txt" || true); FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
+          [ -z "$PID_AFTER" ] && FAIL=1; [ "$FOCUSED" -ne 1 ] && FAIL=1
+
+          SKIP="n/a"
+          if [ "$API_LEVEL" = "36" ]; then
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true; adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true; adb logcat -c
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/cutscene-launch.txt" 2>&1; sleep 8
+            adb exec-out screencap -p > "$OUT/cutscene-00-intro.png"
+            read CW CH < <(python3 - "$OUT/cutscene-00-intro.png" <<'PY'
+          import sys
+          from PIL import Image
+          im=Image.open(sys.argv[1]); print(im.width,im.height)
+          PY
+            ); read CX0 CY0 CVW CVH < <(viewport "$CW" "$CH"); CCX=$((CX0+CVW/2)); CCY=$((CY0+CVH/2))
+            adb shell input tap "$CCX" "$CCY"; sleep 4; adb shell input tap "$CCX" "$CCY"; sleep 4; adb shell input tap "$CCX" "$CCY"; sleep 5
+            adb exec-out screencap -p > "$OUT/cutscene-01-before-skip.png"; SKIP_X=$((CX0+CVW*84/100)); SKIP_Y=$((CY0+CVH*8/100)); adb shell input tap "$SKIP_X" "$SKIP_Y"; sleep 5; adb exec-out screencap -p > "$OUT/cutscene-02-after-skip.png"; SKIP=$(diff_ratio "$OUT/cutscene-01-before-skip.png" "$OUT/cutscene-02-after-skip.png")
+            python3 - "$SKIP" <<'PY'
+          import sys
+          raise SystemExit(0 if float(sys.argv[1])>=.05 else 1)
+          PY
+            [ $? -ne 0 ] && echo "CUTSCENE_SKIP diff=$SKIP" >> "$OUT/failures.txt" && FAIL=1
+          fi
+
+          adb logcat -d > "$OUT/logcat.txt" 2>&1; FATAL=0; if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/logcat.txt" > "$OUT/fatal.txt"; then FATAL=1; FAIL=1; else : > "$OUT/fatal.txt"; fi
+          printf 'api=%s\nscreen=%sx%s\nviewport=%s,%s,%s,%s\nroute=%s,%s,%s,%s\nright=%s\nleft=%s\nswitch=%s\njump=%s\naction=%s\npause=%s\nresume=%s\npause_dark=%s\npid_before_home=%s\npid_after_resume=%s\nfocused=%s\ncutscene_skip_diff=%s\nfatal=%s\nfail=%s\n' "$API_LEVEL" "$W" "$H" "$X0" "$Y0" "$VW" "$VH" "$R1" "$R2" "$R3" "$R4" "$RIGHT" "$LEFT" "$SWITCH" "$JUMP" "$ACTION" "$PAUSE" "$RESUME" "$DARK" "$PID_BEFORE" "$PID_AFTER" "$FOCUSED" "$SKIP" "$FATAL" "$FAIL" > "$OUT/metrics.txt"
+          [ -f "$OUT/failures.txt" ] && cat "$OUT/failures.txt" > "$OUT/summary.txt" || : > "$OUT/summary.txt"; echo "fail=$FAIL" >> "$OUT/summary.txt"; [ "$FAIL" -ne 0 ] && exit 20
+          echo "PASS: native route, controls, PAUSE/RESUME, HOME/resume, focus/process and fatal gates passed; API36 also passed cinematic touch SKIP." >> "$OUT/summary.txt"
+          EOF_SCRIPT
+          chmod +x cert-touch.sh
+      - name: Run native touch cert
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          API_LEVEL: ${{ matrix.api }}
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash cert-touch.sh
+      - name: Upload touch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-cert-v2-touch-api-${{ matrix.api }}
+          path: cert-touch-api-${{ matrix.api }}
+          if-no-files-found: error
+
+  display-and-piggy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-release-cert-v2-apks
+          path: runtime-apk
+      - run: python3 -m pip install --quiet pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write display and piggy cert
+        shell: bash
+        run: |
+          cat > cert-display-piggy.sh <<'EOF_SCRIPT'
+          #!/usr/bin/env bash
+          set +e
+          OUT=cert-display-piggy; mkdir -p "$OUT"; PACKAGE="air.com.initialsgames.SLF"; FAIL=0
+          viewport() { python3 - "$1" "$2" <<'PY'
+          import sys
+          w,h=map(int,sys.argv[1:]); vw=min(float(w),float(h)*16/9); vh=vw*9/16; print(int(round((w-vw)/2)),int(round((h-vh)/2)),int(round(vw)),int(round(vh)))
+          PY
+          }
+          diff_ratio() { python3 - "$1" "$2" <<'PY'
+          import sys
+          from PIL import Image,ImageChops
+          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB'); d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); t=sum(h); print(f"{(t-h[0])/t if t else 0:.6f}")
+          PY
+          }
+          route_level2() {
+            local prefix="$1"; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true; adb shell pm clear "$PACKAGE" >/dev/null 2>&1 || true; adb logcat -c; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/${prefix}-launch.txt" 2>&1; sleep 8; adb exec-out screencap -p > "$OUT/${prefix}-intro.png"
+            read W H < <(python3 - "$OUT/${prefix}-intro.png" <<'PY'
+          import sys
+          from PIL import Image
+          im=Image.open(sys.argv[1]); print(im.width,im.height)
+          PY
+            ); read X0 Y0 VW VH < <(viewport "$W" "$H"); CX=$((X0+VW/2)); CY=$((Y0+VH/2)); GY=$((Y0+VH*7/8)); PIGGY_X=$((X0+VW*7/12)); export W H X0 Y0 VW VH CX CY GY PIGGY_X
+            adb shell input tap "$CX" "$CY"; sleep 4; adb shell input tap "$CX" "$CY"; sleep 4; adb shell input swipe $((X0+VW*40/100)) "$CY" $((X0+VW*68/100)) "$CY" 350; sleep 2; adb shell input tap "$CX" "$CY"; sleep 9; adb exec-out screencap -p > "$OUT/${prefix}-gameplay.png"
+          }
+
+          adb install -r runtime-apk/SLF-cert-v2.apk > "$OUT/install-display.txt" 2>&1 || exit 10
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true; adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true; adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true; adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          route_level2 display
+          echo "label,requested,actual,viewport" > "$OUT/display-metrics.csv"
+          labels=(sixteen-nine ultra-wide pixel-wide tablet-four-three fold-near-square); sizes=(1080x1920 1080x2400 1440x3120 1200x1600 1600x1760); expected=(1920x1080 2400x1080 3120x1440 1600x1200 1760x1600)
+          for I in 0 1 2 3 4; do
+            LABEL=${labels[$I]}; SIZE=${sizes[$I]}; EXP=${expected[$I]}; adb shell wm size "$SIZE" >/dev/null 2>&1 || true; adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true; adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true; sleep 4; adb exec-out screencap -p > "$OUT/display-${LABEL}.png"
+            read SW SH < <(python3 - "$OUT/display-${LABEL}.png" <<'PY'
+          import sys
+          from PIL import Image,ImageStat
+          im=Image.open(sys.argv[1]).convert('RGB'); print(im.width,im.height); raise SystemExit(0 if sum(ImageStat.Stat(im).var)>25 else 2)
+          PY
+            ); RC=$?; [ "$RC" -ne 0 ] && FAIL=1 && echo "NONVISUAL $LABEL" >> "$OUT/failures.txt"; ACT="${SW}x${SH}"; [ "$ACT" != "$EXP" ] && FAIL=1 && echo "SIZE $LABEL expected=$EXP actual=$ACT" >> "$OUT/failures.txt"; read VX VY VWW VHH < <(viewport "$SW" "$SH"); echo "$LABEL,$SIZE,$ACT,${VX}:${VY}:${VWW}:${VHH}" >> "$OUT/display-metrics.csv"; PID=$(adb shell ps | tr -d '\r' | awk -v p="$PACKAGE" '$NF==p {print $2; exit}'); [ -z "$PID" ] && FAIL=1 && echo "PID $LABEL" >> "$OUT/failures.txt"; F=$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true); echo "$F" | grep -q "$PACKAGE" || { FAIL=1; echo "FOCUS $LABEL $F" >> "$OUT/failures.txt"; }
+          done
+          adb shell wm size reset >/dev/null 2>&1 || true; sleep 3
+
+          adb uninstall "$PACKAGE" >/dev/null 2>&1 || true; adb install -r runtime-apk/SLF-cert-v2-piggy.apk > "$OUT/install-piggy.txt" 2>&1 || exit 11
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true; adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true; adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true; adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          route_level2 piggy; adb exec-out screencap -p > "$OUT/piggy-before.png"; adb shell input tap "$PIGGY_X" "$GY"; sleep .8; adb exec-out screencap -p > "$OUT/piggy-on.png"; adb shell input tap "$PIGGY_X" "$GY"; sleep .8; adb exec-out screencap -p > "$OUT/piggy-off.png"; ON=$(diff_ratio "$OUT/piggy-before.png" "$OUT/piggy-on.png"); OFF=$(diff_ratio "$OUT/piggy-on.png" "$OUT/piggy-off.png")
+          python3 - "$ON" "$OFF" <<'PY'
+          import sys
+          a,b=map(float,sys.argv[1:]); raise SystemExit(0 if a>=.001 and b>=.001 else 1)
+          PY
+          [ $? -ne 0 ] && FAIL=1 && echo "PIGGY on=$ON off=$OFF" >> "$OUT/failures.txt"
+          F=$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true); echo "$F" | grep -q "$PACKAGE" || { FAIL=1; echo "PIGGY_FOCUS $F" >> "$OUT/failures.txt"; }
+          adb logcat -d > "$OUT/logcat.txt" 2>&1; if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/logcat.txt" > "$OUT/fatal.txt"; then FAIL=1; else : > "$OUT/fatal.txt"; fi
+          printf 'piggy_on_diff=%s\npiggy_off_diff=%s\nfail=%s\n' "$ON" "$OFF" "$FAIL" > "$OUT/summary.txt"; [ "$FAIL" -ne 0 ] && exit 20; echo "PASS: five display shapes retained live focused gameplay and disposable adjacent-spawn PIGGY on/off produced visual transitions without fatal signatures." >> "$OUT/summary.txt"
+          EOF_SCRIPT
+          chmod +x cert-display-piggy.sh
+      - name: Run display and piggy cert
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash cert-display-piggy.sh
+      - name: Upload display/piggy evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-cert-v2-display-piggy-api36
+          path: cert-display-piggy
+          if-no-files-found: error
+
+  minsdk21:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-release-cert-v2-apks
+          path: runtime-apk
+      - run: python3 -m pip install --quiet pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write API21 smoke
+        shell: bash
+        run: |
+          cat > minsdk21.sh <<'EOF_SCRIPT'
+          #!/usr/bin/env bash
+          set +e
+          OUT=minsdk21; mkdir -p "$OUT"; APK="runtime-apk/SLF-cert-v2.apk"; PACKAGE="air.com.initialsgames.SLF"; FAIL=0
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1 || exit 10; adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true; adb logcat -c; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1; sleep 12; adb exec-out screencap -p > "$OUT/launch.png"
+          PID=$(adb shell ps | tr -d '\r' | awk -v p="$PACKAGE" '$NF==p {print $2; exit}'); F=$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true); echo "$F" | grep -q "$PACKAGE" || FAIL=1; [ -z "$PID" ] && FAIL=1
+          python3 - "$OUT/launch.png" <<'PY'
+          import sys
+          from PIL import Image,ImageStat
+          im=Image.open(sys.argv[1]).convert('RGB'); raise SystemExit(0 if im.width>0 and im.height>0 and sum(ImageStat.Stat(im).var)>25 else 1)
+          PY
+          [ $? -ne 0 ] && FAIL=1; adb logcat -d > "$OUT/logcat.txt" 2>&1; if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/logcat.txt" > "$OUT/fatal.txt"; then FAIL=1; else : > "$OUT/fatal.txt"; fi
+          printf 'api=21\npid=%s\nfocus=%s\nfail=%s\n' "$PID" "$F" "$FAIL" > "$OUT/summary.txt"; [ "$FAIL" -ne 0 ] && exit 20; echo "PASS: minimum SDK 21 launched visibly, stayed focused/alive, and produced no fatal runtime signature." >> "$OUT/summary.txt"
+          EOF_SCRIPT
+          chmod +x minsdk21.sh
+      - name: Run API21 smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 21
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 5
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash minsdk21.sh
+      - name: Upload API21 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-cert-v2-minsdk21
+          path: minsdk21
+          if-no-files-found: error
