@@ -7,12 +7,18 @@
 :: NOTICE: all paths are relative to project root
 
 :: Android packaging
+:: Production signing material must not live in Git. Set these environment
+:: variables to point at a private local PKCS#12 keystore when packaging locally:
+::   SLF_ANDROID_KEYSTORE
+::   SLF_ANDROID_KEYSTORE_PASSWORD
 set AND_CERT_NAME="Super Lemonade Factory"
-set AND_CERT_PASS=fd
-set AND_CERT_FILE=cert\Super Lemonade Factory.p12
+set AND_CERT_FILE=cert\release-signing.p12
+if not "%SLF_ANDROID_KEYSTORE%"=="" set AND_CERT_FILE=%SLF_ANDROID_KEYSTORE%
+set AND_CERT_PASS=%SLF_ANDROID_KEYSTORE_PASSWORD%
 set AND_ICONS=icons/android
 
-set AND_SIGNING_OPTIONS=-storetype pkcs12 -keystore "%AND_CERT_FILE%" -storepass %AND_CERT_PASS%
+set AND_SIGNING_OPTIONS=-storetype pkcs12 -keystore "%AND_CERT_FILE%"
+if not "%AND_CERT_PASS%"=="" set AND_SIGNING_OPTIONS=%AND_SIGNING_OPTIONS% -storepass %AND_CERT_PASS%
 
 :: iOS packaging
 set IOS_DIST_CERT_FILE=
