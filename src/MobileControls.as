@@ -25,7 +25,6 @@ package
 		private static const KEY_DOWN:uint = 40;
 		private static const KEY_B:uint = 66;
 		private static const KEY_C:uint = 67;
-		private static const KEY_P:uint = 80;
 		private static const KEY_V:uint = 86;
 		private static const KEY_X:uint = 88;
 
@@ -46,10 +45,8 @@ package
 			root = gameRoot;
 			overlay.mouseEnabled = false;
 			overlay.mouseChildren = false;
-			if (root.stage != null)
-				attach();
-			else
-				root.addEventListener(Event.ADDED_TO_STAGE, onAddedToStage);
+			if (root.stage != null) attach();
+			else root.addEventListener(Event.ADDED_TO_STAGE, onAddedToStage);
 		}
 
 		private function onAddedToStage(e:Event):void
@@ -60,8 +57,7 @@ package
 
 		private function attach():void
 		{
-			if (!Multitouch.supportsTouchEvents)
-				return;
+			if (!Multitouch.supportsTouchEvents) return;
 			Multitouch.inputMode = MultitouchInputMode.TOUCH_POINT;
 			root.stage.addChild(overlay);
 			root.stage.addEventListener(TouchEvent.TOUCH_BEGIN, onTouchBegin, false, 1000, true);
@@ -116,11 +112,16 @@ package
 			if (overlay.parent == root.stage) root.stage.setChildIndex(overlay, root.stage.numChildren - 1);
 		}
 
+		private function isPauseTarget(x:Number, y:Number):Boolean
+		{
+			var bounds:Rectangle = gameBounds();
+			return bounds.contains(x, y) && x >= bounds.x + bounds.width * 5.0 / 6.0 && y <= bounds.y + bounds.height * 0.17;
+		}
+
 		private function controlKey(x:Number, y:Number):uint
 		{
 			var bounds:Rectangle = gameBounds();
 			if (!bounds.contains(x, y)) return 0;
-			if (x >= bounds.x + bounds.width * 5.0 / 6.0 && y <= bounds.y + bounds.height * 0.17) return KEY_P;
 			var zoneY:Number = bounds.y + bounds.height * 0.75;
 			if (y < zoneY) return 0;
 			var nx:Number = (x - bounds.x) / bounds.width;
@@ -141,6 +142,12 @@ package
 			if (!gameplayActive())
 			{
 				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:true};
+				return;
+			}
+			if (isPauseTarget(e.stageX, e.stageY))
+			{
+				touchKeys[id] = 0;
+				pulseOuyaRightStick();
 				return;
 			}
 			var key:uint = controlKey(e.stageX, e.stageY);
@@ -193,8 +200,7 @@ package
 					}
 					else if (FlxG.state is PCCinematicState && Number(start.x) >= bounds.x + bounds.width * 0.72 && Number(start.y) <= bounds.y + bounds.height * 0.18)
 						pulseOuyaY();
-					else
-						pulseKey(KEY_X);
+					else pulseKey(KEY_X);
 				}
 				else if (ax >= ay) pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
 				else pulseKey(dy < 0 ? KEY_UP : KEY_DOWN);
@@ -208,6 +214,16 @@ package
 			setTimeout(function():void
 			{
 				if (FlxG.ouyaController != null && FlxG.ouyaController.y != null) FlxG.ouyaController.y.emulateRelease();
+			}, 90);
+		}
+
+		private function pulseOuyaRightStick():void
+		{
+			if (FlxG.ouyaController == null || FlxG.ouyaController.rightStick == null) return;
+			FlxG.ouyaController.rightStick.emulatePress();
+			setTimeout(function():void
+			{
+				if (FlxG.ouyaController != null && FlxG.ouyaController.rightStick != null) FlxG.ouyaController.rightStick.emulateRelease();
 			}, 90);
 		}
 
