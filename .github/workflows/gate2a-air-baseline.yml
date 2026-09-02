@@ -1,4 +1,4 @@
-name: Gate 2A AIR Baseline Compile
+name: Gate 2A Android Build and Smoke
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
   baseline-compile:
     if: ${{ github.event_name == 'push' || inputs.accept_air_sdk_license }}
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout benchmark branch
@@ -58,7 +58,7 @@ jobs:
           if exist gate2a-benchmark.p12 del /f /q gate2a-benchmark.p12
           adt -certificate -validityPeriod 1 -cn "Gate2A Benchmark" 2048-RSA gate2a-benchmark.p12 gate2a
 
-      - name: Android APK package - runtime-safe without obsolete OUYA native payload
+      - name: Android device APK package - runtime-safe without obsolete OUYA native payload
         id: android_package
         shell: pwsh
         run: |
@@ -93,7 +93,7 @@ jobs:
           "error_summary=$summary" >> $env:GITHUB_OUTPUT
           $global:LASTEXITCODE = 0
 
-      - name: Upload ADT package diagnostic
+      - name: Upload ADT device-package diagnostic
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -101,10 +101,19 @@ jobs:
           path: adt-package.log
           if-no-files-found: error
 
-      - name: Fail if Android package failed
+      - name: Fail if Android device package failed
         if: steps.android_package.outputs.exit_code != '0'
         shell: pwsh
         run: exit 1
+
+      - name: Package x64 Android emulator APK
+        shell: pwsh
+        run: |
+          Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-emulator-x64.apk
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-emulator-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload fresh SWF if produced
         if: always()
@@ -114,10 +123,115 @@ jobs:
           path: bin/SLFforOuya.swf
           if-no-files-found: ignore
 
-      - name: Upload runtime-safe APK if produced
+      - name: Upload runtime-safe device APK if produced
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gate2a-runtime-safe-apk
           path: dist/SLF-runtime-safe.apk
           if-no-files-found: ignore
+
+      - name: Upload x64 emulator APK if produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-emulator-x64-apk
+          path: dist/SLF-emulator-x64.apk
+          if-no-files-found: ignore
+
+  android-runtime-smoke:
+    needs: baseline-compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Download emulator APK
+        uses: actions/download-artifact@v4
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise intro-to-menu path
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set +e
+            mkdir -p smoke
+            APK="runtime-apk/SLF-emulator-x64.apk"
+            PACKAGE="air.com.initialsgames.SLF"
+
+            adb install -r "$APK" > smoke/install.txt 2>&1
+            INSTALL_EXIT=$?
+            adb shell pm path "$PACKAGE" > smoke/package-path.txt 2>&1
+            adb shell wm size > smoke/wm-size.txt 2>&1
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 1
+            adb logcat -c
+
+            adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > smoke/launch-command.txt 2>&1
+            sleep 12
+
+            PID_LAUNCH=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            echo "$PID_LAUNCH" > smoke/pid-after-launch.txt
+            adb exec-out screencap -p > smoke/01-after-launch.png
+            adb shell dumpsys window > smoke/window-after-launch.txt 2>&1
+            adb logcat -d > smoke/logcat-after-launch.txt 2>&1
+
+            if [ "$INSTALL_EXIT" -ne 0 ]; then
+              echo "APK install failed with exit $INSTALL_EXIT" | tee smoke/result.txt
+              exit 10
+            fi
+            if [ -z "$PID_LAUNCH" ]; then
+              echo "App process was not alive 12 seconds after launch" | tee smoke/result.txt
+              exit 11
+            fi
+
+            SIZE=$(adb shell wm size | tail -n 1 | grep -oE '[0-9]+x[0-9]+' | tail -n 1)
+            WIDTH=${SIZE%x*}
+            HEIGHT=${SIZE#*x}
+            X=$((WIDTH / 2))
+            Y=$((HEIGHT / 2))
+            echo "tap-center=$X,$Y size=$SIZE" > smoke/tap-coordinates.txt
+
+            adb shell input tap "$X" "$Y"
+            sleep 2
+            adb shell input tap "$X" "$Y"
+            sleep 8
+
+            PID_MENU=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            echo "$PID_MENU" > smoke/pid-after-two-taps.txt
+            adb exec-out screencap -p > smoke/02-after-two-taps.png
+            adb shell dumpsys window > smoke/window-after-two-taps.txt 2>&1
+            adb logcat -d > smoke/logcat-after-two-taps.txt 2>&1
+
+            if [ -z "$PID_MENU" ]; then
+              echo "App process died after the two intro taps / menu transition" | tee smoke/result.txt
+              exit 21
+            fi
+
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-two-taps.txt > smoke/fatal-scan.txt; then
+              echo "Fatal runtime signature found after menu transition" | tee smoke/result.txt
+              exit 22
+            fi
+
+            echo "PASS: app installed, launched, survived 12 seconds, accepted two intro taps, and remained alive after menu transition" | tee smoke/result.txt
+
+      - name: Upload runtime smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-android-runtime-smoke
+          path: smoke
+          if-no-files-found: warn
