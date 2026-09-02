@@ -78,5 +78,6 @@ package io.arkeus.ouya.control {
 			var beforeHeld:Boolean = held;
 			super.onChange(event);
 			changed = held != beforeHeld;
+		}
 	}
 }
