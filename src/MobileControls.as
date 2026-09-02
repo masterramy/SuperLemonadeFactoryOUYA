@@ -109,14 +109,14 @@ package
 			if (!active && wasGameplay)
 				releaseAll();
 			wasGameplay = active;
-			var mode:String = active ? "gameplay" : navigationMode();
+			var mode:String = active ? (FlxG.paused ? "gameplay-paused" : "gameplay") : navigationMode();
 			overlay.visible = mode != "none";
 			if (mode == "none") return;
 
 			var bounds:Rectangle = gameBounds();
 			if (lastX != bounds.x || lastY != bounds.y || lastW != bounds.width || lastH != bounds.height || lastMode != mode)
 			{
-				if (active) drawGameplayOverlay(bounds);
+				if (active) drawGameplayOverlay(bounds, mode);
 				else drawNavigationOverlay(bounds, mode);
 			}
 			if (overlay.parent == root.stage)
@@ -279,9 +279,9 @@ package
 			overlay.graphics.clear();
 		}
 
-		private function drawGameplayOverlay(bounds:Rectangle):void
+		private function drawGameplayOverlay(bounds:Rectangle, mode:String):void
 		{
-			clearOverlay(bounds, "gameplay");
+			clearOverlay(bounds, mode);
 			var zoneW:Number = bounds.width / 6.0;
 			var zoneY:Number = bounds.y + bounds.height * 0.75;
 			var zoneH:Number = bounds.height * 0.25;
@@ -292,6 +292,15 @@ package
 			drawZone(bounds.x + zoneW * 4, zoneY, zoneW, zoneH, "ACTION");
 			drawZone(bounds.x + zoneW * 5, zoneY, zoneW, zoneH, "JUMP");
 			drawZone(bounds.x + zoneW * 5, bounds.y, zoneW, bounds.height * 0.17, "PAUSE");
+
+			if (mode == "gameplay-paused")
+			{
+				// Cover the legacy OUYA-era R3 instruction while paused so the only
+				// visible resume instruction matches the Android touch affordance.
+				drawHint(bounds.x + bounds.width * 0.25, bounds.y + bounds.height * 0.045,
+					bounds.width * 0.55, bounds.height * 0.095,
+					"PAUSED  -  TAP PAUSE TO RESUME", 0x000000, 1.0, 0xffffff);
+			}
 		}
 
 		private function drawNavigationOverlay(bounds:Rectangle, mode:String):void
