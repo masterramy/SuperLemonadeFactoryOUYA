@@ -1,0 +1,72 @@
+name: Gate 2A Save Path Staging
+
+on:
+  push:
+    branches:
+      - gate2a-save-path-staging
+
+permissions:
+  contents: write
+
+jobs:
+  patch-compile-commit:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout exact staging trigger
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+
+      - name: Apply byte-preserving app-storage patch
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p = Path("src/PCPlayState.as")
+          data = p.read_bytes()
+          old = b"var file:File = File.userDirectory;"
+          new = b"var file:File = File.applicationStorageDirectory;"
+          count = data.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected exactly one legacy userDirectory backup assignment, found {count}")
+          p.write_bytes(data.replace(old, new, 1))
+          '@ | Set-Content -Path gate2a_patch.py -Encoding ascii
+          python gate2a_patch.py
+          git diff --check
+          git diff -- src/PCPlayState.as
+
+      - name: Compile patched source
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Commit only the validated source patch
+        shell: pwsh
+        run: |
+          git config user.name "Gate 2A CI"
+          git config user.email "gate2a-ci@users.noreply.github.com"
+          git add -- src/PCPlayState.as
+          $staged = @(git diff --cached --name-only)
+          if ($staged.Count -ne 1 -or $staged[0] -ne "src/PCPlayState.as") {
+            throw "Refusing commit: staged file set was not exactly src/PCPlayState.as: $($staged -join ', ')"
+          }
+          git diff --cached --check
+          git commit -m "Gate 2A: keep progress backup in app storage"
+          git push origin HEAD:gate2a-save-path-staging
