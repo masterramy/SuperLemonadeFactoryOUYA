@@ -12,6 +12,7 @@ package
 	import flash.ui.MultitouchInputMode;
 	import flash.utils.setTimeout;
 	import org.flixel.FlxG;
+	import org.flixel.FlxSound;
 
 	/**
 	 * Android/mobile compatibility layer. Native touch is translated into the
@@ -27,6 +28,7 @@ package
 		private static const KEY_DOWN:uint = 40;
 		private static const KEY_B:uint = 66;
 		private static const KEY_C:uint = 67;
+		private static const KEY_P:uint = 80;
 		private static const KEY_V:uint = 86;
 		private static const KEY_X:uint = 88;
 
@@ -157,7 +159,7 @@ package
 			if (isPauseTarget(e.stageX, e.stageY))
 			{
 				touchKeys[id] = 0;
-				pulseOuyaRightStick();
+				pulseKey(KEY_P);
 				return;
 			}
 			var key:uint = controlKey(e.stageX, e.stageY);
@@ -209,7 +211,7 @@ package
 						setTimeout(function():void { if (FlxG.state is PCIntroState) pulseKey(KEY_X); }, 180);
 					}
 					else if (FlxG.state is PCCinematicState && Number(start.x) >= bounds.x + bounds.width * 0.72 && Number(start.y) <= bounds.y + bounds.height * 0.18)
-						pulseOuyaY();
+						skipCinematic();
 					else pulseKey(KEY_X);
 				}
 				else if (ax >= ay) pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
@@ -217,24 +219,25 @@ package
 			}
 		}
 
-		private function pulseOuyaY():void
+		private function skipCinematic():void
 		{
-			if (FlxG.ouyaController == null || FlxG.ouyaController.y == null) return;
-			FlxG.ouyaController.y.emulatePress();
-			setTimeout(function():void
-			{
-				if (FlxG.ouyaController != null && FlxG.ouyaController.y != null) FlxG.ouyaController.y.emulateRelease();
-			}, 90);
+			var cinematic:PCCinematicState = FlxG.state as PCCinematicState;
+			if (cinematic == null) return;
+			stopTransientSounds();
+			FlxG.fade(0xff000000, 1, cinematic.fadeComplete);
 		}
 
-		private function pulseOuyaRightStick():void
+		private function stopTransientSounds():void
 		{
-			if (FlxG.ouyaController == null || FlxG.ouyaController.rightStick == null) return;
-			FlxG.ouyaController.rightStick.emulatePress();
-			setTimeout(function():void
+			if (FlxG.sounds == null) return;
+			var i:uint = 0;
+			var sound:FlxSound;
+			var l:uint = FlxG.sounds.length;
+			while (i < l)
 			{
-				if (FlxG.ouyaController != null && FlxG.ouyaController.rightStick != null) FlxG.ouyaController.rightStick.emulateRelease();
-			}, 90);
+				sound = FlxG.sounds.members[i++] as FlxSound;
+				if (sound != null && sound.exists && sound.active) sound.stop();
+			}
 		}
 
 		private function pressKey(key:uint):void
