@@ -1,0 +1,132 @@
+name: Gate 2A Android Release Bundle
+
+on:
+  push:
+    branches:
+      - gate2a-android-modernization
+      - gate2a-release-hardening-staging
+  workflow_dispatch:
+    inputs:
+      production_signing:
+        description: "Use private production signing secrets instead of a disposable validation certificate"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  release-aab:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PRODUCTION_SIGNING: ${{ github.event_name == 'workflow_dispatch' && inputs.production_signing }}
+      SLF_ANDROID_KEYSTORE_BASE64: ${{ secrets.SLF_ANDROID_KEYSTORE_BASE64 }}
+      SLF_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SLF_ANDROID_KEYSTORE_PASSWORD }}
+
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+
+      - name: Compile release SWF
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Package Android App Bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-release.aab
+          Remove-Item -Force -ErrorAction SilentlyContinue release-signing.p12
+
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) {
+            throw "No usable Android SDK path was found on the GitHub runner."
+          }
+
+          $keyPath = Join-Path $PWD 'release-signing.p12'
+          if ($env:PRODUCTION_SIGNING -eq 'true') {
+            if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_KEYSTORE_BASE64)) {
+              throw "Production signing requested, but SLF_ANDROID_KEYSTORE_BASE64 is not configured."
+            }
+            if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_KEYSTORE_PASSWORD)) {
+              throw "Production signing requested, but SLF_ANDROID_KEYSTORE_PASSWORD is not configured."
+            }
+            [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:SLF_ANDROID_KEYSTORE_BASE64))
+            $storePass = $env:SLF_ANDROID_KEYSTORE_PASSWORD
+            $signingMode = 'production-secret'
+          } else {
+            $storePass = 'gate2a-validation'
+            & adt -certificate -validityPeriod 1 -cn "Gate 2A Validation" 2048-RSA $keyPath $storePass
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create disposable validation certificate." }
+            $signingMode = 'disposable-validation'
+          }
+
+          & adt -checkstore -storetype pkcs12 -keystore $keyPath -storepass $storePass
+          if ($LASTEXITCODE -ne 0) { throw "Signing keystore validation failed." }
+
+          & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $storePass dist/SLF-release.aab application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { throw "ADT AAB packaging failed with exit code $LASTEXITCODE." }
+          if (-not (Test-Path dist/SLF-release.aab)) { throw "ADT reported success but no AAB was produced." }
+
+          $aab = Get-Item dist/SLF-release.aab
+          if ($aab.Length -le 0) { throw "Produced AAB is empty." }
+          $hash = (Get-FileHash -Algorithm SHA256 $aab.FullName).Hash.ToLowerInvariant()
+
+          @(
+            "commit=$env:GITHUB_SHA"
+            "air_sdk=51.3.4.1"
+            "android_target_sdk=36"
+            "android_min_sdk=21"
+            "signing_mode=$signingMode"
+            "aab_bytes=$($aab.Length)"
+            "aab_sha256=$hash"
+          ) | Set-Content -Path dist/release-metadata.txt -Encoding utf8
+
+          # Best-effort independent manifest inspection using the runner's Android SDK.
+          $apkanalyzer = Get-ChildItem -Path $androidSdk -Filter 'apkanalyzer.bat' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -ne $apkanalyzer) {
+            $PSNativeCommandUseErrorActionPreference = $false
+            $targetOutput = & $apkanalyzer.FullName manifest target-sdk $aab.FullName 2>&1
+            $targetExit = $LASTEXITCODE
+            $targetOutput | Set-Content -Path dist/manifest-target-sdk.txt -Encoding utf8
+            if ($targetExit -eq 0 -and (($targetOutput | Out-String).Trim() -match '^36$')) {
+              Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=36'
+            } else {
+              Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=unavailable'
+            }
+            $global:LASTEXITCODE = 0
+          } else {
+            'apkanalyzer not found on runner' | Set-Content -Path dist/manifest-target-sdk.txt -Encoding utf8
+            Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=unavailable'
+          }
+
+          Remove-Item -Force -ErrorAction SilentlyContinue $keyPath
+
+      - name: Upload release bundle proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-android-release-aab
+          path: |
+            dist/SLF-release.aab
+            dist/release-metadata.txt
+            dist/manifest-target-sdk.txt
+          if-no-files-found: error
