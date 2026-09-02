@@ -5,6 +5,7 @@ package
 	import flash.events.Event;
 	import flash.events.KeyboardEvent;
 	import flash.events.TouchEvent;
+	import flash.geom.Rectangle;
 	import flash.text.TextField;
 	import flash.text.TextFormat;
 	import flash.ui.Multitouch;
@@ -32,8 +33,10 @@ package
 		private var touchKeys:Object = {};
 		private var touchStarts:Object = {};
 		private var keyCounts:Object = {};
-		private var lastW:Number = -1;
-		private var lastH:Number = -1;
+		private var lastX:Number = NaN;
+		private var lastY:Number = NaN;
+		private var lastW:Number = NaN;
+		private var lastH:Number = NaN;
 		private var wasGameplay:Boolean = false;
 
 		public function MobileControls(gameRoot:DisplayObjectContainer)
@@ -58,7 +61,7 @@ package
 			if (!Multitouch.supportsTouchEvents)
 				return;
 			Multitouch.inputMode = MultitouchInputMode.TOUCH_POINT;
-			root.addChild(overlay);
+			root.stage.addChild(overlay);
 			root.stage.addEventListener(TouchEvent.TOUCH_BEGIN, onTouchBegin, false, 0, true);
 			root.stage.addEventListener(TouchEvent.TOUCH_MOVE, onTouchMove, false, 0, true);
 			root.stage.addEventListener(TouchEvent.TOUCH_END, onTouchEnd, false, 0, true);
@@ -68,6 +71,16 @@ package
 		private function gameplayActive():Boolean
 		{
 			return FlxG.state != null && FlxG.state is PlayState;
+		}
+
+		private function gameBounds():Rectangle
+		{
+			if (root.stage == null)
+				return new Rectangle();
+			var bounds:Rectangle = root.getBounds(root.stage);
+			if (bounds.width <= 0 || bounds.height <= 0)
+				return new Rectangle(0, 0, root.stage.stageWidth, root.stage.stageHeight);
+			return bounds;
 		}
 
 		private function onFrame(e:Event):void
@@ -80,17 +93,20 @@ package
 			if (!active || root.stage == null)
 				return;
 
-			if (lastW != root.stage.stageWidth || lastH != root.stage.stageHeight)
-				drawOverlay(root.stage.stageWidth, root.stage.stageHeight);
-			if (root.contains(overlay))
-				root.setChildIndex(overlay, root.numChildren - 1);
+			var bounds:Rectangle = gameBounds();
+			if (lastX != bounds.x || lastY != bounds.y || lastW != bounds.width || lastH != bounds.height)
+				drawOverlay(bounds);
+			if (overlay.parent == root.stage)
+				root.stage.setChildIndex(overlay, root.stage.numChildren - 1);
 		}
 
 		private function controlKey(x:Number, y:Number):uint
 		{
-			if (root.stage == null || y < root.stage.stageHeight * 0.75)
+			var bounds:Rectangle = gameBounds();
+			var zoneY:Number = bounds.y + bounds.height * 0.75;
+			if (!bounds.contains(x, y) || y < zoneY)
 				return 0;
-			var nx:Number = x / root.stage.stageWidth;
+			var nx:Number = (x - bounds.x) / bounds.width;
 			if (nx < 1.0 / 6.0) return KEY_LEFT;
 			if (nx < 2.0 / 6.0) return KEY_RIGHT;
 			if (nx >= 4.0 / 6.0 && nx < 5.0 / 6.0) return KEY_X;
@@ -106,8 +122,12 @@ package
 			touchKeys[id] = key;
 			if (key != 0)
 				pressKey(key);
-			else if (root.stage != null && e.stageY < root.stage.stageHeight * 0.75)
-				touchStarts[id] = {x:e.stageX, y:e.stageY};
+			else
+			{
+				var bounds:Rectangle = gameBounds();
+				if (bounds.contains(e.stageX, e.stageY) && e.stageY < bounds.y + bounds.height * 0.75)
+					touchStarts[id] = {x:e.stageX, y:e.stageY};
+			}
 		}
 
 		private function onTouchMove(e:TouchEvent):void
@@ -146,9 +166,10 @@ package
 			var dy:Number = e.stageY - Number(start.y);
 			var ax:Number = Math.abs(dx);
 			var ay:Number = Math.abs(dy);
-			if (ax > ay && ax >= root.stage.stageWidth * 0.12)
+			var bounds:Rectangle = gameBounds();
+			if (ax > ay && ax >= bounds.width * 0.12)
 				pulseKey(KEY_V);
-			else if (ay > ax && ay >= root.stage.stageHeight * 0.12)
+			else if (ay > ax && ay >= bounds.height * 0.12)
 				pulseKey(dy < 0 ? KEY_UP : KEY_DOWN);
 		}
 
@@ -195,19 +216,21 @@ package
 			touchStarts = {};
 		}
 
-		private function drawOverlay(w:Number, h:Number):void
+		private function drawOverlay(bounds:Rectangle):void
 		{
-			lastW = w;
-			lastH = h;
+			lastX = bounds.x;
+			lastY = bounds.y;
+			lastW = bounds.width;
+			lastH = bounds.height;
 			while (overlay.numChildren > 0) overlay.removeChildAt(0);
 			overlay.graphics.clear();
-			var zoneW:Number = w / 6.0;
-			var zoneY:Number = h * 0.75;
-			var zoneH:Number = h * 0.25;
-			drawZone(0, zoneY, zoneW, zoneH, "LEFT");
-			drawZone(zoneW, zoneY, zoneW, zoneH, "RIGHT");
-			drawZone(zoneW * 4, zoneY, zoneW, zoneH, "ACTION");
-			drawZone(zoneW * 5, zoneY, zoneW, zoneH, "JUMP");
+			var zoneW:Number = bounds.width / 6.0;
+			var zoneY:Number = bounds.y + bounds.height * 0.75;
+			var zoneH:Number = bounds.height * 0.25;
+			drawZone(bounds.x, zoneY, zoneW, zoneH, "LEFT");
+			drawZone(bounds.x + zoneW, zoneY, zoneW, zoneH, "RIGHT");
+			drawZone(bounds.x + zoneW * 4, zoneY, zoneW, zoneH, "ACTION");
+			drawZone(bounds.x + zoneW * 5, zoneY, zoneW, zoneH, "JUMP");
 		}
 
 		private function drawZone(x:Number, y:Number, w:Number, h:Number, label:String):void
