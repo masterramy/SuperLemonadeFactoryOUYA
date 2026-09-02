@@ -46,6 +46,26 @@ package io.arkeus.ouya.controller {
 		 * @inheritDoc
 		 */
 		override protected function bindControls():void {
+			// Modern Android can legitimately run without any OUYA/GameInput device.
+			// Keep the historical typed controller API alive with inert controls so
+			// legacy game code can safely poll/reset it until real hardware appears.
+			if (device == null) {
+				o = new ButtonControl(this, null);
+				u = new ButtonControl(this, null);
+				y = new ButtonControl(this, null);
+				a = new ButtonControl(this, null);
+
+				lb = new ButtonControl(this, null);
+				rb = new ButtonControl(this, null);
+				lt = new TriggerControl(this, null);
+				rt = new TriggerControl(this, null);
+
+				leftStick = new JoystickControl(this, null, null, null, true);
+				rightStick = new JoystickControl(this, null, null, null, true);
+				dpad = new DirectionalPadControl(this, null, null, null, null);
+				return;
+			}
+
 			var controlMap:Object = {};
 			for (var i:uint = 0; i < device.numControls; i++) {
 				var control:GameInputControl = device.getControlAt(i);
