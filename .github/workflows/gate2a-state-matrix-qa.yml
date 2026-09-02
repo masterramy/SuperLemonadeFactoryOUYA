@@ -85,13 +85,14 @@ jobs:
           echo "target,key,pid,focused,width,height,std,entropy,fatal" > states/metrics.csv
 
           targets=(menu options help credits levelselect cinematic1 cinematic2 cinematic3 prize)
-          keys=(Q O H C L A S D P)
+          keys=(Q O H C L A F D P)
           for I in $(seq 0 8); do
             T=${targets[$I]}; K=${keys[$I]}
             adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
             adb logcat -c
             adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "states/${T}-launch.txt" 2>&1
             sleep 5
+            adb exec-out screencap -p > "states/${T}-before-key.png"
             adb shell input keyevent "KEYCODE_${K}" >/dev/null 2>&1
             sleep 5
             PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
@@ -104,25 +105,26 @@ jobs:
             if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "states/${T}-logcat.txt" > "states/${T}-fatal.txt"; then FATAL=1; FAIL=1; else : > "states/${T}-fatal.txt"; fi
             [ -z "$PID" ] && FAIL=1
             [ "$FOCUSED" -ne 1 ] && FAIL=1
-            MET=$(python3 - "states/${T}.png" <<'PY'
+            MET=$(python3 - "states/${T}.png" "states/${T}-before-key.png" <<'PY'
           import sys,math
-          from PIL import Image,ImageStat
-          im=Image.open(sys.argv[1]).convert('L'); w,h=im.size
+          from PIL import Image,ImageStat,ImageChops
+          im=Image.open(sys.argv[1]).convert('L'); before=Image.open(sys.argv[2]).convert('L'); w,h=im.size
           g=im.crop((0,int(h*.05),w,int(h*.95)))
           std=ImageStat.Stat(g).stddev[0]; hist=g.histogram(); total=sum(hist); ent=0.0
           for n in hist:
               if n:
                   p=n/total; ent-=p*math.log(p,2)
-          print(f"{w},{h},{std:.3f},{ent:.3f}")
+          d=ImageChops.difference(im,before); dh=d.histogram(); dt=sum(dh); changed=(dt-dh[0])/dt if dt else 0
+          print(f"{w},{h},{std:.3f},{ent:.3f},{changed:.6f}")
           PY
             )
-            IFS=',' read W H STD ENT <<< "$MET"
-            python3 - "$W" "$H" "$STD" "$ENT" <<'PY'
+            IFS=',' read W H STD ENT CHANGED <<< "$MET"
+            python3 - "$W" "$H" "$STD" "$ENT" "$CHANGED" <<'PY'
           import sys
-          w,h=int(sys.argv[1]),int(sys.argv[2]); std=float(sys.argv[3]); ent=float(sys.argv[4])
-          raise SystemExit(0 if w>h and std>=4 and ent>=0.8 else 1)
+          w,h=int(sys.argv[1]),int(sys.argv[2]); std=float(sys.argv[3]); ent=float(sys.argv[4]); changed=float(sys.argv[5])
+          raise SystemExit(0 if w>h and std>=4 and ent>=0.8 and changed>=0.01 else 1)
           PY
-            if [ $? -ne 0 ]; then echo "VISUAL_RISK $T ${W}x${H} std=$STD ent=$ENT" >> states/failures.txt; FAIL=1; fi
+            if [ $? -ne 0 ]; then echo "VISUAL_RISK $T ${W}x${H} std=$STD ent=$ENT changed=$CHANGED" >> states/failures.txt; FAIL=1; fi
             echo "$T,$K,$PID,$FOCUSED,$W,$H,$STD,$ENT,$FATAL" >> states/metrics.csv
             if [[ "$T" == cinematic* ]]; then
               adb shell input keyevent KEYCODE_X >/dev/null 2>&1
@@ -136,7 +138,7 @@ jobs:
           echo "states=9" >> states/summary.txt
           echo "fail=$FAIL" >> states/summary.txt
           if [ "$FAIL" -ne 0 ]; then exit 20; fi
-          echo "PASS-CANDIDATE: 9/9 requested target states produced healthy nonblank Android frames without fatal runtime signatures; visual target identity requires screenshot review." >> states/summary.txt
+          echo "PASS-CANDIDATE: 9/9 requested target states changed away from the QA launcher, produced healthy nonblank Android frames, and had no fatal runtime signatures; final target identity still requires screenshot review." >> states/summary.txt
           EOF
           chmod +x state-matrix.sh
       - name: Run reachable state matrix
