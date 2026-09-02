@@ -55,6 +55,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2a-boundary-qa
       - uses: actions/download-artifact@v4
         with:
           name: gate2a-boundary-qa-apk
@@ -65,90 +68,6 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Write boundary harness
-        shell: bash
-        run: |
-          cat > boundary.sh <<'EOF'
-          #!/usr/bin/env bash
-          set +e
-          mkdir -p boundaries
-          APK="runtime-apk/SLF-boundary-qa.apk"
-          PACKAGE="air.com.initialsgames.SLF"
-          FAIL=0
-          adb install -r "$APK" > boundaries/install.txt 2>&1 || exit 10
-          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
-          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
-          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
-          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
-          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
-          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
-          echo "case,description,pid_before,pid_after,focused_after,width,height,diff_ratio,fatal" > boundaries/metrics.csv
-          descriptions=("normal-w1-l12-to-cinematic1" "normal-w2-l12-to-cinematic2" "normal-w3-l12-to-cinematic3" "old-normal-w1-to-w2" "old-normal-w2-to-w3" "old-normal-w3-to-hc-w1" "old-hc-w1-to-hc-w2" "old-hc-w2-to-hc-w3" "old-hc-w3-to-prize")
-
-          for C in $(seq 1 9); do
-            DESC=${descriptions[$((C-1))]}
-            TAG=$(printf "%02d-%s" "$C" "$DESC")
-            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-            adb logcat -c
-            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "boundaries/${TAG}-launch.txt" 2>&1
-            sleep 5
-            adb shell input keyevent "KEYCODE_${C}" >/dev/null 2>&1
-            sleep 10
-            PID1=$(adb shell pidof "$PACKAGE" | tr -d '\r')
-            adb exec-out screencap -p > "boundaries/${TAG}-before.png"
-            adb logcat -c
-            adb shell input keyevent KEYCODE_K >/dev/null 2>&1
-            sleep 7
-            PID2=$(adb shell pidof "$PACKAGE" | tr -d '\r')
-            adb shell dumpsys window > "boundaries/${TAG}-window.txt" 2>&1
-            FOCUS=$(grep -m1 'mCurrentFocus=' "boundaries/${TAG}-window.txt" || true)
-            FOCUSED=0; echo "$FOCUS" | grep -q "$PACKAGE" && FOCUSED=1
-            adb exec-out screencap -p > "boundaries/${TAG}-after.png"
-            adb logcat -d > "boundaries/${TAG}-logcat.txt" 2>&1
-            FATAL=0
-            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "boundaries/${TAG}-logcat.txt" > "boundaries/${TAG}-fatal.txt"; then FATAL=1; FAIL=1; else : > "boundaries/${TAG}-fatal.txt"; fi
-            [ -z "$PID1" ] && FAIL=1
-            [ -z "$PID2" ] && FAIL=1
-            [ "$FOCUSED" -ne 1 ] && FAIL=1
-            MET=$(python3 - "boundaries/${TAG}-before.png" "boundaries/${TAG}-after.png" <<'PY'
-          import sys
-          from PIL import Image, ImageChops
-a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
-w,h=a.size; d=ImageChops.difference(a,b).convert('L'); hist=d.histogram(); total=sum(hist); changed=total-hist[0]
-print(f"{w},{h},{changed/total if total else 0:.6f}")
-          PY
-            )
-            IFS=',' read W H DIFF <<< "$MET"
-            python3 - "$W" "$H" "$DIFF" <<'PY'
-          import sys
-w,h=int(sys.argv[1]),int(sys.argv[2]); diff=float(sys.argv[3])
-raise SystemExit(0 if w>h and diff>=0.01 else 1)
-          PY
-            if [ $? -ne 0 ]; then echo "BOUNDARY_VISUAL_RISK $TAG ${W}x${H} diff=$DIFF" >> boundaries/failures.txt; FAIL=1; fi
-            echo "$C,$DESC,$PID1,$PID2,$FOCUSED,$W,$H,$DIFF,$FATAL" >> boundaries/metrics.csv
-          done
-
-          python3 - <<'PY'
-          import csv
-          from PIL import Image, ImageDraw
-rows=list(csv.DictReader(open('boundaries/metrics.csv')))
-sheet=Image.new('RGB',(1200,1890),'black')
-for i,r in enumerate(rows):
-    tag=f"{int(r['case']):02d}-{r['description']}"
-    for j,suffix in enumerate(('before','after')):
-        im=Image.open(f"boundaries/{tag}-{suffix}.png").convert('RGB'); im.thumbnail((590,180))
-        x=j*600; y=i*210
-        sheet.paste(im,(x+(590-im.width)//2,y))
-        ImageDraw.Draw(sheet).text((x+5,y+184),f"{r['case']} {suffix}: {r['description']}",fill='white')
-sheet.save('boundaries/boundary-contact-sheet.jpg',quality=90)
-          PY
-          [ -f boundaries/failures.txt ] && cat boundaries/failures.txt > boundaries/summary.txt || : > boundaries/summary.txt
-          echo "boundaries=9" >> boundaries/summary.txt
-          echo "fail=$FAIL" >> boundaries/summary.txt
-          if [ "$FAIL" -ne 0 ]; then exit 20; fi
-          echo "PASS-CANDIDATE: 9/9 actual PCPlayState.levelOver boundary invocations changed state while process/focus/landscape stayed healthy and fatal scan stayed empty. Visual target-state identity requires contact-sheet review." >> boundaries/summary.txt
-          EOF
-          chmod +x boundary.sh
       - name: Run nine actual boundary transitions
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -158,7 +77,7 @@ sheet.save('boundaries/boundary-contact-sheet.jpg',quality=90)
           profile: pixel_7_pro
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: bash boundary.sh
+          script: bash qa/boundary.sh
       - name: Upload boundary evidence
         if: always()
         uses: actions/upload-artifact@v4
