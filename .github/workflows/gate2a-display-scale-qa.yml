@@ -53,11 +53,11 @@ jobs:
   runtime-touch:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
-        api: [23, 35]
+        api: [21, 36]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -99,9 +99,9 @@ jobs:
           PY
           }
 
-          labels=(sixteen-nine ultra-wide pixel-wide)
-          portrait_sizes=(1080x1920 1080x2400 1440x3120)
-          for I in 0 1 2; do
+          labels=(sixteen-nine ultra-wide pixel-wide tablet-four-three fold-near-square)
+          portrait_sizes=(1080x1920 1080x2400 1440x3120 1200x1600 1600x1760)
+          for I in 0 1 2 3 4; do
             LABEL=${labels[$I]}
             PS=${portrait_sizes[$I]}
             adb shell wm size "$PS" >/dev/null 2>&1 || true
@@ -148,21 +148,30 @@ jobs:
             [ -z "$PID" ] && FAIL=1
             [ "$FOCUSED" -ne 1 ] && FAIL=1
 
-            # SHOW_ALL 16:9 content fills height and is centered on wider screens.
-            CONTENT_W=$(( H * 16 / 9 ))
-            if [ "$CONTENT_W" -gt "$W" ]; then CONTENT_W=$W; fi
-            XOFF=$(( (W - CONTENT_W) / 2 ))
+            # Compute the centered SHOW_ALL 16:9 content rectangle for both wide
+            # phones (side bars) and narrow/tablet/foldable landscapes (top/bottom bars).
+            if [ $(( W * 9 )) -ge $(( H * 16 )) ]; then
+              CONTENT_H=$H
+              CONTENT_W=$(( H * 16 / 9 ))
+              XOFF=$(( (W - CONTENT_W) / 2 ))
+              YOFF=0
+            else
+              CONTENT_W=$W
+              CONTENT_H=$(( W * 9 / 16 ))
+              XOFF=0
+              YOFF=$(( (H - CONTENT_H) / 2 ))
+            fi
             ZW=$(( CONTENT_W / 6 ))
-            BOTTOM_Y=$(( H * 7 / 8 ))
+            BOTTOM_Y=$(( YOFF + CONTENT_H * 7 / 8 ))
             RIGHT_X=$(( XOFF + ZW + ZW/2 ))
             SWITCH_X=$(( XOFF + ZW*2 + ZW/2 ))
             PIGGY_X=$(( XOFF + ZW*3 + ZW/2 ))
             ACTION_X=$(( XOFF + ZW*4 + ZW/2 ))
             JUMP_X=$(( XOFF + ZW*5 + ZW/2 ))
             PAUSE_X=$JUMP_X
-            PAUSE_Y=$(( H * 8 / 100 ))
+            PAUSE_Y=$(( YOFF + CONTENT_H * 8 / 100 ))
 
-            # Exercise each visible gameplay control using actual Android touch events.
+            # Exercise every visible gameplay control using actual Android touch events.
             adb shell input swipe "$RIGHT_X" "$BOTTOM_Y" "$RIGHT_X" "$BOTTOM_Y" 900 >/dev/null 2>&1
             sleep 2
             adb exec-out screencap -p > "$OUT/${LABEL}-06-after-right.png"
@@ -209,7 +218,7 @@ jobs:
           echo "api=$API_LEVEL" >> "$OUT/summary.txt"
           echo "fail=$FAIL" >> "$OUT/summary.txt"
           if [ "$FAIL" -ne 0 ]; then exit 20; fi
-          echo "PASS-CANDIDATE: on all three display shapes the app reached real Level 2 from cold launch using touch only, then exercised RIGHT/SWITCH/PIGGY/ACTION/JUMP/PAUSE/RESUME through native Android touch with healthy process/focus/fatal scans. Manual screenshot review required." >> "$OUT/summary.txt"
+          echo "PASS-CANDIDATE: on five phone/tablet/foldable display shapes the app reached real Level 2 from cold launch using touch only, then exercised RIGHT/SWITCH/PIGGY/ACTION/JUMP/PAUSE/RESUME through native Android touch with healthy process/focus/fatal scans. Manual screenshot review required." >> "$OUT/summary.txt"
           EOF
           chmod +x touch-qa.sh
       - name: Run touch-only route and complete HUD QA
