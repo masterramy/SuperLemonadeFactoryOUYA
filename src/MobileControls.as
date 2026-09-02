@@ -39,6 +39,7 @@ package
 		private var lastY:Number = NaN;
 		private var lastW:Number = NaN;
 		private var lastH:Number = NaN;
+		private var lastMode:String = "";
 		private var wasGameplay:Boolean = false;
 
 		public function MobileControls(gameRoot:DisplayObjectContainer)
@@ -75,6 +76,15 @@ package
 			return FlxG.state != null && FlxG.state is PlayState;
 		}
 
+		private function navigationMode():String
+		{
+			if (FlxG.state == null) return "none";
+			if (FlxG.state is PCIntroState) return "intro";
+			if (FlxG.state is PCCinematicState) return "cinematic";
+			if (FlxG.state is PCHelpState || FlxG.state is PCCreditsState || FlxG.state is PrizeState) return "back";
+			return "menu";
+		}
+
 		private function gameBounds():Rectangle
 		{
 			if (root.stage == null)
@@ -87,17 +97,21 @@ package
 
 		private function onFrame(e:Event):void
 		{
+			if (root.stage == null) return;
 			var active:Boolean = gameplayActive();
 			if (!active && wasGameplay)
 				releaseAll();
 			wasGameplay = active;
-			overlay.visible = active;
-			if (!active || root.stage == null)
-				return;
+			var mode:String = active ? "gameplay" : navigationMode();
+			overlay.visible = mode != "none";
+			if (mode == "none") return;
 
 			var bounds:Rectangle = gameBounds();
-			if (lastX != bounds.x || lastY != bounds.y || lastW != bounds.width || lastH != bounds.height)
-				drawOverlay(bounds);
+			if (lastX != bounds.x || lastY != bounds.y || lastW != bounds.width || lastH != bounds.height || lastMode != mode)
+			{
+				if (active) drawGameplayOverlay(bounds);
+				else drawNavigationOverlay(bounds, mode);
+			}
 			if (overlay.parent == root.stage)
 				root.stage.setChildIndex(overlay, root.stage.numChildren - 1);
 		}
@@ -107,7 +121,6 @@ package
 			var bounds:Rectangle = gameBounds();
 			if (!bounds.contains(x, y)) return 0;
 
-			// Dedicated pause/resume target stays available while Flixel is paused.
 			if (x >= bounds.x + bounds.width * 5.0 / 6.0 && y <= bounds.y + bounds.height * 0.17)
 				return KEY_P;
 
@@ -128,8 +141,6 @@ package
 			var bounds:Rectangle = gameBounds();
 			if (!bounds.contains(e.stageX, e.stageY)) return;
 
-			// Menus/cinematics already understand arrows + X. Capture the gesture and
-			// translate it on TOUCH_END so Android never depends on touch-to-mouse synthesis.
 			if (!gameplayActive())
 			{
 				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:true};
@@ -191,7 +202,6 @@ package
 				return;
 			}
 
-			// Gameplay upper-area gesture shortcuts remain available in addition to HUD buttons.
 			if (!gameplayActive()) return;
 			if (ax > ay && ax >= bounds.width * 0.12)
 				pulseKey(KEY_V);
@@ -242,14 +252,20 @@ package
 			touchStarts = {};
 		}
 
-		private function drawOverlay(bounds:Rectangle):void
+		private function clearOverlay(bounds:Rectangle, mode:String):void
 		{
 			lastX = bounds.x;
 			lastY = bounds.y;
 			lastW = bounds.width;
 			lastH = bounds.height;
+			lastMode = mode;
 			while (overlay.numChildren > 0) overlay.removeChildAt(0);
 			overlay.graphics.clear();
+		}
+
+		private function drawGameplayOverlay(bounds:Rectangle):void
+		{
+			clearOverlay(bounds, "gameplay");
 			var zoneW:Number = bounds.width / 6.0;
 			var zoneY:Number = bounds.y + bounds.height * 0.75;
 			var zoneH:Number = bounds.height * 0.25;
@@ -260,6 +276,46 @@ package
 			drawZone(bounds.x + zoneW * 4, zoneY, zoneW, zoneH, "ACTION");
 			drawZone(bounds.x + zoneW * 5, zoneY, zoneW, zoneH, "JUMP");
 			drawZone(bounds.x + zoneW * 5, bounds.y, zoneW, bounds.height * 0.17, "PAUSE");
+		}
+
+		private function drawNavigationOverlay(bounds:Rectangle, mode:String):void
+		{
+			clearOverlay(bounds, mode);
+			if (mode == "intro")
+			{
+				// Cover the legacy "Press O" prompt with the truthful Android affordance.
+				drawHint(bounds.x, bounds.y + bounds.height * 0.80, bounds.width, bounds.height * 0.14, "TAP TO START", 0xd3bdb2, 1.0, 0x7725a1);
+			}
+			else if (mode == "cinematic")
+			{
+				// Cover obsolete OUYA Y/O prompts. Full-scene skip remains controller-only;
+				// touch users can advance every dialogue beat with a tap.
+				drawHint(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.035, bounds.width * 0.25, bounds.height * 0.08, "CUT SCENE", 0x000000, 1.0, 0xffffff);
+				drawHint(bounds.x + bounds.width * 0.68, bounds.y + bounds.height * 0.88, bounds.width * 0.29, bounds.height * 0.08, "TAP TO CONTINUE", 0x000000, 1.0, 0xffffff);
+			}
+			else
+			{
+				var label:String = mode == "back" ? "TAP TO GO BACK" : "SWIPE TO MOVE  -  TAP TO SELECT";
+				drawHint(bounds.x + bounds.width * 0.28, bounds.y + bounds.height * 0.925, bounds.width * 0.44, bounds.height * 0.055, label, 0x000000, 0.62, 0xffffff);
+			}
+		}
+
+		private function drawHint(x:Number, y:Number, w:Number, h:Number, label:String, bg:uint, alpha:Number, fg:uint):void
+		{
+			overlay.graphics.lineStyle(0, 0, 0);
+			overlay.graphics.beginFill(bg, alpha);
+			overlay.graphics.drawRect(x, y, w, h);
+			overlay.graphics.endFill();
+			var tf:TextField = new TextField();
+			tf.mouseEnabled = false;
+			tf.selectable = false;
+			tf.width = w;
+			tf.height = h;
+			tf.x = x;
+			tf.y = y + Math.max(0, (h - 34) * 0.5);
+			tf.defaultTextFormat = new TextFormat("_sans", Math.max(14, Math.min(22, h * 0.28)), fg, true, null, null, null, null, "center");
+			tf.text = label;
+			overlay.addChild(tf);
 		}
 
 		private function drawZone(x:Number, y:Number, w:Number, h:Number, label:String):void
