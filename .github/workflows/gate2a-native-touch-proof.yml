@@ -1,0 +1,224 @@
+name: Gate 2A Native Touch Proof
+
+on:
+  push:
+    branches:
+      - gate2a-android-modernization
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  native-touch-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Wait for matching baseline emulator APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runtime-apk touch-smoke
+          RUN_ID=""
+          for _ in $(seq 1 90); do
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow gate2a-air-baseline.yml --commit "$GITHUB_SHA" --limit 5 --json databaseId,status,conclusion,headSha --jq 'map(select(.headSha == env.GITHUB_SHA)) | .[0].databaseId // empty')
+            if [ -n "$RUN_ID" ]; then
+              STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+              CONCLUSION=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq '.conclusion // ""')
+              echo "baseline_run=$RUN_ID status=$STATUS conclusion=$CONCLUSION" | tee touch-smoke/baseline-run.txt
+              if [ "$STATUS" = "completed" ]; then
+                if [ "$CONCLUSION" != "success" ]; then
+                  echo "Matching baseline run failed: $CONCLUSION" >&2
+                  exit 2
+                fi
+                break
+              fi
+            fi
+            sleep 10
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo "No matching baseline run appeared for $GITHUB_SHA" >&2
+            exit 3
+          fi
+          STATUS=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json status --jq .status)
+          if [ "$STATUS" != "completed" ]; then
+            echo "Matching baseline run did not complete in time" >&2
+            exit 4
+          fi
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name gate2a-emulator-x64-apk --dir runtime-apk
+          ls -l runtime-apk | tee touch-smoke/downloaded-apk.txt
+
+      - name: Write native-touch proof script
+        shell: bash
+        run: |
+          cat > touch-proof.sh <<'EOF'
+          #!/usr/bin/env bash
+          set +e
+          mkdir -p touch-smoke
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          PACKAGE="air.com.initialsgames.SLF"
+
+          adb install -r "$APK" > touch-smoke/install.txt 2>&1
+          INSTALL_EXIT=$?
+          if [ "$INSTALL_EXIT" -ne 0 ]; then
+            echo "APK install failed with exit $INSTALL_EXIT" | tee touch-smoke/result.txt
+            exit 10
+          fi
+
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          sleep 5
+
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > touch-smoke/launch-command.txt 2>&1
+          sleep 12
+
+          PID=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID" > touch-smoke/pid-launch.txt
+          if [ -z "$PID" ]; then
+            echo "Game process did not survive launch" | tee touch-smoke/result.txt
+            exit 11
+          fi
+
+          # Use the already-proven legacy navigation path to reach Level 2. The test
+          # target here is native gameplay touch, not menu touch synthesis.
+          adb shell input keyevent KEYCODE_X
+          sleep 2
+          adb shell input keyevent KEYCODE_X
+          sleep 8
+          adb shell input keyevent KEYCODE_X
+          sleep 4
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+
+          adb exec-out screencap -p > touch-smoke/01-gameplay-before-touch.png
+          adb shell dumpsys window > touch-smoke/window-before-touch.txt 2>&1
+          adb logcat -d > touch-smoke/logcat-before-touch.txt 2>&1
+
+          CURRENT_FOCUS=$(grep -m1 'mCurrentFocus=' touch-smoke/window-before-touch.txt || true)
+          echo "$CURRENT_FOCUS" > touch-smoke/current-focus-before-touch.txt
+          if ! echo "$CURRENT_FOCUS" | grep -q "$PACKAGE"; then
+            echo "Game was not focused before native touch proof: $CURRENT_FOCUS" | tee touch-smoke/result.txt
+            exit 20
+          fi
+
+          read SHOT_W SHOT_H < <(python3 - <<'PY'
+          import struct
+          with open('touch-smoke/01-gameplay-before-touch.png','rb') as f:
+              data=f.read(24)
+          if len(data) >= 24 and data[:8] == b'\x89PNG\r\n\x1a\n':
+              print(*struct.unpack('>II', data[16:24]))
+          else:
+              print('0 0')
+          PY
+          )
+          echo "screenshot=${SHOT_W}x${SHOT_H}" > touch-smoke/coordinates.txt
+          if [ "$SHOT_W" -le "$SHOT_H" ]; then
+            echo "Gameplay proof was not landscape" | tee touch-smoke/result.txt
+            exit 21
+          fi
+
+          # The SWF is a fixed 1920x1080 stage centered by AIR on the API-35 emulator.
+          # These are the centers of the four visible control zones after the viewport
+          # alignment repair: LEFT, RIGHT, ACTION, JUMP.
+          GAME_W=1920
+          GAME_H=1080
+          GAME_X=$(( (SHOT_W - GAME_W) / 2 ))
+          GAME_Y=$(( (SHOT_H - GAME_H) / 2 ))
+          ZONE_W=$(( GAME_W / 6 ))
+          CONTROL_Y=$(( GAME_Y + (GAME_H * 7 / 8) ))
+          LEFT_X=$(( GAME_X + ZONE_W / 2 ))
+          RIGHT_X=$(( GAME_X + ZONE_W + ZONE_W / 2 ))
+          ACTION_X=$(( GAME_X + ZONE_W * 4 + ZONE_W / 2 ))
+          JUMP_X=$(( GAME_X + ZONE_W * 5 + ZONE_W / 2 ))
+          echo "game=$GAME_X,$GAME_Y ${GAME_W}x${GAME_H}" >> touch-smoke/coordinates.txt
+          echo "left=$LEFT_X,$CONTROL_Y right=$RIGHT_X,$CONTROL_Y action=$ACTION_X,$CONTROL_Y jump=$JUMP_X,$CONTROL_Y" >> touch-smoke/coordinates.txt
+
+          # Hold RIGHT using a real Android touchscreen gesture, then capture the scene.
+          adb shell input touchscreen swipe "$RIGHT_X" "$CONTROL_Y" "$RIGHT_X" "$CONTROL_Y" 1200
+          sleep 1
+          adb exec-out screencap -p > touch-smoke/02-after-right-touch.png
+
+          # Exercise the jump zone with another native touch hold and capture immediately.
+          adb shell input touchscreen swipe "$JUMP_X" "$CONTROL_Y" "$JUMP_X" "$CONTROL_Y" 350
+          sleep 0.10
+          adb exec-out screencap -p > touch-smoke/03-after-jump-touch.png
+
+          # Exercise ACTION and preserve evidence even if the current character's action
+          # is subtle in this exact frame.
+          adb shell input touchscreen tap "$ACTION_X" "$CONTROL_Y"
+          sleep 0.4
+          adb exec-out screencap -p > touch-smoke/04-after-action-touch.png
+
+          # The original iOS behavior used horizontal swipe to switch characters. Test
+          # that gesture in the upper gameplay area, away from the four control zones.
+          SWIPE_Y=$(( GAME_Y + GAME_H / 2 ))
+          SWIPE_X1=$(( GAME_X + GAME_W / 3 ))
+          SWIPE_X2=$(( GAME_X + GAME_W * 2 / 3 ))
+          adb shell input touchscreen swipe "$SWIPE_X1" "$SWIPE_Y" "$SWIPE_X2" "$SWIPE_Y" 500
+          sleep 1
+          adb exec-out screencap -p > touch-smoke/05-after-character-swipe.png
+
+          PID_FINAL=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_FINAL" > touch-smoke/pid-final.txt
+          adb shell dumpsys window > touch-smoke/window-final.txt 2>&1
+          adb logcat -d > touch-smoke/logcat-final.txt 2>&1
+          CURRENT_FOCUS_FINAL=$(grep -m1 'mCurrentFocus=' touch-smoke/window-final.txt || true)
+          echo "$CURRENT_FOCUS_FINAL" > touch-smoke/current-focus-final.txt
+
+          if [ -z "$PID_FINAL" ] || [ "$PID_FINAL" != "$PID" ]; then
+            echo "Game process changed or died during native touch proof" | tee touch-smoke/result.txt
+            exit 30
+          fi
+          if ! echo "$CURRENT_FOCUS_FINAL" | grep -q "$PACKAGE"; then
+            echo "Game lost focus during native touch proof: $CURRENT_FOCUS_FINAL" | tee touch-smoke/result.txt
+            exit 31
+          fi
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" touch-smoke/logcat-final.txt > touch-smoke/fatal-scan.txt; then
+            echo "Fatal runtime signature found during native touch proof" | tee touch-smoke/result.txt
+            exit 32
+          fi
+
+          sha256sum touch-smoke/0*.png > touch-smoke/screenshot-sha256.txt
+          echo "PASS-CANDIDATE: native Android touchscreen RIGHT, JUMP, ACTION, and horizontal-switch gestures were injected in Level 2 with stable PID/focus and no fatal signature. Sequential visual review is required to prove behavioral response and HUD placement." | tee touch-smoke/result.txt
+          EOF
+          chmod +x touch-proof.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise native gameplay touch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash touch-proof.sh
+
+      - name: Upload native-touch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-native-touch-proof
+          path: touch-smoke
+          if-no-files-found: warn
