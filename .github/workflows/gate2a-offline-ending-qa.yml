@@ -27,7 +27,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path qa | Out-Null
           New-Item -ItemType Directory -Force -Path bin | Out-Null
-          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+          & amxmlc '-load-config+=obj\SLF_for_OuyaConfig.xml' '-output=bin\SLFforOuya.swf'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $bytes = [IO.File]::ReadAllBytes('bin/SLFforOuya.swf')
           $ascii = [Text.Encoding]::ASCII.GetString($bytes)
@@ -46,9 +46,10 @@ jobs:
           if (($t.Split($needle).Count-1) -ne 1) { throw 'Expected one initial-state needle' }
           $t=$t.Replace($needle,'super(640, 360, PrizeState, 3, 60, 30);')
           Set-Content -NoNewline -Path $p -Value $t
-          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+          & amxmlc '-load-config+=obj\SLF_for_OuyaConfig.xml' '-output=bin\SLFforOuya.swf'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           adt -certificate -validityPeriod 1 -cn "Gate2A Ending QA" 2048-RSA qa.p12 gate2a
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $sdk=$env:ANDROID_SDK_ROOT; if ([string]::IsNullOrWhiteSpace($sdk)) {$sdk=$env:ANDROID_HOME}
           adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore qa.p12 -storepass gate2a qa/ending.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
