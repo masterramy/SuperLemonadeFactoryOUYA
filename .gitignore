@@ -1,2 +1,12 @@
 AIROUYAIAP-master
 /dist
+
+# Signing material must never be committed. Production signing keys belong in
+# local secure storage or GitHub Actions secrets only.
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.der
+release-signing.*
+gate2a-benchmark.p12
