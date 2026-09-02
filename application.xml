@@ -7,7 +7,7 @@
   <name>Super Lemonade Factory</name>
   <android>
     <manifestAdditions><![CDATA[<manifest android:installLocation="auto">
-	<uses-sdk android:minSdkVersion="8" />
+	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
 	<uses-permission android:name="android.permission.INTERNET" />
 	<uses-feature android:required="true" android:name="android.hardware.touchscreen.multitouch" />
 	<application>
@@ -15,11 +15,11 @@
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="android.intent.category.LAUNCHER" />
-				<category android:name="tv.ouya.intent.category.GAME" />
 			</intent-filter>
 		</activity>
 	</application>
 </manifest>]]></manifestAdditions>
+    <androidCompileSdkVersion>36</androidCompileSdkVersion>
   </android>
   <iPhone>
     <InfoAdditions><![CDATA[<key>UIStatusBarStyle</key>
