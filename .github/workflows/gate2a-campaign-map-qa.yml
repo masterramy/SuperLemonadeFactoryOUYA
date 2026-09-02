@@ -1,0 +1,124 @@
+name: Gate 2A Campaign Map QA
+
+on:
+  push:
+    branches:
+      - gate2a-campaign-qa-staging
+
+permissions:
+  contents: read
+
+jobs:
+  campaign-map-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout campaign QA staging
+        uses: actions/checkout@v4
+        with:
+          ref: gate2a-campaign-qa-staging
+
+      - name: Audit all embedded campaign XML and loader mappings
+        shell: bash
+        run: |
+          mkdir -p campaign-qa
+          python3 - <<'PY' | tee campaign-qa/report.txt
+          import pathlib, re, sys, xml.etree.ElementTree as ET
+
+          registry = pathlib.Path('src/Registry.as').read_text(encoding='utf-8')
+          play = pathlib.Path('src/PCPlayState.as').read_text(encoding='utf-8')
+
+          embed_re = re.compile(r"\[Embed\(source\s*=\s*['\"]([^'\"]+\.oel)['\"],\s*mimeType\s*=\s*['\"]application/octet-stream['\"]\)\]\s*public\s+static\s+var\s+(HCLevel|Level)(\d+):Class;")
+          found = {}
+          for src, prefix, num in embed_re.findall(registry):
+              key = f'{prefix}{int(num)}'
+              found[key] = src
+
+          expected = [f'Level{i}' for i in range(1,37)] + [f'HCLevel{i}' for i in range(1,37)]
+          missing = [k for k in expected if k not in found]
+          extras = sorted(k for k in found if k.startswith(('Level','HCLevel')) and k not in expected)
+          print(f'embedded_campaign_classes={len([k for k in expected if k in found])}/72')
+          if missing:
+              print('MISSING_CLASSES=' + ','.join(missing))
+              sys.exit(10)
+          if extras:
+              print('EXTRA_LEVEL_CLASSES=' + ','.join(extras))
+
+          parsed = 0
+          summaries = []
+          for key in expected:
+              rel = found[key]
+              # Embed paths are relative to src/Registry.as.
+              path = (pathlib.Path('src') / rel).resolve()
+              if not path.exists():
+                  print(f'MISSING_FILE {key} {rel}')
+                  sys.exit(11)
+              raw = path.read_bytes()
+              try:
+                  root = ET.fromstring(raw)
+              except Exception as exc:
+                  print(f'XML_PARSE_FAIL {key} {rel}: {exc}')
+                  sys.exit(12)
+              parsed += 1
+              summaries.append((key, rel, len(raw), root.tag, len(list(root))))
+
+          print(f'xml_parse_success={parsed}/72')
+          print('--- level xml summary ---')
+          for row in summaries:
+              print('%s\t%s\tbytes=%d\troot=%s\tchildren=%d' % row)
+
+          # Verify the normal/hardcore selector in loadLevel() enumerates every aggregate level 1..36.
+          start = play.find('protected function loadLevel():void')
+          end = play.find('protected function loadLevel_oldSchoolMode():void')
+          if start < 0 or end < 0 or end <= start:
+              print('LOADLEVEL_FUNCTION_BOUNDARY_FAIL')
+              sys.exit(13)
+          load = play[start:end]
+          cases = sorted(set(int(x) for x in re.findall(r'case\s+(\d+)\s*:', load)))
+          if cases != list(range(1,37)):
+              print('LOADLEVEL_CASES_FAIL=' + repr(cases))
+              sys.exit(14)
+          hc_refs = sorted(set(int(x) for x in re.findall(r'Registry\.HCLevel(\d+)', load)))
+          if hc_refs != list(range(1,37)):
+              print('LOADLEVEL_HC_REFS_FAIL=' + repr(hc_refs))
+              sys.exit(15)
+          normal_refs = sorted(set(int(x) for x in re.findall(r'Registry\.Level(\d+)', load)))
+          # Aggregate 1,13,25 intentionally use cutscene classes in this transition loader.
+          expected_normal_refs = [i for i in range(1,37) if i not in (1,13,25)]
+          if normal_refs != expected_normal_refs:
+              print('LOADLEVEL_NORMAL_REFS_FAIL=' + repr(normal_refs))
+              sys.exit(16)
+          for cut in (1,2,3):
+              if f'Registry.LevelCutscene{cut}' not in load:
+                  print(f'LOADLEVEL_CUTSCENE_REF_FAIL={cut}')
+                  sys.exit(17)
+
+          # OLD SCHOOL loader must enumerate all 36 raw normal and all 36 hardcore levels.
+          old_start = end
+          old = play[old_start:]
+          old_cases = sorted(set(int(x) for x in re.findall(r'case\s+(\d+)\s*:', old)))
+          # Restrict to 1..36 because later code could contain unrelated switch cases.
+          old_cases = [x for x in old_cases if 1 <= x <= 36]
+          if old_cases != list(range(1,37)):
+              print('OLDSCHOOL_CASES_FAIL=' + repr(old_cases))
+              sys.exit(18)
+          old_hc_refs = sorted(set(int(x) for x in re.findall(r'Registry\.HCLevel(\d+)', old)))
+          old_level_refs = sorted(set(int(x) for x in re.findall(r'Registry\.Level(\d+)', old)))
+          if old_hc_refs != list(range(1,37)) or old_level_refs != list(range(1,37)):
+              print('OLDSCHOOL_REFS_FAIL normal=%r hc=%r' % (old_level_refs, old_hc_refs))
+              sys.exit(19)
+
+          print('loadLevel_cases=36/36')
+          print('loadLevel_hardcore_refs=36/36')
+          print('oldSchool_normal_refs=36/36')
+          print('oldSchool_hardcore_refs=36/36')
+          print('RESULT=PASS')
+          PY
+
+      - name: Upload campaign map evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-campaign-map-evidence
+          path: campaign-qa
+          if-no-files-found: error
