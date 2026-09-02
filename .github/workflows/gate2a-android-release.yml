@@ -98,25 +98,44 @@ jobs:
             "aab_sha256=$hash"
           ) | Set-Content -Path dist/release-metadata.txt -Encoding utf8
 
-          # Best-effort independent manifest inspection using the runner's Android SDK.
-          $apkanalyzer = Get-ChildItem -Path $androidSdk -Filter 'apkanalyzer.bat' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -ne $apkanalyzer) {
-            $PSNativeCommandUseErrorActionPreference = $false
-            $targetOutput = & $apkanalyzer.FullName manifest target-sdk $aab.FullName 2>&1
-            $targetExit = $LASTEXITCODE
-            $targetOutput | Set-Content -Path dist/manifest-target-sdk.txt -Encoding utf8
-            if ($targetExit -eq 0 -and (($targetOutput | Out-String).Trim() -match '^36$')) {
-              Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=36'
-            } else {
-              Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=unavailable'
-            }
-            $global:LASTEXITCODE = 0
-          } else {
-            'apkanalyzer not found on runner' | Set-Content -Path dist/manifest-target-sdk.txt -Encoding utf8
-            Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=unavailable'
+          # Independently inspect the compiled App Bundle manifest with Google's
+          # bundletool. Pin both the release and SHA-256 so this verification step
+          # cannot silently drift to different bytes.
+          $bundletoolVersion = '1.18.3'
+          $bundletoolExpectedSha256 = 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'
+          $bundletoolPath = Join-Path $PWD "bundletool-all-$bundletoolVersion.jar"
+          $bundletoolUrl = "https://github.com/google/bundletool/releases/download/$bundletoolVersion/bundletool-all-$bundletoolVersion.jar"
+          Invoke-WebRequest -Uri $bundletoolUrl -OutFile $bundletoolPath
+          $bundletoolHash = (Get-FileHash -Algorithm SHA256 $bundletoolPath).Hash.ToLowerInvariant()
+          if ($bundletoolHash -ne $bundletoolExpectedSha256) {
+            throw "bundletool SHA-256 mismatch. Expected $bundletoolExpectedSha256, got $bundletoolHash."
           }
 
+          $PSNativeCommandUseErrorActionPreference = $false
+          $targetOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/uses-sdk/@android:targetSdkVersion' 2>&1
+          $targetExit = $LASTEXITCODE
+          $targetValue = (($targetOutput | Out-String).Trim())
+          $targetOutput | Set-Content -Path dist/manifest-target-sdk.txt -Encoding utf8
+          if ($targetExit -ne 0 -or $targetValue -ne '36') {
+            throw "Compiled AAB target SDK verification failed. Expected 36, got '$targetValue' (exit $targetExit)."
+          }
+
+          $minOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/uses-sdk/@android:minSdkVersion' 2>&1
+          $minExit = $LASTEXITCODE
+          $minValue = (($minOutput | Out-String).Trim())
+          $minOutput | Set-Content -Path dist/manifest-min-sdk.txt -Encoding utf8
+          if ($minExit -ne 0 -or $minValue -ne '21') {
+            throw "Compiled AAB min SDK verification failed. Expected 21, got '$minValue' (exit $minExit)."
+          }
+
+          Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=36'
+          Add-Content -Path dist/release-metadata.txt -Value 'manifest_min_sdk_verified=21'
+          Add-Content -Path dist/release-metadata.txt -Value "bundletool_version=$bundletoolVersion"
+          Add-Content -Path dist/release-metadata.txt -Value "bundletool_sha256=$bundletoolHash"
+          $global:LASTEXITCODE = 0
+
           Remove-Item -Force -ErrorAction SilentlyContinue $keyPath
+          Remove-Item -Force -ErrorAction SilentlyContinue $bundletoolPath
 
       - name: Upload release bundle proof
         uses: actions/upload-artifact@v4
@@ -126,4 +145,5 @@ jobs:
             dist/SLF-release.aab
             dist/release-metadata.txt
             dist/manifest-target-sdk.txt
+            dist/manifest-min-sdk.txt
           if-no-files-found: error
