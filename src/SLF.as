@@ -1,5 +1,7 @@
 package
 {
+	import flash.display.Shape;
+	import flash.events.Event;
 	import org.flixel.*;
 	import io.arkeus.ouya.ControllerInput;
 
@@ -18,6 +20,8 @@ package
 
 	public class SLF extends FlxGame
 	{
+		private var gate2aDisplayProbe:Shape;
+
 		public function SLF()
 		{
 			
@@ -35,43 +39,26 @@ package
 			
 			FlxG.debug = forceDebugger = false;
 			
-			
-			
-			
-			//
-			
-			
-			
-			
-			
-			//super(520, 390, offsetTest, 2, 60, 30);
-			
-			//FlxG.flashFramerate = 60;
-			//FlxG.framerate = 60;
-			
-			//super(520, 390, SpeechBubbleTest, 2, 60, 30);
-			
 			Registry.isPCVersion = true;
 			Registry.isWinnitron = false;
-			
-			
-			
 			Registry.DEMO = false;
-			
-			
-			//forceDebugger = false;
-			
-			
-			
-
-			
-			
-			
-			
 			FlxG.usingJoystick = false;
-						
-			//trace(ControllerInput.hasReadyController().toString() + " <-- controller.ready?");
 
+			// Gate 2A TEMPORARY DIAGNOSTIC ONLY: prove whether the modern AIR root
+			// display list can present a raw Flash shape independently of Flixel's
+			// BitmapData camera pipeline. Keep it above cameras for the screenshot.
+			gate2aDisplayProbe = new Shape();
+			gate2aDisplayProbe.graphics.beginFill(0xFF0000, 1.0);
+			gate2aDisplayProbe.graphics.drawRect(30, 30, 360, 180);
+			gate2aDisplayProbe.graphics.endFill();
+			addChild(gate2aDisplayProbe);
+			addEventListener(Event.ENTER_FRAME, keepGate2aProbeOnTop);
+		}
+
+		private function keepGate2aProbeOnTop(event:Event):void
+		{
+			if (gate2aDisplayProbe != null && contains(gate2aDisplayProbe))
+				setChildIndex(gate2aDisplayProbe, numChildren - 1);
 		}
 	}
 }
