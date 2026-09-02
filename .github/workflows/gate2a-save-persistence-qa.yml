@@ -1,0 +1,220 @@
+name: Gate 2A Save Persistence QA
+
+on:
+  push:
+    branches:
+      - gate2a-save-path-staging
+
+jobs:
+  build-qa-apk:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout exact staging trigger
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+
+      - name: Add test-only keyboard exit teleport
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p = Path("src/PlayState.as")
+          data = p.read_bytes()
+          old = b"if (FlxG.debug==true) {"
+          new = b"if (FlxG.debug==true || FlxG.keys.justPressed(\"G\")) {"
+          count = data.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected exactly one debug teleport gate, found {count}")
+          p.write_bytes(data.replace(old, new, 1))
+          '@ | Set-Content -Path gate2a_qa_patch.py -Encoding ascii
+          python gate2a_qa_patch.py
+          git diff --check
+          git diff -- src/PlayState.as
+
+      - name: Compile QA source
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Create ephemeral QA signing certificate
+        shell: cmd
+        run: |
+          adt -certificate -validityPeriod 1 -cn "Gate2A Save QA" 2048-RSA gate2a-save-qa.p12 gate2a
+
+      - name: Package x64 emulator QA APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-save-qa.p12 -storepass gate2a dist/SLF-save-qa-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-save-qa-x64-apk
+          path: dist/SLF-save-qa-x64.apk
+          if-no-files-found: error
+
+  runtime-save-persistence:
+    needs: build-qa-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Download QA APK
+        uses: actions/download-artifact@v4
+        with:
+          name: gate2a-save-qa-x64-apk
+          path: runtime-apk
+
+      - name: Write completion and persistence harness
+        shell: bash
+        run: |
+          cat > save-qa.sh <<'EOF'
+          #!/usr/bin/env bash
+          set +e
+          mkdir -p evidence
+          APK="runtime-apk/SLF-save-qa-x64.apk"
+          PACKAGE="air.com.initialsgames.SLF"
+
+          fail() { echo "FAIL: $*" | tee evidence/result.txt; exit 1; }
+          alive() { adb shell pidof "$PACKAGE" | tr -d '\r'; }
+          shot() { adb exec-out screencap -p > "evidence/$1"; }
+          dumpfocus() { adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true; }
+
+          adb install -r "$APK" > evidence/install.txt 2>&1 || fail "APK install"
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+          launch_game() {
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >> evidence/launch-commands.txt 2>&1 || return 1
+            sleep 12
+            [ -n "$(alive)" ] || return 1
+            dumpfocus >> evidence/focus-history.txt
+            return 0
+          }
+
+          to_level2() {
+            adb shell input keyevent KEYCODE_X
+            sleep 2
+            adb shell input keyevent KEYCODE_X
+            sleep 8
+            adb shell input keyevent KEYCODE_X
+            sleep 4
+            adb shell input keyevent KEYCODE_DPAD_RIGHT
+            sleep 1
+            adb shell input keyevent KEYCODE_X
+            sleep 12
+            adb shell input keyevent KEYCODE_X
+            sleep 12
+          }
+
+          adb logcat -c
+          launch_game || fail "initial launch"
+          shot 01-intro.png
+          to_level2
+          [ -n "$(alive)" ] || fail "process died entering Level 2"
+          shot 02-level2-before-complete.png
+          adb logcat -d > evidence/logcat-before-complete.txt 2>&1
+
+          # QA-only hook: G enters the game's existing debug teleport block, moving
+          # both characters onto the real exit so normal overlap logic calls levelOver().
+          adb shell input keyevent KEYCODE_G
+          sleep 10
+          [ -n "$(alive)" ] || fail "process died during Level 2 completion/save"
+          shot 03-after-level2-complete.png
+          adb logcat -d > evidence/logcat-after-complete.txt 2>&1
+          dumpfocus > evidence/focus-after-complete.txt
+
+          if grep -E "FATAL EXCEPTION|Fatal signal|SecurityError|Permission denied|EACCES|Error #[0-9]+" evidence/logcat-after-complete.txt > evidence/completion-error-scan.txt; then
+            fail "fatal/security/AS3 error signature after level completion"
+          fi
+
+          # Best-effort direct proof of the backup location. Google API images may not
+          # permit adb root; inability to inspect is not itself a failure.
+          adb root > evidence/adb-root.txt 2>&1 || true
+          sleep 2
+          adb shell find "/data/data/$PACKAGE" -name progress_backup.slf -print > evidence/backup-find.txt 2>&1 || true
+
+          # Cold restart: if FlxSave persisted the completion, Level 3 must now be
+          # selectable. We re-enter Factory Floor, move Level1 -> Level3, and activate.
+          launch_game || fail "cold relaunch after completion"
+          adb shell input keyevent KEYCODE_X
+          sleep 2
+          adb shell input keyevent KEYCODE_X
+          sleep 8
+          adb shell input keyevent KEYCODE_X
+          sleep 5
+          shot 04-level-select-after-restart.png
+
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+
+          [ -n "$(alive)" ] || fail "process died attempting persisted Level 3"
+          shot 05-level3-persistence-proof.png
+          adb logcat -d > evidence/logcat-final.txt 2>&1
+          dumpfocus > evidence/focus-final.txt
+          if grep -E "FATAL EXCEPTION|Fatal signal|SecurityError|Permission denied|EACCES|Error #[0-9]+" evidence/logcat-final.txt > evidence/final-error-scan.txt; then
+            fail "fatal/security/AS3 error signature after cold persistence test"
+          fi
+
+          echo "PASS-CANDIDATE: Level 2 completion/save path stayed alive without fatal/security/AS3 signatures; app cold-relaunched and attempted persisted Level 3. Visual review of screenshots is mandatory." | tee evidence/result.txt
+          EOF
+          chmod +x save-qa.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise completion persistence
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash save-qa.sh
+
+      - name: Upload save QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-save-persistence-evidence
+          path: evidence
+          if-no-files-found: warn
