@@ -32,7 +32,7 @@ package
 
 	public class PCHelpState extends FlxState
 	{
-		public var helpStr:String =	"How to play (touch):\n\nMenus\nSwipe up, down, left, or right to move the selection. Tap to choose.\n\nGameplay\nUse LEFT and RIGHT to move.\nACTION makes Andre dash and lets Liselot talk or push crates.\nJUMP jumps; Liselot can jump again in the air.\nSWITCH changes between Andre and Liselot.\nPIGGY carries or releases a character when they are touching.\nPAUSE pauses or resumes; while paused, use the controls to restart or return to the menu.\nYou can also swipe sideways in the upper play area for piggyback.\n\nGet both Andre and Liselot to the exit to finish the level.\n\nScoring:\nCollect the bottle to receive a bottle cap badge. Talk to Andre and to a co-worker to receive the speech badges for the level.\n\nHave fun and get to know everyone. ";		
+		public var helpStr:String =	"How to play (touch):\n\nMenus\nSwipe up, down, left, or right to move the selection. Tap to choose.\n\nGameplay\nUse LEFT and RIGHT to move.\nACTION makes Andre dash and lets Liselot talk or push crates.\nJUMP jumps; Liselot can jump again in the air.\nSWITCH changes between Andre and Liselot.\nPIGGY carries or releases a character when they are touching.\nPAUSE pauses or resumes; while paused, use the controls to restart or return to the menu.\n\nGet both Andre and Liselot to the exit to finish the level.\n\nScoring:\nCollect the bottle to receive a bottle cap badge. Talk to Andre and to a co-worker to receive the speech badges for the level.\n\nHave fun and get to know everyone. ";		
 		
 		public var helpTxt:FlxText;
 		
