@@ -5,6 +5,7 @@ package
 	import flash.text.TextFormat;
 	import org.flixel.*;
 	import io.arkeus.ouya.ControllerInput;
+	import io.arkeus.ouya.controller.OuyaController;
 
 	//WINNITRON : 
 	//[SWF(width="1024", height="768", backgroundColor="#000000")]
@@ -28,6 +29,12 @@ package
 		{
 			// RIGHT ONE
 			super(640, 360, PCIntroState, 3, 60, 30);
+
+			// Legacy gameplay polls FlxG.ouyaController directly in many states.
+			// A modern Android device may have no OUYA/GameInput hardware at all, so
+			// install an inert typed controller until PCIntroState discovers real input.
+			if (FlxG.ouyaController == null)
+				FlxG.ouyaController = new OuyaController(null);
 			
 			FlxG.debug = forceDebugger = false;
 			Registry.isPCVersion = true;
