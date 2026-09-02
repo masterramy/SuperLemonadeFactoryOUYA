@@ -35,10 +35,10 @@ jobs:
         run: |
           $path = 'src/PCPlayState.as'
           $text = Get-Content -Raw $path
-          $needle = "`t`t`tSuper.update();"
+          $needle = "`t`t`tsuper.update();"
           $replacement = $needle + "`r`n`t`t`t// GATE2A_QA_ONLY: invoke the real game-over path without altering shipping source.`r`n`t`t`tif (FlxG.keys.justPressed(`"G`")) { this.tryAgain(); }"
           $count = ([regex]::Matches($text, [regex]::Escape($needle))).Count
-          if ($count -ne 1) { throw "Expected exactly one PCPlayState Super.update() needle; found $count" }
+          if ($count -ne 1) { throw "Expected exactly one PCPlayState super.update() needle; found $count" }
           $text = $text.Replace($needle, $replacement)
           Set-Content -Path $path -Value $text -NoNewline
           Select-String -Path $path -Pattern 'GATE2A_QA_ONLY' | ForEach-Object { $_.Line }
