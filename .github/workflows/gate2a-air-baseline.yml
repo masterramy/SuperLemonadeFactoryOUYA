@@ -310,7 +310,79 @@ jobs:
             exit 24
           fi
 
-          echo "PASS-CANDIDATE: app installed, deterministic activity launch stayed focused in landscape, system overlays were cleared, two intro presses were delivered, and the process remained healthy. Visual screenshot review is still required before menu proof." | tee smoke/result.txt
+          # Main-menu and level-select navigation deliberately use the game's own
+          # legacy keyboard path. The menu hides FlxG.mouse, so coordinate taps would
+          # not exercise the real selection logic. X activates the highlighted item.
+          adb shell input keyevent KEYCODE_X
+          sleep 4
+
+          PID_LEVEL_SELECT=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_LEVEL_SELECT" > smoke/pid-after-factory-floor.txt
+          adb shell dumpsys window > smoke/window-after-factory-floor.txt 2>&1
+          adb exec-out screencap -p > smoke/03-level-select.png
+          adb logcat -d > smoke/logcat-after-factory-floor.txt 2>&1
+
+          if [ -z "$PID_LEVEL_SELECT" ]; then
+            echo "App process died entering level select" | tee smoke/result.txt
+            exit 31
+          fi
+          CURRENT_FOCUS_LEVEL=$(grep -m1 'mCurrentFocus=' smoke/window-after-factory-floor.txt || true)
+          echo "$CURRENT_FOCUS_LEVEL" > smoke/current-focus-after-factory-floor.txt
+          if ! echo "$CURRENT_FOCUS_LEVEL" | grep -q "$PACKAGE"; then
+            echo "App lost visible focus entering level select: $CURRENT_FOCUS_LEVEL" | tee smoke/result.txt
+            exit 32
+          fi
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-factory-floor.txt > smoke/fatal-scan-level-select.txt; then
+            echo "Fatal runtime signature found entering level select" | tee smoke/result.txt
+            exit 33
+          fi
+
+          # Fresh saves unlock Levels 1 and 2. Level Select restores Level 1 as the
+          # highlighted button, so RIGHT then X deterministically chooses Level 2.
+          # Level 2 bypasses the Level-1 cinematic and enters PCPlayState directly.
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+
+          PID_GAMEPLAY=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          echo "$PID_GAMEPLAY" > smoke/pid-after-level2.txt
+          adb shell dumpsys window > smoke/window-after-level2.txt 2>&1
+          adb exec-out screencap -p > smoke/04-level2-gameplay.png
+          adb logcat -d > smoke/logcat-after-level2.txt 2>&1
+
+          if [ -z "$PID_GAMEPLAY" ]; then
+            echo "App process died entering Level 2 gameplay" | tee smoke/result.txt
+            exit 41
+          fi
+          CURRENT_FOCUS_GAME=$(grep -m1 'mCurrentFocus=' smoke/window-after-level2.txt || true)
+          echo "$CURRENT_FOCUS_GAME" > smoke/current-focus-after-level2.txt
+          if ! echo "$CURRENT_FOCUS_GAME" | grep -q "$PACKAGE"; then
+            echo "App lost visible focus entering Level 2 gameplay: $CURRENT_FOCUS_GAME" | tee smoke/result.txt
+            exit 42
+          fi
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" smoke/logcat-after-level2.txt > smoke/fatal-scan-level2.txt; then
+            echo "Fatal runtime signature found entering Level 2 gameplay" | tee smoke/result.txt
+            exit 43
+          fi
+
+          read GAME_W GAME_H < <(python3 - <<'PY'
+          import struct
+          with open('smoke/04-level2-gameplay.png','rb') as f:
+              data=f.read(24)
+          if len(data) >= 24 and data[:8] == b'\x89PNG\r\n\x1a\n':
+              print(*struct.unpack('>II', data[16:24]))
+          else:
+              print('0 0')
+          PY
+          )
+          echo "level2_candidate_screenshot=${GAME_W}x${GAME_H}" >> smoke/screenshot-dimensions.txt
+          if [ "$GAME_W" -le "$GAME_H" ]; then
+            echo "Level 2 gameplay candidate did not remain landscape: ${GAME_W}x${GAME_H}" | tee smoke/result.txt
+            exit 44
+          fi
+
+          echo "PASS-CANDIDATE: app installed, intro and menu path stayed focused in landscape, Factory Floor was activated through the legacy keyboard input path, Level Select remained healthy, Level 2 was selected with RIGHT+X, and the process remained healthy in the gameplay candidate. Visual screenshot review is still required before gameplay proof." | tee smoke/result.txt
           EOF
           chmod +x smoke-runtime.sh
 
@@ -320,7 +392,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Boot Android and exercise intro-to-menu path
+      - name: Boot Android and exercise intro-to-gameplay path
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
