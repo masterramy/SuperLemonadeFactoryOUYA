@@ -14,9 +14,8 @@ package
 	import org.flixel.FlxG;
 
 	/**
-	 * Android/mobile compatibility layer derived from the title's original iOS
-	 * control semantics. Native touch is translated into the legacy keyboard
-	 * inputs already consumed by the game, leaving state/gameplay logic untouched.
+	 * Android/mobile compatibility layer. Native touch is translated into the
+	 * exact legacy keyboard inputs consumed by the shipping game.
 	 */
 	public class MobileControls
 	{
@@ -24,11 +23,11 @@ package
 		private static const KEY_UP:uint = 38;
 		private static const KEY_RIGHT:uint = 39;
 		private static const KEY_DOWN:uint = 40;
+		private static const KEY_B:uint = 66;
 		private static const KEY_C:uint = 67;
 		private static const KEY_P:uint = 80;
 		private static const KEY_V:uint = 86;
 		private static const KEY_X:uint = 88;
-		private static const KEY_Z:uint = 90;
 
 		private var root:DisplayObjectContainer;
 		private var overlay:Sprite = new Sprite();
@@ -65,10 +64,18 @@ package
 				return;
 			Multitouch.inputMode = MultitouchInputMode.TOUCH_POINT;
 			root.stage.addChild(overlay);
-			root.stage.addEventListener(TouchEvent.TOUCH_BEGIN, onTouchBegin, false, 0, true);
-			root.stage.addEventListener(TouchEvent.TOUCH_MOVE, onTouchMove, false, 0, true);
-			root.stage.addEventListener(TouchEvent.TOUCH_END, onTouchEnd, false, 0, true);
+			// High priority plus preventDefault keeps AIR from also turning the same
+			// physical touch into a legacy mouse click, which otherwise double-fires.
+			root.stage.addEventListener(TouchEvent.TOUCH_BEGIN, onTouchBegin, false, 1000, true);
+			root.stage.addEventListener(TouchEvent.TOUCH_MOVE, onTouchMove, false, 1000, true);
+			root.stage.addEventListener(TouchEvent.TOUCH_END, onTouchEnd, false, 1000, true);
 			root.addEventListener(Event.ENTER_FRAME, onFrame, false, 0, true);
+		}
+
+		private function suppressSynthesizedMouse(e:TouchEvent):void
+		{
+			if (e.cancelable)
+				e.preventDefault();
 		}
 
 		private function gameplayActive():Boolean
@@ -121,6 +128,7 @@ package
 			var bounds:Rectangle = gameBounds();
 			if (!bounds.contains(x, y)) return 0;
 
+			// PlayState's canonical pause key is P.
 			if (x >= bounds.x + bounds.width * 5.0 / 6.0 && y <= bounds.y + bounds.height * 0.17)
 				return KEY_P;
 
@@ -129,14 +137,16 @@ package
 			var nx:Number = (x - bounds.x) / bounds.width;
 			if (nx < 1.0 / 6.0) return KEY_LEFT;
 			if (nx < 2.0 / 6.0) return KEY_RIGHT;
-			if (nx < 3.0 / 6.0) return KEY_C;
-			if (nx < 4.0 / 6.0) return KEY_V;
+			// Registry is authoritative: V=switch, B=piggyback, X=action, C=jump.
+			if (nx < 3.0 / 6.0) return KEY_V;
+			if (nx < 4.0 / 6.0) return KEY_B;
 			if (nx < 5.0 / 6.0) return KEY_X;
-			return KEY_Z;
+			return KEY_C;
 		}
 
 		private function onTouchBegin(e:TouchEvent):void
 		{
+			suppressSynthesizedMouse(e);
 			var id:String = String(e.touchPointID);
 			var bounds:Rectangle = gameBounds();
 			if (!bounds.contains(e.stageX, e.stageY)) return;
@@ -151,12 +161,11 @@ package
 			touchKeys[id] = key;
 			if (key != 0)
 				pressKey(key);
-			else if (e.stageY < bounds.y + bounds.height * 0.75)
-				touchStarts[id] = {x:e.stageX, y:e.stageY, navigation:false};
 		}
 
 		private function onTouchMove(e:TouchEvent):void
 		{
+			suppressSynthesizedMouse(e);
 			if (!gameplayActive()) return;
 			var id:String = String(e.touchPointID);
 			if (touchKeys[id] === undefined) return;
@@ -171,6 +180,7 @@ package
 
 		private function onTouchEnd(e:TouchEvent):void
 		{
+			suppressSynthesizedMouse(e);
 			var id:String = String(e.touchPointID);
 			if (touchKeys[id] !== undefined)
 			{
@@ -194,19 +204,25 @@ package
 			{
 				var threshold:Number = Math.min(bounds.width, bounds.height) * 0.08;
 				if (Math.max(ax, ay) < threshold)
-					pulseKey(KEY_X);
+				{
+					if (FlxG.state is PCIntroState)
+					{
+						// Historical intro deliberately required two action presses. On touch,
+						// one physical TAP TO START performs that two-beat sequence deterministically.
+						pulseKey(KEY_X);
+						setTimeout(function():void
+						{
+							if (FlxG.state is PCIntroState) pulseKey(KEY_X);
+						}, 180);
+					}
+					else
+						pulseKey(KEY_X);
+				}
 				else if (ax >= ay)
 					pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
 				else
 					pulseKey(dy < 0 ? KEY_UP : KEY_DOWN);
-				return;
 			}
-
-			if (!gameplayActive()) return;
-			if (ax > ay && ax >= bounds.width * 0.12)
-				pulseKey(KEY_V);
-			else if (ay > ax && ay >= bounds.height * 0.12)
-				pulseKey(dy < 0 ? KEY_UP : KEY_DOWN);
 		}
 
 		private function pressKey(key:uint):void
@@ -283,13 +299,10 @@ package
 			clearOverlay(bounds, mode);
 			if (mode == "intro")
 			{
-				// Cover the legacy "Press O" prompt with the truthful Android affordance.
 				drawHint(bounds.x, bounds.y + bounds.height * 0.80, bounds.width, bounds.height * 0.14, "TAP TO START", 0xd3bdb2, 1.0, 0x7725a1);
 			}
 			else if (mode == "cinematic")
 			{
-				// Cover obsolete OUYA Y/O prompts. Full-scene skip remains controller-only;
-				// touch users can advance every dialogue beat with a tap.
 				drawHint(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.035, bounds.width * 0.25, bounds.height * 0.08, "CUT SCENE", 0x000000, 1.0, 0xffffff);
 				drawHint(bounds.x + bounds.width * 0.68, bounds.y + bounds.height * 0.88, bounds.width * 0.29, bounds.height * 0.08, "TAP TO CONTINUE", 0x000000, 1.0, 0xffffff);
 			}
