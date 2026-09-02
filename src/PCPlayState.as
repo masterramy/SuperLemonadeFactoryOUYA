@@ -525,7 +525,7 @@ package
 			
 			var export:String = (_wh + ".\n" + _ftry + ".\n" + _mgmt + ".\n" + _hcwh + ".\n" + _hcftry + ".\n" + _hcmgmt + ".\n" + _whtalk + ".\n" + _ftrytalk + ".\n" + _mgmttalk + ".\n" + _hcwhtalk + ".\n" + _hcftrytalk + ".\n" + _hcmgmttalk + ".\n" + _whtalkandre + ".\n" + _ftrytalkandre + ".\n" + _mgmttalkandre + ".\n" + _hcwhtalkandre + ".\n" + _hcftrytalkandre + ".\n" + _hcmgmttalkandre + ".\n" + _whcap + ".\n" + _ftrycap + ".\n" + _mgmtcap + ".\n" + _hcwhcap + ".\n" + _hcftrycap + ".\n" + _hcmgmtcap + ".\n" + "number of plays: " + _plays + ".\n  This file was going to be encoded with a hash and salted.\n    It wasn't. ");
 			
-			var file:File = File.userDirectory; 
+			var file:File = File.applicationStorageDirectory; 
 			file=file.resolvePath("SUPERLEMONADEFACTORY/progress_backup.slf");  
 			var fileStream:FileStream = new FileStream();  
 			fileStream.open(file, FileMode.WRITE);  
