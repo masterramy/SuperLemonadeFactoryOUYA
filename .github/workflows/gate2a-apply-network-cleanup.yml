@@ -23,6 +23,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
+          import base64
           from pathlib import Path
 
           play_path = Path('src/PlayState.as')
@@ -49,67 +50,8 @@ jobs:
               raise SystemExit('Legacy SoftDrink telemetry endpoint still present after edit')
           play_path.write_text(play, encoding='utf-8', newline='\n')
 
-          prize = '''package
-{
-\timport org.flixel.*;
-
-\tpublic class PrizeState extends FlxState
-\t{
-\t\tprivate var backBtn:FlxButton;
-\t\tprivate var titleTxt:FlxText;
-\t\tprivate var timeOnScreen:Number;
-
-\t\toverride public function create():void
-\t\t{
-\t\t\ttimeOnScreen = 0;
-\t\t\tFlxG.bgColor = 0xffa5a5ff;
-
-\t\t\tvar bg:FlxSprite = new FlxSprite(20, 20);
-\t\t\tbg.makeGraphic(FlxG.width - 40, FlxG.height - 40, 0xff4343e7, false);
-\t\t\tadd(bg);
-
-\t\t\ttitleTxt = new FlxText(24, 70, FlxG.width - 48,
-\t\t\t\t"OLD SCHOOL COMPLETE!\\n\\nYou completed every normal and hardcore level in one run.\\n\\nYou are a real human being and a real hero.");
-\t\t\ttitleTxt.setFormat("commodore", 8, 0xDBDBDB, "center");
-\t\t\tadd(titleTxt);
-
-\t\t\tbackBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height - 70, "BACK TO GAME", backToGame);
-\t\t\tbackBtn.color = 0xCCEEF9;
-\t\t\tbackBtn.label.color = 0xffffff;
-\t\t\tbackBtn.status = FlxButton.HIGHLIGHT;
-\t\t\tadd(backBtn);
-
-\t\t\tif (Registry.mouseEnabled)
-\t\t\t\tFlxG.mouse.show();
-\t\t\telse
-\t\t\t\tFlxG.mouse.hide();
-\t\t}
-
-\t\toverride public function update():void
-\t\t{
-\t\t\ttimeOnScreen += FlxG.elapsed;
-\t\t\tif (timeOnScreen > 0.5 &&
-\t\t\t\t(FlxG.keys.justPressed(Registry.p1Action) ||
-\t\t\t\t FlxG.keys.justPressed(Registry.p1Jump) ||
-\t\t\t\t FlxG.keys.justPressed(Registry.p1Switch) ||
-\t\t\t\t FlxG.joystick.j1ButtonAJustPressed ||
-\t\t\t\t FlxG.ouyaController.o.pressed))
-\t\t\t{
-\t\t\t\tbackToGame();
-\t\t\t\treturn;
-\t\t\t}
-\t\t\tsuper.update();
-\t\t}
-
-\t\tprivate function backToGame():void
-\t\t{
-\t\t\tFlxG.playMusic(Registry.SndEcho, 1.0);
-\t\t\tFlxG.switchState(new PCMenuState());
-\t\t}
-\t}
-}
-'''
-          Path('src/PrizeState.as').write_text(prize, encoding='utf-8', newline='\n')
+          prize_b64 = 'cGFja2FnZQp7CglpbXBvcnQgb3JnLmZsaXhlbC4qOwoKCXB1YmxpYyBjbGFzcyBQcml6ZVN0YXRlIGV4dGVuZHMgRmx4U3RhdGUKCXsKCQlwcml2YXRlIHZhciBiYWNrQnRuOkZseEJ1dHRvbjsKCQlwcml2YXRlIHZhciB0aXRsZVR4dDpGbHhUZXh0OwoJCXByaXZhdGUgdmFyIHRpbWVPblNjcmVlbjpOdW1iZXI7CgoJCW92ZXJyaWRlIHB1YmxpYyBmdW5jdGlvbiBjcmVhdGUoKTp2b2lkCgkJewoJCQl0aW1lT25TY3JlZW4gPSAwOwoJCQlGbHhHLmJnQ29sb3IgPSAweGZmYTVhNWZmOwoKCQkJdmFyIGJnOkZseFNwcml0ZSA9IG5ldyBGbHhTcHJpdGUoMjAsIDIwKTsKCQkJYmcubWFrZUdyYXBoaWMoRmx4Ry53aWR0aCAtIDQwLCBGbHhHLmhlaWdodCAtIDQwLCAweGZmNDM0M2U3LCBmYWxzZSk7CgkJCWFkZChiZyk7CgoJCQl0aXRsZVR4dCA9IG5ldyBGbHhUZXh0KDI0LCA3MCwgRmx4Ry53aWR0aCAtIDQ4LAoJCQkJIk9MRCBTQ0hPT0wgQ09NUExFVEUhXG5cbllvdSBjb21wbGV0ZWQgZXZlcnkgbm9ybWFsIGFuZCBoYXJkY29yZSBsZXZlbCBpbiBvbmUgcnVuLlxuXG5Zb3UgYXJlIGEgcmVhbCBodW1hbiBiZWluZyBhbmQgYSByZWFsIGhlcm8uIik7CgkJCXRpdGxlVHh0LnNldEZvcm1hdCgiY29tbW9kb3JlIiwgOCwgMHhEQkRCREIsICJjZW50ZXIiKTsKCQkJYWRkKHRpdGxlVHh0KTsKCgkJCWJhY2tCdG4gPSBuZXcgRmx4QnV0dG9uKEZseEcud2lkdGggLyAyIC0gNDAsIEZseEcuaGVpZ2h0IC0gNzAsICJCQUNLIFRPIEdBTUUiLCBiYWNrVG9HYW1lKTsKCQkJYmFja0J0bi5jb2xvciA9IDB4Q0NFRUY5OwoJCQliYWNrQnRuLmxhYmVsLmNvbG9yID0gMHhmZmZmZmY7CgkJCWJhY2tCdG4uc3RhdHVzID0gRmx4QnV0dG9uLkhJR0hMSUdIVDsKCQkJYWRkKGJhY2tCdG4pOwoKCQkJaWYgKFJlZ2lzdHJ5Lm1vdXNlRW5hYmxlZCkKCQkJCUZseEcubW91c2Uuc2hvdygpOwoJCQllbHNlCgkJCQlGbHhHLm1vdXNlLmhpZGUoKTsKCQl9CgoJCW92ZXJyaWRlIHB1YmxpYyBmdW5jdGlvbiB1cGRhdGUoKTp2b2lkCgkJewoJCQl0aW1lT25TY3JlZW4gKz0gRmx4Ry5lbGFwc2VkOwoJCQlpZiAodGltZU9uU2NyZWVuID4gMC41ICYmCgkJCQkoRmx4Ry5rZXlzLmp1c3RQcmVzc2VkKFJlZ2lzdHJ5LnAxQWN0aW9uKSB8fAoJCQkJIEZseEcua2V5cy5qdXN0UHJlc3NlZChSZWdpc3RyeS5wMUp1bXApIHx8CgkJCQkgRmx4Ry5rZXlzLmp1c3RQcmVzc2VkKFJlZ2lzdHJ5LnAxU3dpdGNoKSB8fAoJCQkJIEZseEcuam95c3RpY2suajFCdXR0b25BSnVzdFByZXNzZWQgfHwKCQkJCSBGbHhHLm91eWFDb250cm9sbGVyLm8ucHJlc3NlZCkpCgkJCXsKCQkJCWJhY2tUb0dhbWUoKTsKCQkJCXJldHVybjsKCQkJfQoJCQlzdXBlci51cGRhdGUoKTsKCQl9CgoJCXByaXZhdGUgZnVuY3Rpb24gYmFja1RvR2FtZSgpOnZvaWQKCQl7CgkJCUZseEcucGxheU11c2ljKFJlZ2lzdHJ5LlNuZEVjaG8sIDEuMCk7CgkJCUZseEcuc3dpdGNoU3RhdGUobmV3IFBDTWVudVN0YXRlKCkpOwoJCX0KCX0KfQo='
+          Path('src/PrizeState.as').write_bytes(base64.b64decode(prize_b64))
 
           app_path = Path('application.xml')
           app = app_path.read_text(encoding='utf-8')
@@ -119,7 +61,6 @@ jobs:
           app = app.replace(permission, '', 1)
           app_path.write_text(app, encoding='utf-8', newline='\n')
 
-          # Source assertions for the shipping runtime paths we intentionally changed.
           for forbidden in (
               'http://initialscommand.com/php/add.php',
               'http://initialscommand.com/php/oldschool_add.php',
