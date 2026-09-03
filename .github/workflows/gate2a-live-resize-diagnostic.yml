@@ -1,0 +1,130 @@
+name: Gate 2A Live Resize Diagnostic
+
+on:
+  push:
+    branches: [gate2a-live-resize-diagnostic]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2a-live-resize-diagnostic
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile instrumented candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -debug=true -omit-trace-statements=false -output=bin\SLFforOuya.swf
+      - name: Package x64 diagnostic APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Live Resize Diagnostic" 2048-RSA diagnostic.p12 gate2a
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $sdk=$env:ANDROID_SDK_ROOT; if([string]::IsNullOrWhiteSpace($sdk)){$sdk=$env:ANDROID_HOME}
+          $ok=$false
+          for($n=1;$n -le 3;$n++){
+            Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-live-resize-diagnostic.apk
+            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore diagnostic.p12 -storepass gate2a dist/SLF-live-resize-diagnostic.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+            if($LASTEXITCODE -eq 0 -and (Test-Path dist/SLF-live-resize-diagnostic.apk)){$ok=$true;break}
+            if($n -lt 3){Start-Sleep 45}
+          }
+          if(-not $ok){throw 'APK packaging failed'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-live-resize-diagnostic-apk
+          path: dist/SLF-live-resize-diagnostic.apk
+          if-no-files-found: error
+
+  runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-live-resize-diagnostic-apk
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write diagnostic harness
+        shell: bash
+        run: |
+          cat > diagnostic.sh <<'EOS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          O=live-resize-diagnostic; mkdir -p "$O"; P=air.com.initialsgames.SLF
+          adb install -r apk/SLF-live-resize-diagnostic.apk >"$O/install.txt" 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+
+          adb shell wm size 1600x1760 >/dev/null 2>&1
+          adb shell am force-stop "$P" >/dev/null 2>&1 || true
+          adb shell pm clear "$P" >/dev/null 2>&1 || true
+          adb logcat -c
+          adb shell am start -W -n "$P/.AIRAppEntry" >"$O/launch.txt" 2>&1
+          sleep 12
+          adb exec-out screencap -p >"$O/01-fold.png"
+          adb shell wm size >"$O/01-wm-size.txt"
+          adb shell dumpsys window >"$O/01-window.txt"
+          adb shell dumpsys activity activities >"$O/01-activity.txt"
+          adb shell dumpsys display >"$O/01-display.txt"
+          adb logcat -d >"$O/01-logcat.txt"
+          grep -F "[GATE2A_RESIZE]" "$O/01-logcat.txt" >"$O/01-air-viewport.txt" || true
+
+          adb shell wm size 1440x3120 >/dev/null 2>&1
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          sleep 12
+          adb exec-out screencap -p >"$O/02-expanded.png"
+          adb shell wm size >"$O/02-wm-size.txt"
+          adb shell dumpsys window >"$O/02-window.txt"
+          adb shell dumpsys activity activities >"$O/02-activity.txt"
+          adb shell dumpsys display >"$O/02-display.txt"
+          adb logcat -d >"$O/02-logcat.txt"
+          grep -F "[GATE2A_RESIZE]" "$O/02-logcat.txt" >"$O/02-air-viewport.txt" || true
+
+          PID=$(adb shell pidof "$P" | tr -d '\r' || true)
+          FOCUS=$(adb shell dumpsys window | grep -m1 mCurrentFocus || true)
+          printf 'pid=%s\nfocus=%s\n' "$PID" "$FOCUS" >"$O/summary.txt"
+          printf '\n--- FOLD AIR VIEWPORT ---\n' >>"$O/summary.txt"
+          cat "$O/01-air-viewport.txt" >>"$O/summary.txt" || true
+          printf '\n--- EXPANDED AIR VIEWPORT ---\n' >>"$O/summary.txt"
+          cat "$O/02-air-viewport.txt" >>"$O/summary.txt" || true
+          adb shell wm size reset >/dev/null 2>&1 || true
+          EOS
+          chmod +x diagnostic.sh
+      - name: Run live resize diagnostic
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash diagnostic.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-live-resize-diagnostic-evidence
+          path: live-resize-diagnostic
+          if-no-files-found: error
