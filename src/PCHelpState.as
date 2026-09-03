@@ -32,19 +32,15 @@ package
 
 	public class PCHelpState extends FlxState
 	{
-		//How to play (2 players):\n\nAndre\nUse the arrow keys to move\nPress B to dash. You can break up big crates this way.\nPress N to jump.\n\nLiselot\nUse the WASD keys to move\nPress B while facing an enemy to stop and talk.\nPress B while pushing a crate to slide it across the floor.\nPress N to jump. Press N again in the air to double jump.\n\n
-		//\n\nClearing your Flash history can delete level progress. To restore, go to Options and import this file -> USER_DIR/SUPERLEMONADEFACTORY/progress_backup.slf
-		public var helpStr:String =	"How to play (1 player):\n\nUse the D-Pad or Left Stick to move\nAndre\nPress U to dash. You can break up big crates this way.\nPress O to jump.\n\nLiselot\nPress U while facing an enemy to stop and talk.\nPress U while pushing a crate to slide it across the floor.\nPress O to jump. Press O again in the air to double jump.\n\nPress A to switch characters.\nPress Y to piggyback when touching.\n\nPress R3 to pause and be able to exit the level or go back to a previous menu.\n\nGet both Andre and Liselot to the exit to finish the level.\n\nScoring:\nCollect the bottle to recieve a bottle cap badge for the level. Talk to Andre to recieve a speech bubble badge for the level. Talk to a co-worker to recieve a speech bubble badge for the level.\n\nHave fun and get to know everyone. ";		
+		public var helpStr:String =	"How to play (touch):\n\nMenus\nSwipe up, down, left, or right to move the selection. Tap to choose.\n\nGameplay\nUse LEFT and RIGHT to move.\nACTION makes Andre dash and lets Liselot talk or push crates.\nJUMP jumps; Liselot can jump again in the air.\nSWITCH changes between Andre and Liselot.\nPIGGY carries or releases a character when they are touching.\nPAUSE pauses or resumes; while paused, use the controls to restart or return to the menu.\n\nGet both Andre and Liselot to the exit to finish the level.\n\nScoring:\nCollect the bottle to receive a bottle cap badge. Talk to Andre and to a co-worker to receive the speech badges for the level.\n\nHave fun and get to know everyone. ";		
 		
 		public var helpTxt:FlxText;
 		
 		override public function create():void
 		{
-			
 			FlxG.bgColor = 0xffF8CB8F;
 			
-			//	Make the gradient retro looking and "chunky" with the chucnkSize parameter (here set to 4)
-			var gradient2:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, FlxG.height, [0xffcac5ac, 0xffdedbc3 , 0xffdfdcc4], 10 ); //0xffd6d3ba
+			var gradient2:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, FlxG.height, [0xffcac5ac, 0xffdedbc3 , 0xffdfdcc4], 10 );
 			gradient2.x = 0;
 			gradient2.y = 0;
 			add(gradient2);
@@ -57,22 +53,12 @@ package
 			borderBottom.loadTiles(Registry.ImgLevel1Tiles, 10, 10, 0,true);
 			add(borderBottom);	
 			
-			
-			//var headingTxt:FlxText = new FlxText(0, 8, FlxG.width, "Help", true);
-			//headingTxt.color = 0xffffffff;
-			//headingTxt.size = 8;
-			//headingTxt.alignment = "center";
-			//add(headingTxt);
-			
-			
-			
 			if (Registry.mouseEnabled) {
 				FlxG.mouse.show();
 			}
 			else if (!Registry.mouseEnabled) {
 				FlxG.mouse.hide();
 			}
-			
 			
 			helpTxt = new FlxText(40, 40, FlxG.width-80, helpStr);
 			helpTxt.size = 8;
@@ -87,30 +73,22 @@ package
 			backBtn.color = Registry.WAREHOUSE_PURPLE;
 			backBtn.label.color = 0xffffff;
 			add(backBtn);
-			
-			
 		}
 
 		override public function update():void
 		{
-			
 			if ((FlxG.keys.justPressed(Registry.homeKey)||FlxG.keys.justPressed(Registry.p1Jump)||FlxG.keys.justPressed(Registry.p1Action) || FlxG.joystick.j1ButtonBackJustPressed || FlxG.joystick.j1ButtonAJustPressed || FlxG.ouyaController.o.pressed) && !fading) {
 				FlxG.play(Registry.SndPing,Registry.pingVolume);
 				onQuit();			
-				
 			}
 			
 			if (FlxG.ouyaController.a.pressed) onQuit();
-			
 			super.update();
-
 		}
 		
 		protected function onQuit():void
 		{
 			FlxG.switchState(new PCMenuState());
 		}
-		
-		
 	}
 }
