@@ -10,7 +10,7 @@
 	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
 	<uses-feature android:required="true" android:name="android.hardware.touchscreen.multitouch" />
 	<application android:debuggable="true">
-		<activity>
+		<activity android:configChanges="fontScale|keyboard|keyboardHidden|orientation">
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="android.intent.category.LAUNCHER" />
