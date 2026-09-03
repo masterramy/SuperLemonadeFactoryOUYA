@@ -43,7 +43,7 @@
     <content>SLFforOuya.swf</content>
     <visible>true</visible>
     <fullScreen>true</fullScreen>
-    <autoOrients>false</autoOrients>
+    <autoOrients>true</autoOrients>
     <aspectRatio>landscape</aspectRatio>
     <renderMode>cpu</renderMode>
     <!--<depthAndStencil>true</depthAndStencil>-->
