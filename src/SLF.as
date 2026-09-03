@@ -3,6 +3,7 @@ package
 	import flash.display.StageAlign;
 	import flash.display.StageScaleMode;
 	import flash.events.Event;
+	import flash.system.Capabilities;
 	import org.flixel.*;
 	import io.arkeus.ouya.ControllerInput;
 	import io.arkeus.ouya.controller.OuyaController;
@@ -23,6 +24,8 @@ package
 		private static const CANVAS_WIDTH:Number = 1920;
 		private static const CANVAS_HEIGHT:Number = 1080;
 		private var mobileControls:MobileControls;
+		private var qaFrame:int = 0;
+		private var qaLastSignature:String = "";
 
 		public function SLF()
 		{
@@ -54,8 +57,46 @@ package
 			removeEventListener(Event.ADDED_TO_STAGE, configureModernStage);
 			stage.scaleMode = StageScaleMode.NO_SCALE;
 			stage.align = StageAlign.TOP_LEFT;
-			stage.addEventListener(Event.RESIZE, fitModernStage, false, 0, true);
+			stage.addEventListener(Event.RESIZE, onModernStageResize, false, 0, true);
+			stage.addEventListener(Event.ENTER_FRAME, monitorViewport, false, 0, true);
+			qaTraceViewport("ADDED_TO_STAGE");
 			fitModernStage();
+			qaTraceViewport("AFTER_INITIAL_FIT");
+		}
+
+		private function onModernStageResize(event:Event):void
+		{
+			qaTraceViewport("RESIZE_EVENT_BEFORE_FIT");
+			fitModernStage(event);
+			qaTraceViewport("RESIZE_EVENT_AFTER_FIT");
+		}
+
+		private function monitorViewport(event:Event):void
+		{
+			qaFrame++;
+			if (stage == null) return;
+			var signature:String = viewportSignature();
+			if (signature != qaLastSignature || qaFrame % 120 == 0)
+			{
+				qaLastSignature = signature;
+				trace("[GATE2A_RESIZE] FRAME=" + qaFrame + " " + signature);
+			}
+		}
+
+		private function viewportSignature():String
+		{
+			if (stage == null) return "stage=null";
+			return "stage=" + stage.stageWidth + "x" + stage.stageHeight +
+				" fullscreen=" + stage.fullScreenWidth + "x" + stage.fullScreenHeight +
+				" screen=" + Capabilities.screenResolutionX + "x" + Capabilities.screenResolutionY +
+				" rootXY=" + x.toFixed(3) + "," + y.toFixed(3) +
+				" rootScale=" + scaleX.toFixed(6) + "," + scaleY.toFixed(6) +
+				" stageAlign=" + stage.align + " stageScaleMode=" + stage.scaleMode;
+		}
+
+		private function qaTraceViewport(label:String):void
+		{
+			trace("[GATE2A_RESIZE] " + label + " " + viewportSignature());
 		}
 
 		private function fitModernStage(event:Event = null):void
