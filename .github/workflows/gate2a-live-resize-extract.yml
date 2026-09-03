@@ -1,0 +1,79 @@
+name: Gate 2A Live Resize Extract
+
+on:
+  push:
+    branches: [gate2a-live-resize-diagnostic]
+    paths: [.github/workflows/gate2a-live-resize-extract.yml]
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-live-resize-diagnostic-apk
+          path: apk
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 33720779798
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write extractor
+        shell: bash
+        run: |
+          cat > extract.sh <<'EOS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          O=live-resize-extract; mkdir -p "$O"; P=air.com.initialsgames.SLF
+          GEOM='com.initialsgames.SLF/Local Store/resize-geometry.txt'
+          adb install -r apk/SLF-live-resize-diagnostic.apk >"$O/install.txt" 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell wm size 1600x1760 >/dev/null 2>&1
+          adb shell am force-stop "$P" >/dev/null 2>&1 || true
+          adb shell pm clear "$P" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$P/.AIRAppEntry" >"$O/launch.txt" 2>&1
+          sleep 10
+          adb exec-out screencap -p >"$O/01-fold.png"
+          adb exec-out run-as "$P" cat "$GEOM" >"$O/01-air-geometry.txt" 2>"$O/01-air-error.txt" || true
+          adb shell wm size >"$O/01-wm-size.txt"
+          adb shell wm size 1440x3120 >/dev/null 2>&1
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          sleep 10
+          adb exec-out screencap -p >"$O/02-expanded.png"
+          adb exec-out run-as "$P" cat "$GEOM" >"$O/02-air-geometry.txt" 2>"$O/02-air-error.txt" || true
+          adb shell wm size >"$O/02-wm-size.txt"
+          PID=$(adb shell pidof "$P" | tr -d '\r' || true)
+          FOCUS=$(adb shell dumpsys window | grep -m1 mCurrentFocus || true)
+          printf 'pid=%s\nfocus=%s\n' "$PID" "$FOCUS" >"$O/summary.txt"
+          echo '--- FOLD ---' >>"$O/summary.txt"; cat "$O/01-air-geometry.txt" >>"$O/summary.txt" || true
+          echo '--- EXPANDED ---' >>"$O/summary.txt"; cat "$O/02-air-geometry.txt" >>"$O/summary.txt" || true
+          grep -q 'stage=' "$O/01-air-geometry.txt"
+          grep -q 'stage=' "$O/02-air-geometry.txt"
+          adb shell wm size reset >/dev/null 2>&1 || true
+          EOS
+          chmod +x extract.sh
+      - name: Extract AIR geometry
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash extract.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-live-resize-extract-evidence
+          path: live-resize-extract
+          if-no-files-found: error
