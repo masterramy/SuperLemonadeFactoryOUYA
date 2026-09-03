@@ -1,0 +1,126 @@
+name: Gate 2A Exact Source Runtime v3
+
+on:
+  push:
+    branches:
+      - gate2a-final-qa-runtime-only-v3
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-clean-system-ui-v2-apks
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 33728810160
+      - run: python3 -m pip install --quiet pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write runtime harness
+        shell: bash
+        run: |
+          cat > runtime-v3.sh <<'EOF'
+          #!/usr/bin/env bash
+          set +e
+          O=runtime-v3; mkdir -p "$O"; P=air.com.initialsgames.SLF; FAIL=0
+          cp runtime-apk/source-proof.txt "$O/source-proof.txt"
+          dims(){ python3 - "$1" <<'PY'
+          import sys
+          from PIL import Image
+          i=Image.open(sys.argv[1]); print(i.width,i.height)
+          PY
+          }
+          ratio(){ python3 - "$1" "$2" <<'PY'
+          import sys
+          from PIL import Image,ImageChops
+          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB')
+          d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); t=sum(h); print(f"{(t-h[0])/t if t else 0:.6f}")
+          PY
+          }
+          view(){ python3 - "$1" "$2" <<'PY'
+          import sys
+          w,h=map(int,sys.argv[1:]); vw=min(float(w),float(h)*16/9); vh=vw*9/16; print(round((w-vw)/2),round((h-vh)/2),round(vw),round(vh))
+          PY
+          }
+          dismiss(){
+            local pfx="$1"
+            adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+            for n in 1 2 3; do
+              F=$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true); echo "$F" >> "$O/${pfx}-dismiss.txt"
+              echo "$F" | grep -q 'ImmersiveModeConfirmation' || break
+              adb exec-out screencap -p > "$O/${pfx}-tutorial-${n}.png"
+              read W H < <(dims "$O/${pfx}-tutorial-${n}.png")
+              adb shell input tap $((W*83/100)) $((H*53/100)); sleep 1
+            done
+          }
+          setup(){
+            adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+            adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+            adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+            adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          }
+          route(){
+            local pfx="$1"; sleep 7; dismiss "$pfx"; sleep 1
+            adb exec-out screencap -p > "$O/${pfx}-01-intro.png"; read W H < <(dims "$O/${pfx}-01-intro.png"); read X Y VW VH < <(view "$W" "$H")
+            CX=$((X+VW/2)); CY=$((Y+VH/2)); GY=$((Y+VH*7/8)); PIG=$((X+VW*7/12)); export W H X Y VW VH CX CY GY PIG
+            adb shell input tap "$CX" "$CY"; sleep 4; adb exec-out screencap -p > "$O/${pfx}-02-menu.png"
+            adb shell input tap "$CX" "$CY"; sleep 4; adb exec-out screencap -p > "$O/${pfx}-03-select.png"
+            adb shell input swipe $((X+VW*40/100)) "$CY" $((X+VW*68/100)) "$CY" 350; sleep 2; adb exec-out screencap -p > "$O/${pfx}-04-level2.png"
+            adb shell input tap "$CX" "$CY"; sleep 9; adb exec-out screencap -p > "$O/${pfx}-05-gameplay.png"
+          }
+
+          adb install -r runtime-apk/dist/SLF-clean-qa.apk > "$O/install-clean.txt" 2>&1 || exit 10
+          setup; adb shell am force-stop "$P" >/dev/null 2>&1 || true; adb shell pm clear "$P" >/dev/null 2>&1 || true; adb logcat -c
+          adb shell am start -W -n "$P/.AIRAppEntry" > "$O/clean-launch.txt" 2>&1; route clean
+          A=$(ratio "$O/clean-01-intro.png" "$O/clean-02-menu.png"); B=$(ratio "$O/clean-02-menu.png" "$O/clean-03-select.png"); C=$(ratio "$O/clean-03-select.png" "$O/clean-04-level2.png"); D=$(ratio "$O/clean-04-level2.png" "$O/clean-05-gameplay.png")
+          python3 - "$A" "$B" "$C" "$D" <<'PY'
+          import sys
+          a,b,c,d=map(float,sys.argv[1:]); raise SystemExit(0 if a>=.05 and b>=.03 and c>=.0002 and d>=.03 else 1)
+          PY
+          [ $? -ne 0 ] && FAIL=1
+          PID=$(adb shell ps|tr -d '\r'|awk -v p="$P" '$NF==p{print $2;exit}'); F=$(adb shell dumpsys window|grep -m1 'mCurrentFocus='||true); echo "$F"|grep -q "$P"||FAIL=1; [ -z "$PID" ]&&FAIL=1
+          adb logcat -d > "$O/clean-logcat.txt"; if grep -E "FATAL EXCEPTION|Process: $P|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$O/clean-logcat.txt" > "$O/clean-fatal.txt"; then FAIL=1; else : > "$O/clean-fatal.txt"; fi
+          printf 'source_route=%s,%s,%s,%s\nsource_pid=%s\nsource_focus=%s\n' "$A" "$B" "$C" "$D" "$PID" "$F" > "$O/summary.txt"
+
+          adb uninstall "$P" >/dev/null 2>&1 || true
+          adb install -r runtime-apk/dist/SLF-clean-piggy.apk > "$O/install-piggy.txt" 2>&1 || exit 11
+          setup; adb shell am force-stop "$P" >/dev/null 2>&1 || true; adb shell pm clear "$P" >/dev/null 2>&1 || true; adb logcat -c
+          adb shell am start -W -n "$P/.AIRAppEntry" > "$O/piggy-launch.txt" 2>&1; route piggy
+          adb exec-out screencap -p > "$O/piggy-06-before.png"; adb shell input tap "$PIG" "$GY"; sleep .8; adb exec-out screencap -p > "$O/piggy-07-on.png"; adb shell input tap "$PIG" "$GY"; sleep .8; adb exec-out screencap -p > "$O/piggy-08-off.png"
+          ON=$(ratio "$O/piggy-06-before.png" "$O/piggy-07-on.png"); OFF=$(ratio "$O/piggy-07-on.png" "$O/piggy-08-off.png")
+          python3 - "$ON" "$OFF" <<'PY'
+          import sys
+          a,b=map(float,sys.argv[1:]); raise SystemExit(0 if a>=.001 and b>=.001 else 1)
+          PY
+          [ $? -ne 0 ]&&FAIL=1
+          PID2=$(adb shell ps|tr -d '\r'|awk -v p="$P" '$NF==p{print $2;exit}'); F2=$(adb shell dumpsys window|grep -m1 'mCurrentFocus='||true); echo "$F2"|grep -q "$P"||FAIL=1; [ -z "$PID2" ]&&FAIL=1
+          adb logcat -d > "$O/piggy-logcat.txt"; if grep -E "FATAL EXCEPTION|Process: $P|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$O/piggy-logcat.txt" > "$O/piggy-fatal.txt"; then FAIL=1; else : > "$O/piggy-fatal.txt"; fi
+          printf 'piggy_on=%s\npiggy_off=%s\npiggy_pid=%s\npiggy_focus=%s\nfail=%s\n' "$ON" "$OFF" "$PID2" "$F2" "$FAIL" >> "$O/summary.txt"
+          [ "$FAIL" -ne 0 ] && exit 20
+          echo PASS >> "$O/summary.txt"
+          EOF
+          chmod +x runtime-v3.sh
+      - name: Run exact-source runtime
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash runtime-v3.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-runtime-v3-evidence
+          path: runtime-v3
+          if-no-files-found: error
