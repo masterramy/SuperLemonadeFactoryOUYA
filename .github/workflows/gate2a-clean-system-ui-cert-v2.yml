@@ -1,0 +1,178 @@
+name: Gate 2A Clean System UI Cert v2
+
+on:
+  push:
+    branches:
+      - gate2a-final-qa-clean-system-ui-v2
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0f619a90265e8bce17fca63ebbc2ce67abd7c058
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Record exact source authority
+        shell: pwsh
+        run: |
+          "source_commit=$(git rev-parse HEAD)" | Out-File -Encoding ascii source-proof.txt
+          Get-FileHash application.xml,src/SLF.as,src/MobileControls.as,src/PCHelpState.as,src/PCIntroState.as -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Add-Content source-proof.txt
+      - name: Compile clean candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package clean candidate APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Clean System UI QA v2" 2048-RSA gate2a-clean-qa.p12 gate2a
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-clean-qa.p12 -storepass gate2a dist/SLF-clean-qa.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Patch disposable adjacent-spawn Level 2
+        shell: pwsh
+        run: |
+          $path = "data/SLF_levelEditor/PC/level2.oel"
+          $text = [IO.File]::ReadAllText($path)
+          $patched = $text.Replace('<liselot x="580" y="470"', '<liselot x="82" y="470"')
+          if ($patched -eq $text) { throw "Level 2 Liselot spawn patch did not match exactly" }
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+          [IO.File]::WriteAllText($path, $patched, $utf8)
+      - name: Compile disposable piggyback candidate
+        shell: cmd
+        run: |
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package disposable piggyback APK and restore source
+        shell: pwsh
+        run: |
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-clean-qa.p12 -storepass gate2a dist/SLF-clean-piggy.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          $rc = $LASTEXITCODE
+          git checkout -- data/SLF_levelEditor/PC/level2.oel
+          if ($rc -ne 0) { exit $rc }
+          git diff --quiet -- data/SLF_levelEditor/PC/level2.oel
+          if ($LASTEXITCODE -ne 0) { throw "Disposable level patch was not restored" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-clean-system-ui-v2-apks
+          path: |
+            dist/SLF-clean-qa.apk
+            dist/SLF-clean-piggy.apk
+            source-proof.txt
+          if-no-files-found: error
+
+  runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-clean-system-ui-v2-apks
+          path: runtime-apk
+      - run: python3 -m pip install --quiet pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write exact-source clean runtime harness
+        shell: bash
+        run: |
+          cat > clean-cert-v2.sh <<'EOF_SCRIPT'
+          #!/usr/bin/env bash
+          set +e
+          OUT=clean-system-ui-v2; mkdir -p "$OUT"; P=air.com.initialsgames.SLF; FAIL=0
+          cp runtime-apk/source-proof.txt "$OUT/source-proof.txt"
+          dims(){ python3 - "$1" <<'PY'
+          import sys
+          from PIL import Image
+          i=Image.open(sys.argv[1]); print(i.width,i.height)
+          PY
+          }
+          diff(){ python3 - "$1" "$2" <<'PY'
+          import sys
+          from PIL import Image,ImageChops
+          a=Image.open(sys.argv[1]).convert('RGB'); b=Image.open(sys.argv[2]).convert('RGB'); d=ImageChops.difference(a,b).convert('L'); h=d.histogram(); t=sum(h); print(f"{(t-h[0])/t if t else 0:.6f}")
+          PY
+          }
+          view(){ python3 - "$1" "$2" <<'PY'
+          import sys
+          w,h=map(int,sys.argv[1:]); vw=min(float(w),float(h)*16/9); vh=vw*9/16; print(round((w-vw)/2),round((h-vh)/2),round(vw),round(vh))
+          PY
+          }
+          dismiss(){
+            local pfx="$1"
+            for n in 1 2 3; do
+              F=$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true); echo "$F" >> "$OUT/${pfx}-dismiss-focus.txt"
+              echo "$F" | grep -q 'ImmersiveModeConfirmation' || break
+              adb exec-out screencap -p > "$OUT/${pfx}-tutorial-${n}.png"
+              read W H < <(dims "$OUT/${pfx}-tutorial-${n}.png")
+              adb shell input tap $((W*83/100)) $((H*53/100)); sleep 1
+            done
+          }
+          route(){
+            local pfx="$1"; sleep 7; dismiss "$pfx"; sleep 1
+            adb exec-out screencap -p > "$OUT/${pfx}-01-intro.png"; read W H < <(dims "$OUT/${pfx}-01-intro.png"); read X Y VW VH < <(view "$W" "$H")
+            CX=$((X+VW/2)); CY=$((Y+VH/2)); GY=$((Y+VH*7/8)); PIG=$((X+VW*7/12)); export W H X Y VW VH CX CY GY PIG
+            adb shell input tap "$CX" "$CY"; sleep 4; adb exec-out screencap -p > "$OUT/${pfx}-02-menu.png"
+            adb shell input tap "$CX" "$CY"; sleep 4; adb exec-out screencap -p > "$OUT/${pfx}-03-select.png"
+            adb shell input swipe $((X+VW*40/100)) "$CY" $((X+VW*68/100)) "$CY" 350; sleep 2; adb exec-out screencap -p > "$OUT/${pfx}-04-level2.png"
+            adb shell input tap "$CX" "$CY"; sleep 9; adb exec-out screencap -p > "$OUT/${pfx}-05-gameplay.png"
+          }
+          setup(){ adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true; adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true; adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true; }
+
+          adb install -r runtime-apk/SLF-clean-qa.apk > "$OUT/install-clean.txt" 2>&1 || exit 10; setup; adb shell am force-stop "$P" >/dev/null 2>&1; adb shell pm clear "$P" >/dev/null 2>&1; adb logcat -c; adb shell am start -W -n "$P/.AIRAppEntry" > "$OUT/clean-launch.txt" 2>&1; route clean
+          A=$(diff "$OUT/clean-01-intro.png" "$OUT/clean-02-menu.png"); B=$(diff "$OUT/clean-02-menu.png" "$OUT/clean-03-select.png"); C=$(diff "$OUT/clean-03-select.png" "$OUT/clean-04-level2.png"); D=$(diff "$OUT/clean-04-level2.png" "$OUT/clean-05-gameplay.png")
+          python3 - "$A" "$B" "$C" "$D" <<'PY'
+          import sys
+          a,b,c,d=map(float,sys.argv[1:]); raise SystemExit(0 if a>=.05 and b>=.03 and c>=.0002 and d>=.03 else 1)
+          PY
+          [ $? -ne 0 ] && FAIL=1
+          PID=$(adb shell ps|tr -d '\r'|awk -v p="$P" '$NF==p{print $2;exit}'); F=$(adb shell dumpsys window|grep -m1 'mCurrentFocus='||true); echo "$F"|grep -q "$P"||FAIL=1; [ -z "$PID" ]&&FAIL=1
+          adb logcat -d > "$OUT/clean-logcat.txt"; if grep -E "FATAL EXCEPTION|Process: $P|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/clean-logcat.txt" > "$OUT/clean-fatal.txt"; then FAIL=1; else : > "$OUT/clean-fatal.txt"; fi
+          printf 'source_route=%s,%s,%s,%s\nsource_pid=%s\nsource_focus=%s\n' "$A" "$B" "$C" "$D" "$PID" "$F" > "$OUT/summary.txt"
+
+          adb uninstall "$P" >/dev/null 2>&1 || true; adb install -r runtime-apk/SLF-clean-piggy.apk > "$OUT/install-piggy.txt" 2>&1 || exit 11; setup; adb shell am force-stop "$P" >/dev/null 2>&1; adb shell pm clear "$P" >/dev/null 2>&1; adb logcat -c; adb shell am start -W -n "$P/.AIRAppEntry" > "$OUT/piggy-launch.txt" 2>&1; route piggy
+          adb exec-out screencap -p > "$OUT/piggy-06-before.png"; adb shell input tap "$PIG" "$GY"; sleep .8; adb exec-out screencap -p > "$OUT/piggy-07-on.png"; adb shell input tap "$PIG" "$GY"; sleep .8; adb exec-out screencap -p > "$OUT/piggy-08-off.png"
+          ON=$(diff "$OUT/piggy-06-before.png" "$OUT/piggy-07-on.png"); OFF=$(diff "$OUT/piggy-07-on.png" "$OUT/piggy-08-off.png"); python3 - "$ON" "$OFF" <<'PY'
+          import sys
+          a,b=map(float,sys.argv[1:]); raise SystemExit(0 if a>=.001 and b>=.001 else 1)
+          PY
+          [ $? -ne 0 ]&&FAIL=1; PID2=$(adb shell ps|tr -d '\r'|awk -v p="$P" '$NF==p{print $2;exit}'); F2=$(adb shell dumpsys window|grep -m1 'mCurrentFocus='||true); echo "$F2"|grep -q "$P"||FAIL=1; [ -z "$PID2" ]&&FAIL=1
+          adb logcat -d > "$OUT/piggy-logcat.txt"; if grep -E "FATAL EXCEPTION|Process: $P|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$OUT/piggy-logcat.txt" > "$OUT/piggy-fatal.txt"; then FAIL=1; else : > "$OUT/piggy-fatal.txt"; fi
+          printf 'piggy_on=%s\npiggy_off=%s\npiggy_pid=%s\npiggy_focus=%s\nfail=%s\n' "$ON" "$OFF" "$PID2" "$F2" "$FAIL" >> "$OUT/summary.txt"; [ "$FAIL" -ne 0 ]&&exit 20; echo PASS >> "$OUT/summary.txt"
+          EOF_SCRIPT
+          chmod +x clean-cert-v2.sh
+      - name: Run corrected clean final cert
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash clean-cert-v2.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-clean-system-ui-v2-evidence
+          path: clean-system-ui-v2
+          if-no-files-found: error
