@@ -28,9 +28,10 @@ package
 		{
 			super(640, 360, PCIntroState, 3, 60, 30);
 
-			// AIR's SHOW_ALL behavior is inconsistent across modern Android display
-			// overrides. Keep the Stage in physical/logical display coordinates and
-			// explicitly fit the historical 1920x1080 game root ourselves.
+			// Modern AIR/Android can report a Stage width that is larger than the
+			// visible framebuffer after rotation/density transforms. Keep the stage
+			// unscaled and fit the historical canvas against the actual fullscreen
+			// display dimensions instead.
 			addEventListener(Event.ADDED_TO_STAGE, configureModernStage);
 
 			// Legacy gameplay polls FlxG.ouyaController directly in many states.
@@ -60,13 +61,29 @@ package
 
 		private function fitModernStage(event:Event = null):void
 		{
-			if (stage == null || stage.stageWidth <= 0 || stage.stageHeight <= 0) return;
-			var fit:Number = Math.min(stage.stageWidth / CANVAS_WIDTH, stage.stageHeight / CANVAS_HEIGHT);
+			if (stage == null) return;
+
+			var displayW:Number = stage.fullScreenWidth;
+			var displayH:Number = stage.fullScreenHeight;
+			if (!isFinite(displayW) || displayW <= 0) displayW = stage.stageWidth;
+			if (!isFinite(displayH) || displayH <= 0) displayH = stage.stageHeight;
+			if (!isFinite(displayW) || !isFinite(displayH) || displayW <= 0 || displayH <= 0) return;
+
+			// Some Android builds expose fullscreen dimensions in the device's
+			// natural portrait order even after AIR has entered landscape.
+			if (stage.stageWidth > stage.stageHeight && displayW < displayH)
+			{
+				var swap:Number = displayW;
+				displayW = displayH;
+				displayH = swap;
+			}
+
+			var fit:Number = Math.min(displayW / CANVAS_WIDTH, displayH / CANVAS_HEIGHT);
 			if (!isFinite(fit) || fit <= 0) fit = 1;
 			scaleX = fit;
 			scaleY = fit;
-			x = (stage.stageWidth - CANVAS_WIDTH * fit) * 0.5;
-			y = (stage.stageHeight - CANVAS_HEIGHT * fit) * 0.5;
+			x = (displayW - CANVAS_WIDTH * fit) * 0.5;
+			y = (displayH - CANVAS_HEIGHT * fit) * 0.5;
 		}
 	}
 }
