@@ -9,7 +9,7 @@
     <manifestAdditions><![CDATA[<manifest android:installLocation="auto">
 	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
 	<uses-feature android:required="true" android:name="android.hardware.touchscreen.multitouch" />
-	<application>
+	<application android:appCategory="game" android:resizeableActivity="false">
 		<activity>
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
