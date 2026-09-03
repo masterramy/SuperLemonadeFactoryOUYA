@@ -1,0 +1,89 @@
+name: Gate 2A Live Resize Root Extract
+
+on:
+  push:
+    branches: [gate2a-live-resize-root-extract]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download already-built telemetry APK
+        uses: actions/download-artifact@v4
+        with:
+          name: gate2a-live-resize-diagnostic-apk
+          path: apk
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 33718853329
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write root extraction harness
+        shell: bash
+        run: |
+          cat > root-extract.sh <<'EOS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          O=root-extract; mkdir -p "$O"; P=air.com.initialsgames.SLF
+          adb root >"$O/adb-root.txt" 2>&1 || true
+          adb wait-for-device
+          adb shell id >"$O/adb-id.txt" 2>&1 || true
+          adb install -r apk/SLF-live-resize-diagnostic.apk >"$O/install.txt" 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+
+          adb shell wm size 1600x1760 >/dev/null 2>&1
+          adb shell am force-stop "$P" >/dev/null 2>&1 || true
+          adb shell pm clear "$P" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$P/.AIRAppEntry" >"$O/launch.txt" 2>&1
+          sleep 12
+          adb exec-out screencap -p >"$O/01-fold.png"
+          adb shell find "/data/user/0/$P" -name resize_telemetry.txt -print -exec cat {} \; >"$O/01-telemetry.txt" 2>&1 || true
+
+          adb shell wm size 1440x3120 >/dev/null 2>&1
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          sleep 12
+          adb exec-out screencap -p >"$O/02-expanded.png"
+          adb shell find "/data/user/0/$P" -name resize_telemetry.txt -print -exec cat {} \; >"$O/02-telemetry.txt" 2>&1 || true
+          adb shell find "/data/user/0/$P" -maxdepth 6 -type f -print >"$O/private-files.txt" 2>&1 || true
+          adb shell dumpsys activity activities >"$O/activity.txt"
+          adb shell dumpsys window >"$O/window.txt"
+          adb shell wm size >"$O/wm-size.txt"
+          adb shell pidof "$P" >"$O/pid.txt" || true
+          printf '%s\n' '--- adb root ---' >"$O/summary.txt"
+          cat "$O/adb-root.txt" "$O/adb-id.txt" >>"$O/summary.txt" || true
+          printf '%s\n' '--- fold telemetry ---' >>"$O/summary.txt"
+          cat "$O/01-telemetry.txt" >>"$O/summary.txt" || true
+          printf '%s\n' '--- expanded telemetry ---' >>"$O/summary.txt"
+          cat "$O/02-telemetry.txt" >>"$O/summary.txt" || true
+          adb shell wm size reset >/dev/null 2>&1 || true
+          EOS
+          chmod +x root-extract.sh
+      - name: Run root extraction
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash root-extract.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-live-resize-root-extract-evidence
+          path: root-extract
+          if-no-files-found: error
