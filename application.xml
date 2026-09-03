@@ -43,7 +43,7 @@
     <content>SLFforOuya.swf</content>
     <visible>true</visible>
     <fullScreen>true</fullScreen>
-    <autoOrients>false</autoOrients>
+    <autoOrients>true</autoOrients>
     <aspectRatio>landscape</aspectRatio>
     <renderMode>cpu</renderMode>
     <!--<depthAndStencil>true</depthAndStencil>-->
@@ -67,7 +67,7 @@
 	http://help.adobe.com/en_US/air/build/WSfffb011ac560372f-5d0f4f25128cc9cd0cb-7ffe.html
 	
 	iOS icons guidelines:
-	http://developer.apple.com/library/ios/#documentation/userexperience/conceptual/mobilehig/IconsImages/IconsImages.html
+	http://developer.apple.com/library/ios/#documentation/userexperience/conceptual/mobilehig/IconsImages.html
 	
 	Android manifest documentation:
 	http://developer.android.com/guide/topics/manifest/manifest-intro.html
