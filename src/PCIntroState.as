@@ -127,7 +127,7 @@ package
 			}
 		
 			FlxG.play(Registry.SndOnShoulders,0.9);
-			FlxG.stage.align = "";
+			FlxG.stage.align = "TL";
 			
 			
 			var _buy:String = "";
