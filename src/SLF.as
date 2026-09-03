@@ -29,20 +29,14 @@ package
 		private var mobileControls:MobileControls;
 		private var qaFrame:int = 0;
 		private var qaLastSignature:String = "";
-		private var qaTelemetryFile:File;
+		private var qaLogFile:File;
 
 		public function SLF()
 		{
 			super(640, 360, PCIntroState, 3, 60, 30);
 
-			// Modern Android can resize the AIR stage while the app remains alive
-			// (for example when a foldable changes posture). Keep the legacy canvas
-			// aspect-fitted to the current stage on every resize.
 			addEventListener(Event.ADDED_TO_STAGE, configureModernStage);
 
-			// Legacy gameplay polls FlxG.ouyaController directly in many states.
-			// A modern Android device may have no OUYA/GameInput hardware at all, so
-			// install an inert typed controller until PCIntroState discovers real input.
 			if (FlxG.ouyaController == null)
 				FlxG.ouyaController = new OuyaController(null);
 
@@ -61,19 +55,20 @@ package
 			removeEventListener(Event.ADDED_TO_STAGE, configureModernStage);
 			stage.scaleMode = StageScaleMode.NO_SCALE;
 			stage.align = StageAlign.TOP_LEFT;
+			qaLogFile = File.applicationStorageDirectory.resolvePath("resize-geometry.txt");
+			try { if (qaLogFile.exists) qaLogFile.deleteFile(); } catch (ignoreDelete:Error) {}
 			stage.addEventListener(Event.RESIZE, onModernStageResize, false, 0, true);
 			stage.addEventListener(Event.ENTER_FRAME, monitorViewport, false, 0, true);
-			qaResetTelemetry();
-			qaRecordViewport("ADDED_TO_STAGE");
+			qaLogViewport("ADDED_TO_STAGE");
 			fitModernStage();
-			qaRecordViewport("AFTER_INITIAL_FIT");
+			qaLogViewport("AFTER_INITIAL_FIT");
 		}
 
 		private function onModernStageResize(event:Event):void
 		{
-			qaRecordViewport("RESIZE_EVENT_BEFORE_FIT");
+			qaLogViewport("RESIZE_EVENT_BEFORE_FIT");
 			fitModernStage(event);
-			qaRecordViewport("RESIZE_EVENT_AFTER_FIT");
+			qaLogViewport("RESIZE_EVENT_AFTER_FIT");
 		}
 
 		private function monitorViewport(event:Event):void
@@ -84,7 +79,7 @@ package
 			if (signature != qaLastSignature || qaFrame % 120 == 0)
 			{
 				qaLastSignature = signature;
-				qaRecordViewport("FRAME=" + qaFrame);
+				qaAppend("FRAME=" + qaFrame + " " + signature);
 			}
 		}
 
@@ -99,38 +94,24 @@ package
 				" stageAlign=" + stage.align + " stageScaleMode=" + stage.scaleMode;
 		}
 
-		private function qaResetTelemetry():void
+		private function qaLogViewport(label:String):void
 		{
-			try
-			{
-				qaTelemetryFile = File.applicationStorageDirectory.resolvePath("resize_telemetry.txt");
-				var stream:FileStream = new FileStream();
-				stream.open(qaTelemetryFile, FileMode.WRITE);
-				stream.writeUTFBytes("");
-				stream.close();
-			}
-			catch (error:Error)
-			{
-				trace("[GATE2A_RESIZE] TELEMETRY_RESET_ERROR " + error.message);
-			}
+			qaAppend(label + " " + viewportSignature());
 		}
 
-		private function qaRecordViewport(label:String):void
+		private function qaAppend(line:String):void
 		{
-			var line:String = "[GATE2A_RESIZE] " + label + " " + viewportSignature();
-			trace(line);
+			trace("[GATE2A_RESIZE] " + line);
 			try
 			{
-				if (qaTelemetryFile == null)
-					qaTelemetryFile = File.applicationStorageDirectory.resolvePath("resize_telemetry.txt");
+				if (qaLogFile == null) qaLogFile = File.applicationStorageDirectory.resolvePath("resize-geometry.txt");
 				var stream:FileStream = new FileStream();
-				stream.open(qaTelemetryFile, FileMode.APPEND);
+				stream.open(qaLogFile, FileMode.APPEND);
 				stream.writeUTFBytes(line + "\n");
 				stream.close();
 			}
-			catch (error:Error)
+			catch (ignoreWrite:Error)
 			{
-				trace("[GATE2A_RESIZE] TELEMETRY_WRITE_ERROR " + error.message);
 			}
 		}
 
@@ -138,8 +119,6 @@ package
 		{
 			if (stage == null) return;
 
-			// stageWidth/stageHeight track the live Android content surface. The
-			// fullscreen dimensions can remain stale across an in-process resize.
 			var displayW:Number = stage.stageWidth;
 			var displayH:Number = stage.stageHeight;
 			if (!isFinite(displayW) || displayW <= 0) displayW = stage.fullScreenWidth;
