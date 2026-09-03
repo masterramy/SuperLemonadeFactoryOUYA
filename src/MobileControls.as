@@ -5,6 +5,7 @@ package
 	import flash.events.Event;
 	import flash.events.KeyboardEvent;
 	import flash.events.TouchEvent;
+	import flash.geom.Point;
 	import flash.geom.Rectangle;
 	import flash.text.TextField;
 	import flash.text.TextFormat;
@@ -92,14 +93,14 @@ package
 		private function gameBounds():Rectangle
 		{
 			if (root.stage == null) return new Rectangle();
-			var stageW:Number = root.stage.stageWidth;
-			var stageH:Number = root.stage.stageHeight;
-			if (stageW <= 0 || stageH <= 0) return new Rectangle();
-
-			var fit:Number = Math.min(stageW / GAME_W, stageH / GAME_H);
-			var viewportW:Number = GAME_W * fit;
-			var viewportH:Number = GAME_H * fit;
-			return new Rectangle((stageW - viewportW) * 0.5, (stageH - viewportH) * 0.5, viewportW, viewportH);
+			var origin:Point = root.localToGlobal(new Point(0, 0));
+			var far:Point = root.localToGlobal(new Point(GAME_W, GAME_H));
+			var left:Number = Math.min(origin.x, far.x);
+			var top:Number = Math.min(origin.y, far.y);
+			var width:Number = Math.abs(far.x - origin.x);
+			var height:Number = Math.abs(far.y - origin.y);
+			if (width <= 0 || height <= 0) return new Rectangle();
+			return new Rectangle(left, top, width, height);
 		}
 
 		private function onFrame(e:Event):void
