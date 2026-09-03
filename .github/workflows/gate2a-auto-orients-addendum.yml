@@ -1,0 +1,203 @@
+name: Gate 2A Auto Orients Display Addendum
+
+on:
+  push:
+    branches: [gate2a-auto-orients-candidate]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2a-auto-orients-candidate
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package x64 APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Auto Orients Addendum" 2048-RSA addendum.p12 gate2a
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $sdk=$env:ANDROID_SDK_ROOT; if([string]::IsNullOrWhiteSpace($sdk)){$sdk=$env:ANDROID_HOME}
+          $ok=$false
+          for($n=1;$n -le 3;$n++){
+            Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-auto-orients-addendum.apk
+            & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore addendum.p12 -storepass gate2a dist/SLF-auto-orients-addendum.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+            if($LASTEXITCODE -eq 0 -and (Test-Path dist/SLF-auto-orients-addendum.apk)){$ok=$true;break}
+            if($n -lt 3){Start-Sleep 45}
+          }
+          if(-not $ok){throw 'APK packaging failed'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-auto-orients-addendum-apk
+          path: dist/SLF-auto-orients-addendum.apk
+          if-no-files-found: error
+
+  runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-auto-orients-addendum-apk
+          path: apk
+      - run: python3 -m pip install --quiet pillow numpy
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Write addendum harness
+        shell: bash
+        run: |
+          cat > addendum.sh <<'EOS'
+          #!/usr/bin/env bash
+          set +e
+          O=auto-orients-addendum; mkdir -p "$O"; P=air.com.initialsgames.SLF; FAIL=0
+          rgbdiff(){ python3 - "$1" "$2" <<'PY'
+          import sys,numpy as np
+          from PIL import Image
+          a=np.asarray(Image.open(sys.argv[1]).convert('RGB')); b=np.asarray(Image.open(sys.argv[2]).convert('RGB'))
+          print('1.000000' if a.shape!=b.shape else f'{np.any(a!=b,axis=2).mean():.6f}')
+          PY
+          }
+          view(){ python3 - "$1" "$2" <<'PY'
+          import sys
+          w,h=map(int,sys.argv[1:]); vw=min(w,h*16/9); vh=vw*9/16; print(round((w-vw)/2),round((h-vh)/2),round(vw),round(vh))
+          PY
+          }
+          overlaycheck(){ python3 - "$1" <<'PY'
+          import sys,numpy as np
+          from PIL import Image
+          a=np.asarray(Image.open(sys.argv[1]).convert('RGB')); h,w=a.shape[:2]; vw=min(w,h*16/9); vh=vw*9/16; x=round((w-vw)/2); y=round((h-vh)/2); vw=round(vw); vh=round(vh)
+          counts=[]; ok=True
+          for i in range(6):
+              xa=round(x+vw*i/6); xb=round(x+vw*(i+1)/6); ya=round(y+vh*.75); yb=round(y+vh)
+              c=a[ya:yb,xa:xb]; m=(c.min(2)>170)&((c.max(2)-c.min(2))<60); counts.append(int(m.sum())); ok &= counts[-1]>80
+          xa=round(x+vw*5/6); xb=round(x+vw); ya=y; yb=round(y+vh*.17); c=a[ya:yb,xa:xb]; m=(c.min(2)>170)&((c.max(2)-c.min(2))<60); pause=int(m.sum()); ok &= pause>40
+          print(('1' if ok else '0')+':' + ','.join(map(str,counts)) + f':pause={pause}')
+          raise SystemExit(0 if ok else 2)
+          PY
+          }
+          darkness(){ python3 - "$1" "$2" "$3" "$4" "$5" "$6" <<'PY'
+          import sys,numpy as np
+          from PIL import Image
+          a=np.asarray(Image.open(sys.argv[1]).convert('RGB')).mean(2); b=np.asarray(Image.open(sys.argv[2]).convert('RGB')).mean(2); x,y,w,h=map(int,sys.argv[3:7]); aa=a[y:y+h,x:x+w].mean(); bb=b[y:y+h,x:x+w].mean(); print(f'{bb/aa if aa else 1:.6f}')
+          PY
+          }
+          dismiss_dialog(){
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/window.xml "$O/window.xml" >/dev/null 2>&1 || true
+            if [ -s "$O/window.xml" ]; then
+              read DX DY < <(python3 - "$O/window.xml" <<'PY'
+          import sys,re,xml.etree.ElementTree as ET
+          try:
+              root=ET.parse(sys.argv[1]).getroot()
+              for n in root.iter('node'):
+                  if n.attrib.get('text') in ('Got it','GOT IT'):
+                      m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+                      if m:
+                          x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); raise SystemExit
+          except Exception: pass
+          print(-1,-1)
+          PY
+              )
+              if [ "$DX" -ge 0 ]; then adb shell input tap "$DX" "$DY"; sleep 2; fi
+            fi
+          }
+          route(){
+            local prefix=$1
+            adb exec-out screencap -p >"$O/$prefix-01-intro.png"
+            read W H < <(python3 - "$O/$prefix-01-intro.png" <<'PY'
+          import sys
+          from PIL import Image
+          i=Image.open(sys.argv[1]); print(i.width,i.height)
+          PY
+            ); read X Y VW VH < <(view "$W" "$H"); CX=$((X+VW/2)); CY=$((Y+VH/2))
+            adb shell input tap "$CX" "$CY"; sleep 4; adb shell input tap "$CX" "$CY"; sleep 4; adb shell input swipe $((X+VW*40/100)) "$CY" $((X+VW*68/100)) "$CY" 350; sleep 2; adb shell input tap "$CX" "$CY"; sleep 9; adb exec-out screencap -p >"$O/$prefix-02-gameplay.png"
+            export W H X Y VW VH
+          }
+          adb install -r apk/SLF-auto-orients-addendum.apk >"$O/install.txt" 2>&1 || exit 10
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+
+          # Case 1: clean 16:9 cold launch.
+          adb shell wm size 1080x1920 >/dev/null 2>&1; adb shell am force-stop "$P" >/dev/null 2>&1; adb shell pm clear "$P" >/dev/null 2>&1; adb logcat -c
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell am start -W -n "$P/.AIRAppEntry" >"$O/16x9-launch.txt" 2>&1; sleep 8; dismiss_dialog
+          route 16x9
+          [ "${W}x${H}" != "1920x1080" ] && FAIL=1
+          OC16=$(overlaycheck "$O/16x9-02-gameplay.png"); [ $? -ne 0 ]&&FAIL=1
+          RX=$((X+VW/4)); GY=$((Y+VH*7/8)); PX=$((X+VW*11/12)); PY=$((Y+VH*8/100))
+          adb shell input swipe "$RX" "$GY" "$RX" "$GY" 700; sleep 1; adb exec-out screencap -p >"$O/16x9-03-right.png"; R16=$(rgbdiff "$O/16x9-02-gameplay.png" "$O/16x9-03-right.png")
+          adb shell input tap "$PX" "$PY"; sleep 1; adb exec-out screencap -p >"$O/16x9-04-paused.png"; P16=$(rgbdiff "$O/16x9-03-right.png" "$O/16x9-04-paused.png"); D16=$(darkness "$O/16x9-03-right.png" "$O/16x9-04-paused.png" "$X" "$Y" "$VW" "$VH")
+          python3 - "$R16" "$P16" "$D16" <<'PY'
+          import sys
+          r,p,d=map(float,sys.argv[1:]); raise SystemExit(0 if r>=.001 and p>=.10 and d<=.90 else 1)
+          PY
+          [ $? -ne 0 ]&&FAIL=1
+          F16=$(adb shell dumpsys window|grep -m1 mCurrentFocus||true); echo "$F16"|grep -q "$P"||FAIL=1
+          adb logcat -d >"$O/16x9-logcat.txt" 2>&1; if grep -E "FATAL EXCEPTION|Process: $P|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$O/16x9-logcat.txt" >"$O/16x9-fatal.txt"; then FAIL=1; else : >"$O/16x9-fatal.txt"; fi
+
+          # Case 2: running gameplay reflows from fold viewport to expanded viewport.
+          adb shell wm size 1600x1760 >/dev/null 2>&1; adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true; adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true; adb shell am force-stop "$P" >/dev/null 2>&1; adb shell pm clear "$P" >/dev/null 2>&1
+          adb logcat -c; adb shell am start -W -n "$P/.AIRAppEntry" >"$O/live-launch.txt" 2>&1; sleep 8; dismiss_dialog; route live-fold
+          [ "${W}x${H}" != "1760x1600" ]&&FAIL=1; OCF=$(overlaycheck "$O/live-fold-02-gameplay.png"); [ $? -ne 0 ]&&FAIL=1
+          BEFORE_PID=$(adb shell pidof "$P" | tr -d '\r' || true)
+          adb shell wm size 1440x3120 >/dev/null 2>&1; adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true; adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true; sleep 6; adb exec-out screencap -p >"$O/live-expanded.png"
+          AFTER_PID=$(adb shell pidof "$P" | tr -d '\r' || true)
+          read EW EH < <(python3 - "$O/live-expanded.png" <<'PY'
+          import sys
+          from PIL import Image
+          i=Image.open(sys.argv[1]); print(i.width,i.height)
+          PY
+          ); [ "${EW}x${EH}" != "3120x1440" ]&&FAIL=1; OCE=$(overlaycheck "$O/live-expanded.png"); [ $? -ne 0 ]&&FAIL=1; read EX EY EVW EVH < <(view "$EW" "$EH")
+          ERX=$((EX+EVW/4)); EGY=$((EY+EVH*7/8)); EPX=$((EX+EVW*11/12)); EPY=$((EY+EVH*8/100)); adb shell input swipe "$ERX" "$EGY" "$ERX" "$EGY" 700; sleep 1; adb exec-out screencap -p >"$O/live-right.png"; LR=$(rgbdiff "$O/live-expanded.png" "$O/live-right.png"); adb shell input tap "$EPX" "$EPY"; sleep 1; adb exec-out screencap -p >"$O/live-paused.png"; LP=$(rgbdiff "$O/live-right.png" "$O/live-paused.png"); LD=$(darkness "$O/live-right.png" "$O/live-paused.png" "$EX" "$EY" "$EVW" "$EVH")
+          python3 - "$LR" "$LP" "$LD" <<'PY'
+          import sys
+          r,p,d=map(float,sys.argv[1:]); raise SystemExit(0 if r>=.001 and p>=.10 and d<=.90 else 1)
+          PY
+          [ $? -ne 0 ]&&FAIL=1
+          [ -z "$BEFORE_PID" ]&&FAIL=1; [ "$BEFORE_PID" != "$AFTER_PID" ]&&FAIL=1
+          LF=$(adb shell dumpsys window|grep -m1 mCurrentFocus||true); echo "$LF"|grep -q "$P"||FAIL=1; adb logcat -d >"$O/live-logcat.txt" 2>&1; if grep -E "FATAL EXCEPTION|Process: $P|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" "$O/live-logcat.txt" >"$O/live-fatal.txt"; then FAIL=1; else : >"$O/live-fatal.txt"; fi
+          printf 'fail=%s\n16x9_overlay=%s\n16x9_right=%s\n16x9_pause=%s\n16x9_dark=%s\nfold_overlay=%s\nexpanded_overlay=%s\nlive_right=%s\nlive_pause=%s\nlive_dark=%s\nbefore_pid=%s\nafter_pid=%s\n' "$FAIL" "$OC16" "$R16" "$P16" "$D16" "$OCF" "$OCE" "$LR" "$LP" "$LD" "$BEFORE_PID" "$AFTER_PID" >"$O/summary.txt"
+          adb shell wm size reset >/dev/null 2>&1 || true
+          [ "$FAIL" -ne 0 ]&&exit 20
+          echo PASS >>"$O/summary.txt"
+          EOS
+          chmod +x addendum.sh
+      - name: Run auto-orients display addendum
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash addendum.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-auto-orients-addendum-evidence
+          path: auto-orients-addendum
+          if-no-files-found: error
