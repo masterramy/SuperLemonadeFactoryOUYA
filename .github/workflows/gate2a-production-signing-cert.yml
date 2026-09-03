@@ -1,0 +1,112 @@
+name: Gate 2A Production Signing Cert
+
+on:
+  push:
+    branches:
+      - gate2a-production-signing-cert-2026-09-03
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-signing:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      SLF_ANDROID_KEYSTORE_BASE64: ${{ secrets.SLF_ANDROID_KEYSTORE_BASE64 }}
+      SLF_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SLF_ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - name: Checkout exact shipping authority
+        uses: actions/checkout@v4
+        with:
+          ref: caa673c53eccf47af1b0cc4165b5a64ca8de444f
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile exact shipping SWF
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package and verify production-signed APK and AAB
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_KEYSTORE_BASE64)) { throw 'SLF_ANDROID_KEYSTORE_BASE64 is not configured.' }
+          if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_KEYSTORE_PASSWORD)) { throw 'SLF_ANDROID_KEYSTORE_PASSWORD is not configured.' }
+          $keyPath = Join-Path $PWD 'production-signing.p12'
+          [IO.File]::WriteAllBytes($keyPath,[Convert]::FromBase64String($env:SLF_ANDROID_KEYSTORE_BASE64))
+          $keyInfo = & keytool -list -v -storetype PKCS12 -keystore $keyPath -storepass $env:SLF_ANDROID_KEYSTORE_PASSWORD 2>&1
+          if ($LASTEXITCODE -ne 0) { throw 'Production keystore could not be opened.' }
+          $fp = @($keyInfo | Where-Object { $_ -match 'SHA256:' } | Select-Object -First 1)
+          if ($fp.Count -eq 0) { throw 'No SHA256 certificate fingerprint found.' }
+          $fp | Set-Content dist/signing-certificate-sha256.txt -Encoding utf8
+
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) { throw 'Android SDK missing.' }
+
+          & adt -package -target apk -storetype pkcs12 -keystore $keyPath -storepass $env:SLF_ANDROID_KEYSTORE_PASSWORD dist/SLF-production.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path dist/SLF-production.apk)) { throw 'Production APK packaging failed.' }
+          & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $env:SLF_ANDROID_KEYSTORE_PASSWORD dist/SLF-production.aab application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path dist/SLF-production.aab)) { throw 'Production AAB packaging failed.' }
+
+          $buildTools = Get-ChildItem (Join-Path $androidSdk 'build-tools') -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if ($null -eq $buildTools) { throw 'Android build-tools missing.' }
+          $apksigner = Join-Path $buildTools.FullName 'apksigner.bat'
+          & $apksigner verify --verbose --print-certs dist/SLF-production.apk 2>&1 | Set-Content dist/apk-signature-verification.txt -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'apksigner verification failed.' }
+          & jarsigner -verify -verbose -certs dist/SLF-production.aab 2>&1 | Set-Content dist/aab-signature-verification.txt -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'AAB jarsigner verification failed.' }
+
+          $bundletoolVersion='1.18.3'
+          $bundletoolExpected='a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'
+          $bundletool=Join-Path $PWD "bundletool-all-$bundletoolVersion.jar"
+          Invoke-WebRequest -Uri "https://github.com/google/bundletool/releases/download/$bundletoolVersion/bundletool-all-$bundletoolVersion.jar" -OutFile $bundletool
+          $bh=(Get-FileHash -Algorithm SHA256 $bundletool).Hash.ToLowerInvariant()
+          if ($bh -ne $bundletoolExpected) { throw "bundletool hash mismatch: $bh" }
+          $target=((& java -jar $bundletool dump manifest "--bundle=$((Resolve-Path dist/SLF-production.aab).Path)" '--xpath=/manifest/uses-sdk/@android:targetSdkVersion' 2>&1 | Out-String).Trim())
+          if ($LASTEXITCODE -ne 0 -or $target -ne '36') { throw "targetSdk verification failed: $target" }
+          $min=((& java -jar $bundletool dump manifest "--bundle=$((Resolve-Path dist/SLF-production.aab).Path)" '--xpath=/manifest/uses-sdk/@android:minSdkVersion' 2>&1 | Out-String).Trim())
+          if ($LASTEXITCODE -ne 0 -or $min -ne '21') { throw "minSdk verification failed: $min" }
+          $category=((& java -jar $bundletool dump manifest "--bundle=$((Resolve-Path dist/SLF-production.aab).Path)" '--xpath=/manifest/application/@android:appCategory' 2>&1 | Out-String).Trim())
+          if ($LASTEXITCODE -ne 0 -or ($category -ne 'game' -and $category -ne '0')) { throw "appCategory verification failed: $category" }
+          $resize=((& java -jar $bundletool dump manifest "--bundle=$((Resolve-Path dist/SLF-production.aab).Path)" '--xpath=/manifest/application/@android:resizeableActivity' 2>&1 | Out-String).Trim())
+          if ($LASTEXITCODE -ne 0 -or $resize -ne 'false') { throw "resizeableActivity verification failed: $resize" }
+
+          $apk=Get-Item dist/SLF-production.apk; $aab=Get-Item dist/SLF-production.aab
+          @(
+            'shipping_commit=caa673c53eccf47af1b0cc4165b5a64ca8de444f'
+            'air_sdk=51.3.4.1'
+            'android_target_sdk=36'
+            'android_min_sdk=21'
+            'app_category=game'
+            'resizeable_activity=false'
+            'signing_mode=production-secret'
+            "apk_bytes=$($apk.Length)"
+            "apk_sha256=$((Get-FileHash -Algorithm SHA256 $apk.FullName).Hash.ToLowerInvariant())"
+            "aab_bytes=$($aab.Length)"
+            "aab_sha256=$((Get-FileHash -Algorithm SHA256 $aab.FullName).Hash.ToLowerInvariant())"
+            "bundletool_sha256=$bh"
+          ) | Set-Content dist/production-signing-metadata.txt -Encoding utf8
+          Remove-Item -Force $keyPath,$bundletool
+      - name: Upload production signing proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-production-signing-proof
+          path: |
+            dist/SLF-production.apk
+            dist/SLF-production.aab
+            dist/production-signing-metadata.txt
+            dist/signing-certificate-sha256.txt
+            dist/apk-signature-verification.txt
+            dist/aab-signature-verification.txt
+          if-no-files-found: error
