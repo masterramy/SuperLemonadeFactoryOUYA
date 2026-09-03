@@ -71,7 +71,7 @@ jobs:
           O=live-resize-diagnostic; mkdir -p "$O"; P=air.com.initialsgames.SLF
           pull_telemetry(){
             local out=$1
-            adb shell run-as "$P" sh -c 'find . -name resize_telemetry.txt -print -exec cat {} \;' >"$out" 2>&1 || true
+            adb shell run-as "$P" sh -c 'find . -name resize-geometry.txt -print -exec cat {} \;' >"$out" 2>&1 || true
           }
           adb install -r apk/SLF-live-resize-diagnostic.apk >"$O/install.txt" 2>&1
           adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
