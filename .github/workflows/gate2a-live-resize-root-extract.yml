@@ -34,6 +34,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           O=root-extract; mkdir -p "$O"; P=air.com.initialsgames.SLF
+          TELEMETRY="/data/user/0/$P/com.initialsgames.SLF/Local Store/resize_telemetry.txt"
           adb root >"$O/adb-root.txt" 2>&1 || true
           adb wait-for-device
           adb shell id >"$O/adb-id.txt" 2>&1 || true
@@ -49,14 +50,14 @@ jobs:
           adb shell am start -W -n "$P/.AIRAppEntry" >"$O/launch.txt" 2>&1
           sleep 12
           adb exec-out screencap -p >"$O/01-fold.png"
-          adb shell find "/data/user/0/$P" -name resize_telemetry.txt -print -exec cat {} \; >"$O/01-telemetry.txt" 2>&1 || true
+          adb shell "cat '$TELEMETRY'" >"$O/01-telemetry.txt" 2>&1 || true
 
           adb shell wm size 1440x3120 >/dev/null 2>&1
           adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
           adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
           sleep 12
           adb exec-out screencap -p >"$O/02-expanded.png"
-          adb shell find "/data/user/0/$P" -name resize_telemetry.txt -print -exec cat {} \; >"$O/02-telemetry.txt" 2>&1 || true
+          adb shell "cat '$TELEMETRY'" >"$O/02-telemetry.txt" 2>&1 || true
           adb shell find "/data/user/0/$P" -maxdepth 6 -type f -print >"$O/private-files.txt" 2>&1 || true
           adb shell dumpsys activity activities >"$O/activity.txt"
           adb shell dumpsys window >"$O/window.txt"
