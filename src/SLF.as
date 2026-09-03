@@ -3,6 +3,9 @@ package
 	import flash.display.StageAlign;
 	import flash.display.StageScaleMode;
 	import flash.events.Event;
+	import flash.filesystem.File;
+	import flash.filesystem.FileMode;
+	import flash.filesystem.FileStream;
 	import flash.system.Capabilities;
 	import org.flixel.*;
 	import io.arkeus.ouya.ControllerInput;
@@ -26,6 +29,7 @@ package
 		private var mobileControls:MobileControls;
 		private var qaFrame:int = 0;
 		private var qaLastSignature:String = "";
+		private var qaTelemetryFile:File;
 
 		public function SLF()
 		{
@@ -59,16 +63,17 @@ package
 			stage.align = StageAlign.TOP_LEFT;
 			stage.addEventListener(Event.RESIZE, onModernStageResize, false, 0, true);
 			stage.addEventListener(Event.ENTER_FRAME, monitorViewport, false, 0, true);
-			qaTraceViewport("ADDED_TO_STAGE");
+			qaResetTelemetry();
+			qaRecordViewport("ADDED_TO_STAGE");
 			fitModernStage();
-			qaTraceViewport("AFTER_INITIAL_FIT");
+			qaRecordViewport("AFTER_INITIAL_FIT");
 		}
 
 		private function onModernStageResize(event:Event):void
 		{
-			qaTraceViewport("RESIZE_EVENT_BEFORE_FIT");
+			qaRecordViewport("RESIZE_EVENT_BEFORE_FIT");
 			fitModernStage(event);
-			qaTraceViewport("RESIZE_EVENT_AFTER_FIT");
+			qaRecordViewport("RESIZE_EVENT_AFTER_FIT");
 		}
 
 		private function monitorViewport(event:Event):void
@@ -79,7 +84,7 @@ package
 			if (signature != qaLastSignature || qaFrame % 120 == 0)
 			{
 				qaLastSignature = signature;
-				trace("[GATE2A_RESIZE] FRAME=" + qaFrame + " " + signature);
+				qaRecordViewport("FRAME=" + qaFrame);
 			}
 		}
 
@@ -94,9 +99,39 @@ package
 				" stageAlign=" + stage.align + " stageScaleMode=" + stage.scaleMode;
 		}
 
-		private function qaTraceViewport(label:String):void
+		private function qaResetTelemetry():void
 		{
-			trace("[GATE2A_RESIZE] " + label + " " + viewportSignature());
+			try
+			{
+				qaTelemetryFile = File.applicationStorageDirectory.resolvePath("resize_telemetry.txt");
+				var stream:FileStream = new FileStream();
+				stream.open(qaTelemetryFile, FileMode.WRITE);
+				stream.writeUTFBytes("");
+				stream.close();
+			}
+			catch (error:Error)
+			{
+				trace("[GATE2A_RESIZE] TELEMETRY_RESET_ERROR " + error.message);
+			}
+		}
+
+		private function qaRecordViewport(label:String):void
+		{
+			var line:String = "[GATE2A_RESIZE] " + label + " " + viewportSignature();
+			trace(line);
+			try
+			{
+				if (qaTelemetryFile == null)
+					qaTelemetryFile = File.applicationStorageDirectory.resolvePath("resize_telemetry.txt");
+				var stream:FileStream = new FileStream();
+				stream.open(qaTelemetryFile, FileMode.APPEND);
+				stream.writeUTFBytes(line + "\n");
+				stream.close();
+			}
+			catch (error:Error)
+			{
+				trace("[GATE2A_RESIZE] TELEMETRY_WRITE_ERROR " + error.message);
+			}
 		}
 
 		private function fitModernStage(event:Event = null):void
