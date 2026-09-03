@@ -1,0 +1,89 @@
+name: Gate 2A Geometry Diagnostic
+
+on:
+  push:
+    branches: [gate2a-display-geometry-diagnostic]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2a-display-geometry-diagnostic
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile diagnostic
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package diagnostic APK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & adt -certificate -validityPeriod 1 -cn "Gate2A Geometry Diagnostic" 2048-RSA diag.p12 gate2a
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $sdk=$env:ANDROID_SDK_ROOT; if([string]::IsNullOrWhiteSpace($sdk)){$sdk=$env:ANDROID_HOME}
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore diag.p12 -storepass gate2a dist/SLF-geometry-diag.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+          if($LASTEXITCODE -ne 0 -or -not (Test-Path dist/SLF-geometry-diag.apk)){throw 'diagnostic APK failed'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gate2a-geometry-diag-apk
+          path: dist/SLF-geometry-diag.apk
+          if-no-files-found: error
+
+  runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2a-geometry-diag-apk
+          path: apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules; sudo udevadm trigger --name-match=kvm
+      - name: Run geometry diagnostic
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: |
+            mkdir -p geometry-out
+            adb install -r apk/SLF-geometry-diag.apk >geometry-out/install.txt 2>&1
+            adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+            adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+            adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+            adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+            adb shell am start -W -n air.com.initialsgames.SLF/.AIRAppEntry >geometry-out/launch.txt 2>&1
+            sleep 10
+            adb exec-out screencap -p >geometry-out/pixel-native.png
+            adb shell wm size 1600x1760 >/dev/null 2>&1
+            adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+            adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+            sleep 4
+            adb exec-out screencap -p >geometry-out/fold.png
+            adb shell wm size reset >/dev/null 2>&1 || true
+            adb logcat -d >geometry-out/logcat.txt 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-geometry-diag-evidence
+          path: geometry-out
+          if-no-files-found: error
