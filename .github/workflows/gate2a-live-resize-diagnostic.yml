@@ -69,6 +69,10 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           O=live-resize-diagnostic; mkdir -p "$O"; P=air.com.initialsgames.SLF
+          pull_telemetry(){
+            local out=$1
+            adb shell run-as "$P" sh -c 'find . -name resize_telemetry.txt -print -exec cat {} \;' >"$out" 2>&1 || true
+          }
           adb install -r apk/SLF-live-resize-diagnostic.apk >"$O/install.txt" 2>&1
           adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
           adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
@@ -88,7 +92,7 @@ jobs:
           adb shell dumpsys activity activities >"$O/01-activity.txt"
           adb shell dumpsys display >"$O/01-display.txt"
           adb logcat -d >"$O/01-logcat.txt"
-          grep -F "[GATE2A_RESIZE]" "$O/01-logcat.txt" >"$O/01-air-viewport.txt" || true
+          pull_telemetry "$O/01-air-storage.txt"
 
           adb shell wm size 1440x3120 >/dev/null 2>&1
           adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
@@ -100,15 +104,16 @@ jobs:
           adb shell dumpsys activity activities >"$O/02-activity.txt"
           adb shell dumpsys display >"$O/02-display.txt"
           adb logcat -d >"$O/02-logcat.txt"
-          grep -F "[GATE2A_RESIZE]" "$O/02-logcat.txt" >"$O/02-air-viewport.txt" || true
+          pull_telemetry "$O/02-air-storage.txt"
+          adb shell run-as "$P" sh -c 'pwd; find . -maxdepth 4 -type f -print' >"$O/run-as-files.txt" 2>&1 || true
 
           PID=$(adb shell pidof "$P" | tr -d '\r' || true)
           FOCUS=$(adb shell dumpsys window | grep -m1 mCurrentFocus || true)
           printf 'pid=%s\nfocus=%s\n' "$PID" "$FOCUS" >"$O/summary.txt"
-          printf '\n--- FOLD AIR VIEWPORT ---\n' >>"$O/summary.txt"
-          cat "$O/01-air-viewport.txt" >>"$O/summary.txt" || true
-          printf '\n--- EXPANDED AIR VIEWPORT ---\n' >>"$O/summary.txt"
-          cat "$O/02-air-viewport.txt" >>"$O/summary.txt" || true
+          printf '\n--- FOLD AIR STORAGE ---\n' >>"$O/summary.txt"
+          cat "$O/01-air-storage.txt" >>"$O/summary.txt" || true
+          printf '\n--- EXPANDED AIR STORAGE ---\n' >>"$O/summary.txt"
+          cat "$O/02-air-storage.txt" >>"$O/summary.txt" || true
           adb shell wm size reset >/dev/null 2>&1 || true
           EOS
           chmod +x diagnostic.sh
