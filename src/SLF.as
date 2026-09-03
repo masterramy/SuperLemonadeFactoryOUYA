@@ -28,10 +28,9 @@ package
 		{
 			super(640, 360, PCIntroState, 3, 60, 30);
 
-			// Modern AIR/Android can report a Stage width that is larger than the
-			// visible framebuffer after rotation/density transforms. Keep the stage
-			// unscaled and fit the historical canvas against the actual fullscreen
-			// display dimensions instead.
+			// Modern Android can resize the AIR stage while the app remains alive
+			// (for example when a foldable changes posture). Keep the legacy canvas
+			// aspect-fitted to the current stage on every resize.
 			addEventListener(Event.ADDED_TO_STAGE, configureModernStage);
 
 			// Legacy gameplay polls FlxG.ouyaController directly in many states.
@@ -63,20 +62,13 @@ package
 		{
 			if (stage == null) return;
 
-			var displayW:Number = stage.fullScreenWidth;
-			var displayH:Number = stage.fullScreenHeight;
-			if (!isFinite(displayW) || displayW <= 0) displayW = stage.stageWidth;
-			if (!isFinite(displayH) || displayH <= 0) displayH = stage.stageHeight;
+			// stageWidth/stageHeight track the live Android content surface. The
+			// fullscreen dimensions can remain stale across an in-process resize.
+			var displayW:Number = stage.stageWidth;
+			var displayH:Number = stage.stageHeight;
+			if (!isFinite(displayW) || displayW <= 0) displayW = stage.fullScreenWidth;
+			if (!isFinite(displayH) || displayH <= 0) displayH = stage.fullScreenHeight;
 			if (!isFinite(displayW) || !isFinite(displayH) || displayW <= 0 || displayH <= 0) return;
-
-			// Some Android builds expose fullscreen dimensions in the device's
-			// natural portrait order even after AIR has entered landscape.
-			if (stage.stageWidth > stage.stageHeight && displayW < displayH)
-			{
-				var swap:Number = displayW;
-				displayW = displayH;
-				displayH = swap;
-			}
 
 			var fit:Number = Math.min(displayW / CANVAS_WIDTH, displayH / CANVAS_HEIGHT);
 			if (!isFinite(fit) || fit <= 0) fit = 1;
