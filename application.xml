@@ -9,8 +9,8 @@
     <manifestAdditions><![CDATA[<manifest android:installLocation="auto">
 	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
 	<uses-feature android:required="true" android:name="android.hardware.touchscreen.multitouch" />
-	<application android:debuggable="true">
-		<activity android:configChanges="fontScale|keyboard|keyboardHidden|orientation">
+	<application android:debuggable="true" android:appCategory="game" android:resizeableActivity="false">
+		<activity>
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="android.intent.category.LAUNCHER" />
