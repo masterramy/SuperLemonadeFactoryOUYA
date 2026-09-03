@@ -3,6 +3,7 @@ package
 	import flash.display.StageAlign;
 	import flash.display.StageScaleMode;
 	import flash.events.Event;
+	import flash.geom.Point;
 	import flash.system.Capabilities;
 	import flash.text.TextField;
 	import flash.text.TextFormat;
@@ -68,7 +69,7 @@ package
 				" dpi=" + Capabilities.screenDPI + "\n" +
 				"root x=" + x.toFixed(2) + " y=" + y.toFixed(2) +
 				" scale=" + scaleX.toFixed(5) + "x" + scaleY.toFixed(5) +
-				" local1920->global=" + localToGlobal(new flash.geom.Point(1920,1080)).toString();
+				" local1920->global=" + localToGlobal(new Point(1920,1080)).toString();
 			stage.setChildIndex(geometryText, stage.numChildren - 1);
 		}
 
