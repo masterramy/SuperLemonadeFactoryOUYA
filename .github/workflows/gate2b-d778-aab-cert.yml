@@ -1,0 +1,88 @@
+name: Gate 2B d778 AAB Cert
+
+on:
+  push:
+    branches:
+      - gate2b-d778-aab-cert-qa
+
+permissions:
+  contents: read
+
+jobs:
+  release-aab:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: d7783af3dbaa0a27071c51d5965f2e9dec5864e2
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+
+      - name: Compile exact candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Package and independently verify AAB
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $sdk=$env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) {$sdk=$env:ANDROID_HOME}
+          $keyPath=Join-Path $PWD 'qa-signing.p12'
+          $storePass='gate2b-d778'
+          & adt -certificate -validityPeriod 1 -cn "Gate 2B d778 AAB QA" 2048-RSA $keyPath $storePass
+          if ($LASTEXITCODE -ne 0) { throw 'certificate creation failed' }
+          & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $storePass dist/SLF-Port-d778.aab application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+          if ($LASTEXITCODE -ne 0) { throw 'AAB packaging failed' }
+          $aab=Get-Item dist/SLF-Port-d778.aab
+          $hash=(Get-FileHash -Algorithm SHA256 $aab.FullName).Hash.ToLowerInvariant()
+          $bundletoolVersion='1.18.3'
+          $expected='a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'
+          $jar=Join-Path $PWD "bundletool-all-$bundletoolVersion.jar"
+          Invoke-WebRequest -Uri "https://github.com/google/bundletool/releases/download/$bundletoolVersion/bundletool-all-$bundletoolVersion.jar" -OutFile $jar
+          $jarHash=(Get-FileHash -Algorithm SHA256 $jar).Hash.ToLowerInvariant()
+          if ($jarHash -ne $expected) { throw "bundletool hash mismatch: $jarHash" }
+          $PSNativeCommandUseErrorActionPreference=$false
+          $target=(((& java -jar $jar dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/uses-sdk/@android:targetSdkVersion') | Out-String).Trim())
+          if ($LASTEXITCODE -ne 0 -or $target -ne '36') { throw "targetSdk mismatch: $target" }
+          $min=(((& java -jar $jar dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/uses-sdk/@android:minSdkVersion') | Out-String).Trim())
+          if ($LASTEXITCODE -ne 0 -or $min -ne '21') { throw "minSdk mismatch: $min" }
+          @(
+            'source_commit=d7783af3dbaa0a27071c51d5965f2e9dec5864e2'
+            'package_id=com.ramybaheeg.slfport'
+            'air_sdk=51.3.4.1'
+            'signing_mode=disposable-validation'
+            "aab_bytes=$($aab.Length)"
+            "aab_sha256=$hash"
+            'manifest_target_sdk_verified=36'
+            'manifest_min_sdk_verified=21'
+            "bundletool_version=$bundletoolVersion"
+            "bundletool_sha256=$jarHash"
+          ) | Set-Content dist/release-metadata.txt -Encoding utf8
+          Remove-Item -Force $keyPath,$jar
+          $global:LASTEXITCODE=0
+
+      - name: Upload exact-candidate AAB evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2b-d778-aab
+          path: |
+            dist/SLF-Port-d778.aab
+            dist/release-metadata.txt
+          if-no-files-found: error
