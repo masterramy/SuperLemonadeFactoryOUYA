@@ -27,16 +27,19 @@ package
 
 	public class PCCreditsState extends FlxState
 	{
-		public var creditsStr:String =
+		public var portInfoStr:String =
 			"SUPER LEMONADE FACTORY PORT\n\n" +
 			"Independent Android port published by Ramy Baheeg\n" +
 			"Based on the GPLv3-released OUYA source\n" +
-			"Source: github.com/masterramy/SuperLemonadeFactoryOUYA\n\n" +
 			"Original game by Shane Brouwer / Initials\n" +
-			"This Android port is not an official Initials publication or endorsement.\n\n" +
+			"Not an official Initials publication or endorsement.\n" +
+			"Source: github.com/masterramy/SuperLemonadeFactoryOUYA";
+
+		public var creditsStr:String =
 			"ORIGINAL GAME CREDITS\n\n" +
 			"A Game By Shane Brouwer\n\nArt\nMiguelito\n\nMusic\nEasyname\n\nMarketing\nSurprise Attack\n\nIllustration\ndoggerland.deviantart.com\n\nIn Game Voice Talent\nRoy Kelly\nKellyCommaRoy {a} gmail.com\n\nTrailer Voice Talent\nTom Mitchell\n\nAdditional Art and Copywriting\nElizabeth Docking\n\nEngine\nFlixel\n\nLevel Editor\nOgmo Editor\n\nSound Effects\nbfxr\n\nSpecial Thanks\nAdam Atomic and Semi Secret Software. Thank you for Flixel.\n\nHokori Interactive - Brett Chalupa\nTonnes of help with this version.\n\nIQPierce\nCracked the code to allow custom fonts.\nCheck out his Flixel game Connectrode.\n\nScott Rapson\nThanks for your in depth beta testing.\n\nMatt Thorson\nFor the Ogmo Editor\n\nJon K\nFlixel iOS template.\n\naxcho\nThanks for the retina help.\n\nChevy Ray\nGot me interested in the Ogmo Editor with the source code to the Ludum Dare winning game Flee Buster.\n\nAny resemblance to real persons, living or dead is purely coincidental.\n\nDedicated to Marten and Gerardus.\n\nOriginal/historical contact: initials {a} initialsgames.com\n";
 
+		public var portInfoText:FlxText;
 		public var creditsText:FlxText;
 
 		override public function create():void
@@ -48,11 +51,17 @@ package
 			gradient2.y = 0;
 			add(gradient2);
 
-			creditsText = new FlxText(0, 250, FlxG.width, creditsStr);
-			creditsText.size = 16;
-			creditsText.alignment = "center";
-			creditsText.velocity.y = -30;
-			creditsText.color = 0xff7725a1;
+			var portPanel:FlxSprite = new FlxSprite(20, 42);
+			portPanel.makeGraphic(FlxG.width - 40, 116, 0x99eeeccd);
+			add(portPanel);
+
+			portInfoText = new FlxText(30, 50, FlxG.width - 60, portInfoStr, true);
+			portInfoText.setFormat("commodore", 8, 0xff7725a1, "center");
+			add(portInfoText);
+
+			creditsText = new FlxText(20, 190, FlxG.width - 40, creditsStr, true);
+			creditsText.setFormat("commodore", 8, 0xff7725a1, "center");
+			creditsText.velocity.y = -18;
 			add(creditsText);
 
 			var borderTop:FlxTileblock = new FlxTileblock(0, 0, FlxG.width, 30);
@@ -69,8 +78,11 @@ package
 			headingTxt.alignment = "center";
 			add(headingTxt);
 
-			var backBtn:FlxButton = new FlxButton(40, Registry.ySmallPos7, "back", this.onQuit);
-			backBtn.y = FlxG.height - backBtn.height - 60;
+			var footerTxt:FlxText = new FlxText(0, FlxG.height - 22, FlxG.width, "X / BACK TO RETURN", true);
+			footerTxt.setFormat("commodore", 8, 0xffffffff, "center");
+			add(footerTxt);
+
+			var backBtn:FlxButton = new FlxButton(8, FlxG.height - 27, "back", this.onQuit);
 			backBtn.status = FlxButton.HIGHLIGHT;
 			backBtn.color = Registry.WAREHOUSE_PURPLE;
 			backBtn.label.color = 0xffffff;
@@ -80,10 +92,10 @@ package
 		override public function update():void
 		{
 			if (FlxG.keys.any()) {
-				creditsText.velocity.y = -60;
+				creditsText.velocity.y = -36;
 			}
 			else {
-				creditsText.velocity.y = -30;
+				creditsText.velocity.y = -18;
 			}
 
 			super.update();
