@@ -7,45 +7,33 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   credits-render:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Checkout exact candidate
-        uses: actions/checkout@v4
+      - name: Download exact-candidate build artifact from green run
+        uses: actions/download-artifact@v4
         with:
-          ref: 24edfb3e2595223539036a996804f0137f3aed8f
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Set up AIR SDK
-        uses: joshtynjala/setup-adobe-air-action@v2
-        with:
-          air-version: "51.3.4.1"
-          accept-license: true
-      - name: Compile and package x64 candidate
+          name: gate2b-candidate-build
+          path: candidate-build
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 33904865814
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify source receipt and write credits render script
         shell: bash
         run: |
-          mkdir -p bin dist evidence
-          rm -f bin/SLFforOuya.swf dist/SLF-Port-emulator-x64.apk gate2b-qa.p12
-          amxmlc -load-config+=obj/SLF_for_OuyaConfig.xml -output=bin/SLFforOuya.swf
-          adt -certificate -validityPeriod 1 -cn "Gate 2B Credits QA" 2048-RSA gate2b-qa.p12 gate2b
-          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2b-qa.p12 -storepass gate2b dist/SLF-Port-emulator-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk "$SDK"
-          sha256sum dist/SLF-Port-emulator-x64.apk > evidence/apk-sha256.txt
-          echo source_commit=24edfb3e2595223539036a996804f0137f3aed8f > evidence/source.txt
-      - name: Write credits render script
-        shell: bash
-        run: |
+          mkdir -p evidence
+          cat candidate-build/source.txt | tee evidence/source.txt
+          grep -q 'source_commit=24edfb3e2595223539036a996804f0137f3aed8f' candidate-build/source.txt
+          sha256sum candidate-build/SLF-Port-emulator-x64.apk | tee evidence/apk-sha256.txt
           cat > credits.sh <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
           PACKAGE="air.com.ramybaheeg.slfport"
-          adb install -r dist/SLF-Port-emulator-x64.apk > evidence/install.txt 2>&1
+          adb install -r candidate-build/SLF-Port-emulator-x64.apk > evidence/install.txt 2>&1
           adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
           adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
           adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
@@ -57,6 +45,7 @@ jobs:
           sleep 12
           adb shell input keyevent KEYCODE_X; sleep 2
           adb shell input keyevent KEYCODE_X; sleep 6
+          # Main menu: Play=0, Options=1, Help=2, Credits=3.
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
