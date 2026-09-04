@@ -1,0 +1,39 @@
+name: Publish privacy policy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - privacy.html
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Prepare privacy-only site
+        run: |
+          mkdir -p _site
+          cp privacy.html _site/privacy.html
+          printf '<!doctype html><meta charset="utf-8"><title>Super Lemonade Factory Port</title><p><a href="privacy.html">Privacy Policy</a></p>\n' > _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
