@@ -16,7 +16,7 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
         with:
-          ref: 160bd37f20e53e6e549b40e0c952a94a58cf2437
+          ref: d7783af3dbaa0a27071c51d5965f2e9dec5864e2
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -49,7 +49,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "emulator APK packaging failed" }
           Get-FileHash -Algorithm SHA256 dist/SLF-Port-candidate.apk | Format-List | Out-File dist/hashes.txt
           Get-FileHash -Algorithm SHA256 dist/SLF-Port-emulator-x64.apk | Format-List | Out-File dist/hashes.txt -Append
-          "source_commit=160bd37f20e53e6e549b40e0c952a94a58cf2437" | Out-File dist/source.txt
+          "source_commit=d7783af3dbaa0a27071c51d5965f2e9dec5864e2" | Out-File dist/source.txt
           "package_id=com.ramybaheeg.slfport" | Out-File dist/source.txt -Append
           "air_runtime_package=air.com.ramybaheeg.slfport" | Out-File dist/source.txt -Append
       - name: Upload build evidence
@@ -96,6 +96,19 @@ jobs:
             fi
           }
 
+          start_clean() {
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >/dev/null 2>&1
+            sleep 12
+          }
+
+          to_menu() {
+            adb shell input keyevent KEYCODE_X
+            sleep 2
+            adb shell input keyevent KEYCODE_X
+            sleep 10
+          }
+
           adb install -r "$APK" > evidence/install.txt 2>&1
           adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
           adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
@@ -104,42 +117,37 @@ jobs:
           adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
           adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
           adb logcat -c
-          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > evidence/launch.txt 2>&1
-          sleep 12
+
+          start_clean
           adb exec-out screencap -p > evidence/01-intro.png
           alive_focus 01-intro
-
-          adb shell input keyevent KEYCODE_X; sleep 2
-          adb shell input keyevent KEYCODE_X; sleep 12
+          to_menu
           adb exec-out screencap -p > evidence/02-menu-stable.png
           alive_focus 02-menu-stable
 
-          # Options: one DOWN from Play, X to enter. Use the game's home key (1) to return
-          # without activating the highlighted erase-progress control.
+          # Options and menu re-entry.
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
-          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_X; sleep 5
           adb exec-out screencap -p > evidence/03-options.png
           alive_focus 03-options
-          adb shell input keyevent KEYCODE_1; sleep 4
+          adb shell input keyevent KEYCODE_1; sleep 8
           adb exec-out screencap -p > evidence/04-menu-after-options.png
+          alive_focus 04-menu-after-options
 
-          # Help is two DOWN presses from fresh menu Play.
+          # Help -> Privacy/About -> Help -> menu.
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
-          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_X; sleep 5
           adb exec-out screencap -p > evidence/05-help.png
           alive_focus 05-help
-
-          # Help DOWN opens Privacy / About.
-          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 4
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 5
           adb exec-out screencap -p > evidence/06-privacy-about.png
           alive_focus 06-privacy-about
           fatal_scan 06-privacy-about
-          adb shell input keyevent KEYCODE_X; sleep 3
           adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_X; sleep 8
 
-          # Credits / Port Info is three DOWN presses from fresh menu Play.
+          # Credits / Port Info and second menu re-entry.
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
           adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
@@ -147,21 +155,23 @@ jobs:
           adb exec-out screencap -p > evidence/07-credits-port-info.png
           alive_focus 07-credits-port-info
           fatal_scan 07-credits-port-info
-          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_X; sleep 8
           adb exec-out screencap -p > evidence/08-menu-final.png
+          alive_focus 08-menu-final
 
-          # Gameplay regression: Play -> Level Select -> Level 2.
-          adb shell input keyevent KEYCODE_X; sleep 4
+          # Reset solely to remove any state/race ambiguity from the gameplay lane.
+          start_clean
+          to_menu
+          adb shell input keyevent KEYCODE_X; sleep 8
           adb exec-out screencap -p > evidence/09-level-select.png
           alive_focus 09-level-select
           adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
-          adb shell input keyevent KEYCODE_X; sleep 12
-          adb shell input keyevent KEYCODE_X; sleep 10
+          adb shell input keyevent KEYCODE_X; sleep 18
           adb exec-out screencap -p > evidence/10-gameplay.png
           alive_focus 10-gameplay
           fatal_scan 10-gameplay
 
-          printf 'PASS-CANDIDATE source=160bd37f20e53e6e549b40e0c952a94a58cf2437 package=%s rendered_surfaces=intro,menu,options,help,privacy,credits,level-select,gameplay\n' "$PACKAGE" > evidence/result.txt
+          printf 'PASS-CANDIDATE source=d7783af3dbaa0a27071c51d5965f2e9dec5864e2 package=%s rendered_surfaces=intro,menu,options,menu-reentry,help,privacy,credits,menu-reentry,level-select,gameplay\n' "$PACKAGE" > evidence/result.txt
           EOF
           chmod +x certify.sh
       - name: Enable KVM
