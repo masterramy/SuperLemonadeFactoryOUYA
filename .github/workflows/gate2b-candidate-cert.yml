@@ -1,0 +1,155 @@
+name: Gate 2B Publication Candidate Cert
+
+on:
+  push:
+    branches:
+      - gate2b-cert-qa
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 24edfb3e2595223539036a996804f0137f3aed8f
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3.4.1"
+          accept-license: true
+      - name: Compile exact candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Create ephemeral QA certificate
+        shell: cmd
+        run: adt -certificate -validityPeriod 1 -cn "Gate 2B Candidate QA" 2048-RSA gate2b-qa.p12 gate2b
+      - name: Package device and x64 emulator APKs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $sdk=$env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) {$sdk=$env:ANDROID_HOME}
+          & adt -package -target apk -storetype pkcs12 -keystore gate2b-qa.p12 -storepass gate2b dist/SLF-Port-candidate.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+          if ($LASTEXITCODE -ne 0) { throw "device APK packaging failed" }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2b-qa.p12 -storepass gate2b dist/SLF-Port-emulator-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android . -platformsdk $sdk
+          if ($LASTEXITCODE -ne 0) { throw "emulator APK packaging failed" }
+          Get-FileHash -Algorithm SHA256 dist/SLF-Port-candidate.apk | Format-List | Out-File dist/hashes.txt
+          Get-FileHash -Algorithm SHA256 dist/SLF-Port-emulator-x64.apk | Format-List | Out-File dist/hashes.txt -Append
+          "source_commit=24edfb3e2595223539036a996804f0137f3aed8f" | Out-File dist/source.txt
+          "package_id=com.ramybaheeg.slfport" | Out-File dist/source.txt -Append
+          "air_runtime_package=air.com.ramybaheeg.slfport" | Out-File dist/source.txt -Append
+      - name: Upload build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2b-candidate-build
+          path: |
+            dist/SLF-Port-candidate.apk
+            dist/SLF-Port-emulator-x64.apk
+            dist/hashes.txt
+            dist/source.txt
+
+  runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate2b-candidate-build
+          path: runtime-apk
+      - name: Write bounded runtime certification
+        shell: bash
+        run: |
+          cat > certify.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p evidence
+          APK="runtime-apk/SLF-Port-emulator-x64.apk"
+          PACKAGE="air.com.ramybaheeg.slfport"
+          adb install -r "$APK" > evidence/install.txt 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > evidence/launch.txt 2>&1
+          sleep 12
+          adb exec-out screencap -p > evidence/01-launch.png
+          adb shell dumpsys window > evidence/01-window.txt
+          test -n "$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+          grep -m1 'mCurrentFocus=' evidence/01-window.txt | grep -q "$PACKAGE"
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 6
+          adb exec-out screencap -p > evidence/02-menu.png
+          # Main menu: Play=0, Options=1, Help=2.
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb exec-out screencap -p > evidence/03-help.png
+          adb shell dumpsys window > evidence/03-window.txt
+          grep -m1 'mCurrentFocus=' evidence/03-window.txt | grep -q "$PACKAGE"
+          # Help DOWN opens the new Privacy/About state.
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 4
+          adb exec-out screencap -p > evidence/04-privacy-about.png
+          adb shell dumpsys window > evidence/04-window.txt
+          adb logcat -d > evidence/04-logcat.txt
+          grep -m1 'mCurrentFocus=' evidence/04-window.txt | grep -q "$PACKAGE"
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" evidence/04-logcat.txt > evidence/privacy-fatal-scan.txt; then exit 31; fi
+          # Back to Help then menu through the game's action path.
+          adb shell input keyevent KEYCODE_X; sleep 3
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb exec-out screencap -p > evidence/05-menu-return.png
+          # Gameplay regression: Play -> Level Select -> Level 2.
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb exec-out screencap -p > evidence/06-level-select.png
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 12
+          adb shell input keyevent KEYCODE_X; sleep 10
+          adb exec-out screencap -p > evidence/07-gameplay.png
+          adb shell dumpsys window > evidence/07-window.txt
+          adb logcat -d > evidence/07-logcat.txt
+          test -n "$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+          grep -m1 'mCurrentFocus=' evidence/07-window.txt | grep -q "$PACKAGE"
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" evidence/07-logcat.txt > evidence/gameplay-fatal-scan.txt; then exit 41; fi
+          printf 'PASS-CANDIDATE source=24edfb3e2595223539036a996804f0137f3aed8f package=%s privacy_surface_reached=yes gameplay_path_reached=yes\n' "$PACKAGE" > evidence/result.txt
+          EOF
+          chmod +x certify.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot Android and certify rendered surfaces
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash certify.sh
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate2b-candidate-runtime
+          path: evidence
+          if-no-files-found: warn
