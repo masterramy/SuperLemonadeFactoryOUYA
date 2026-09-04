@@ -2,7 +2,6 @@ package
 {
 	import org.flixel.*;
 	import org.flixel.plugin.photonstorm.*;
-	import org.flixel.plugin.photonstorm.FX.CenterSlideFX
 	import flash.net.FileReference;
 	import flash.desktop.NativeApplication;
 	import flash.events.Event;
@@ -48,7 +47,6 @@ package
 		
 		
 		//	Test specific variables
-		private var slide:CenterSlideFX;
 		private var scratch:FlxSprite;
 		private var glitchAmount:int;
 		
@@ -134,25 +132,12 @@ package
 			bgShelf.y = FlxG.height - bgShelf.height;
 			add(bgShelf);			
 			
-			//	Test specific
-			if (FlxG.getPlugin(FlxSpecialFX) == null)
-			{
-				FlxG.addPlugin(new FlxSpecialFX);
-			}
-			
+			// Stable static logo. The legacy CenterSlideFX reveal corrupts the logo
+			// after returning to this state on current AIR/Android.
 			var pic:FlxSprite = new FlxSprite(0, 0, Registry.ImgLogo);
-			
-			//	Create the Slide FX
-			slide = FlxSpecialFX.centerSlide();
-			
-			//	Here we'll create it from an embedded PNG, positioned at 0,0 and it'll do a vertical reveal to start with
-			pic = slide.createFromClass(Registry.ImgLogo, 0, 0, CenterSlideFX.REVEAL_VERTICAL);
 			pic.x = FlxG.width / 2 - pic.width / 2;
 			pic.y = (FlxG.height / 2 - pic.height / 2 ) - 100;
-			
 			add(pic);
-			
-			slide.start();
 			
 			if (Registry.mouseEnabled)
 				FlxG.mouse.show();
@@ -580,10 +565,6 @@ package
 		
 		override public function destroy():void
 		{
-			
-			//	Important! Clear out the plugin, otherwise resources will get messed right up after a while
-			FlxSpecialFX.clear();
-			
 			super.destroy();
 		}
 		

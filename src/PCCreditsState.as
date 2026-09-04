@@ -78,9 +78,6 @@ package
 			headingTxt.alignment = "center";
 			add(headingTxt);
 
-			var footerTxt:FlxText = new FlxText(0, FlxG.height - 22, FlxG.width, "X / BACK TO RETURN", true);
-			footerTxt.setFormat("commodore", 8, 0xffffffff, "center");
-			add(footerTxt);
 
 			var backBtn:FlxButton = new FlxButton(8, FlxG.height - 27, "back", this.onQuit);
 			backBtn.status = FlxButton.HIGHLIGHT;
