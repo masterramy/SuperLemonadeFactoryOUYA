@@ -1,0 +1,46 @@
+name: Gate 2B Update Candidate Cert
+
+on:
+  push:
+    branches:
+      - gate2b-cert-fix-qa
+
+permissions:
+  contents: write
+
+jobs:
+  update-cert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gate2b-cert-qa
+          fetch-depth: 0
+      - name: Patch exact candidate and deterministic navigation
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('.github/workflows/gate2b-candidate-cert.yml')
+          s = p.read_text(encoding='utf-8')
+          oldsha = '160bd37f20e53e6e549b40e0c952a94a58cf2437'
+          newsha = 'd7783af3dbaa0a27071c51d5965f2e9dec5864e2'
+          if oldsha not in s:
+              raise SystemExit('old candidate SHA missing')
+          s = s.replace(oldsha, newsha)
+          s = s.replace('adb shell input keyevent KEYCODE_X; sleep 4\n          adb exec-out screencap -p > evidence/08-menu-final.png',
+                        'adb shell input keyevent KEYCODE_X; sleep 8\n          adb exec-out screencap -p > evidence/08-menu-final.png', 1)
+          old = '''          # Gameplay regression: Play -> Level Select -> Level 2.\n          adb shell input keyevent KEYCODE_X; sleep 4\n          adb exec-out screencap -p > evidence/09-level-select.png\n          alive_focus 09-level-select\n          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1\n          adb shell input keyevent KEYCODE_X; sleep 12\n          adb shell input keyevent KEYCODE_X; sleep 10\n          adb exec-out screencap -p > evidence/10-gameplay.png\n'''
+          new = '''          # Gameplay regression: stable menu -> Play -> Level Select -> Level 2.\n          # No fallback activation: a second X can silently select Level 1 and turn a\n          # false-positive menu race into a cutscene. Capture each state explicitly.\n          adb shell input keyevent KEYCODE_X; sleep 7\n          adb exec-out screencap -p > evidence/09-level-select.png\n          alive_focus 09-level-select\n          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1\n          adb shell input keyevent KEYCODE_X; sleep 16\n          adb exec-out screencap -p > evidence/10-gameplay.png\n'''
+          if old not in s:
+              raise SystemExit('navigation patch anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8', newline='\n')
+      - name: Commit QA-only update
+        run: |
+          git diff --check
+          git diff -- .github/workflows/gate2b-candidate-cert.yml
+          git config user.name masterramy
+          git config user.email ramy.baheeg@gmail.com
+          git add .github/workflows/gate2b-candidate-cert.yml
+          git commit -m "Gate 2B QA: recertify final candidate with truthful visual path"
+          git push origin HEAD:gate2b-cert-qa
