@@ -1,0 +1,61 @@
+name: Gate 2B Apply Visual QA Fixes
+
+on:
+  push:
+    branches:
+      - gate2b-menu-fix-qa
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout publication candidate
+        uses: actions/checkout@v4
+        with:
+          ref: gate2b-publication-candidate
+          fetch-depth: 0
+      - name: Apply bounded visual fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          menu = Path('src/PCMenuState.as')
+          s = menu.read_text(encoding='utf-8')
+          replacements = [
+              ('\timport org.flixel.plugin.photonstorm.FX.CenterSlideFX\n', ''),
+              ('\t\tprivate var slide:CenterSlideFX;\n', ''),
+              ('''\t\t\t//\tTest specific\n\t\t\tif (FlxG.getPlugin(FlxSpecialFX) == null)\n\t\t\t{\n\t\t\t\tFlxG.addPlugin(new FlxSpecialFX);\n\t\t\t}\n\t\t\t\n\t\t\tvar pic:FlxSprite = new FlxSprite(0, 0, Registry.ImgLogo);\n\t\t\t\n\t\t\t//\tCreate the Slide FX\n\t\t\tslide = FlxSpecialFX.centerSlide();\n\t\t\t\n\t\t\t//\tHere we'll create it from an embedded PNG, positioned at 0,0 and it'll do a vertical reveal to start with\n\t\t\tpic = slide.createFromClass(Registry.ImgLogo, 0, 0, CenterSlideFX.REVEAL_VERTICAL);\n\t\t\tpic.x = FlxG.width / 2 - pic.width / 2;\n\t\t\tpic.y = (FlxG.height / 2 - pic.height / 2 ) - 100;\n\t\t\t\n\t\t\tadd(pic);\n\t\t\t\n\t\t\tslide.start();\n''', '''\t\t\t// Stable static logo. The legacy CenterSlideFX reveal corrupts the logo\n\t\t\t// after returning to this state on current AIR/Android.\n\t\t\tvar pic:FlxSprite = new FlxSprite(0, 0, Registry.ImgLogo);\n\t\t\tpic.x = FlxG.width / 2 - pic.width / 2;\n\t\t\tpic.y = (FlxG.height / 2 - pic.height / 2 ) - 100;\n\t\t\tadd(pic);\n'''),
+              ('''\t\toverride public function destroy():void\n\t\t{\n\t\t\t\n\t\t\t//\tImportant! Clear out the plugin, otherwise resources will get messed right up after a while\n\t\t\tFlxSpecialFX.clear();\n\t\t\t\n\t\t\tsuper.destroy();\n\t\t}\n''', '''\t\toverride public function destroy():void\n\t\t{\n\t\t\tsuper.destroy();\n\t\t}\n''')
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit('Expected PCMenuState patch anchor not found')
+              s = s.replace(old, new, 1)
+          menu.write_text(s, encoding='utf-8', newline='\n')
+
+          credits = Path('src/PCCreditsState.as')
+          c = credits.read_text(encoding='utf-8')
+          old = '''\n\t\t\tvar footerTxt:FlxText = new FlxText(0, FlxG.height - 22, FlxG.width, "X / BACK TO RETURN", true);\n\t\t\tfooterTxt.setFormat("commodore", 8, 0xffffffff, "center");\n\t\t\tadd(footerTxt);\n'''
+          if old not in c:
+              raise SystemExit('Expected PCCreditsState footer anchor not found')
+          c = c.replace(old, '\n', 1)
+          credits.write_text(c, encoding='utf-8', newline='\n')
+      - name: Verify exact changed files
+        shell: bash
+        run: |
+          git diff --check
+          git diff --name-only | sort | tee /tmp/changed.txt
+          printf 'src/PCCreditsState.as\nsrc/PCMenuState.as\n' > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/changed.txt
+          git diff -- src/PCMenuState.as src/PCCreditsState.as
+      - name: Commit repaired candidate
+        shell: bash
+        run: |
+          git config user.name "masterramy"
+          git config user.email "ramy.baheeg@gmail.com"
+          git add src/PCMenuState.as src/PCCreditsState.as
+          git commit -m "Gate 2B: repair menu re-entry rendering after visual QA"
+          git push origin HEAD:gate2b-publication-candidate
