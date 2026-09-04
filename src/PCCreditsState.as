@@ -18,101 +18,91 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
- */ 
- 
- /*
- * PCCreditsState.as
- * Created On: 14/04/2012 11:19 AM
  */
- 
-package 
+
+package
 {
 	import org.flixel.*;
 	import org.flixel.plugin.photonstorm.*;
 
 	public class PCCreditsState extends FlxState
 	{
-		
-		public var creditsStr:String = "Initials Presents\n\nSUPER LEMONADE FACTORY\n\nA Game By Shane Brouwer\n\nArt\nMiguelito\n\nMusic\nEasyname\n\nMarketing\nSurprise Attack\n\nIllustration\ndoggerland.deviantart.com\n\nIn Game Voice Talent\nRoy Kelly\nKellyCommaRoy {a} gmail.com\n\nTrailer Voice Talent\nTom Mitchell\n\nAdditional Art and Copywriting\nElizabeth Docking\n\nEngine\nFlixel\n\nLevel Editor\nOgmo Editor\n\nSound Effects\nbfxr\n\nSpecial Thanks\nAdam Atomic and Semi Secret Software. Thank you for Flixel.\n\nHokori Interactive - Brett Chalupa\nTonnes of help with this version.\n\nIQPierce\nCracked the code to allow custom fonts.\nCheck out his Flixel game Connectrode.\n\nScott Rapson\nThanks for your in depth beta testing.\n\nMatt Thorson\nFor the Ogmo Editor\n\nJon K\nFlixel iOS template.\n\naxcho\nThanks for the retina help.\n\nChevy Ray\nGot me interested in the Ogmo Editor with the source code to the Ludum Dare winning game Flee Buster.\n\nAny resemblance to real persons, living or dead is purely coincidental.\n\nDedicated to Marten and Gerardus.\n\nEmail initials {a} initialsgames.com\n "
+		public var creditsStr:String =
+			"SUPER LEMONADE FACTORY PORT\n\n" +
+			"Independent Android port published by Ramy Baheeg\n" +
+			"Based on the GPLv3-released OUYA source\n" +
+			"Source: github.com/masterramy/SuperLemonadeFactoryOUYA\n\n" +
+			"Original game by Shane Brouwer / Initials\n" +
+			"This Android port is not an official Initials publication or endorsement.\n\n" +
+			"ORIGINAL GAME CREDITS\n\n" +
+			"A Game By Shane Brouwer\n\nArt\nMiguelito\n\nMusic\nEasyname\n\nMarketing\nSurprise Attack\n\nIllustration\ndoggerland.deviantart.com\n\nIn Game Voice Talent\nRoy Kelly\nKellyCommaRoy {a} gmail.com\n\nTrailer Voice Talent\nTom Mitchell\n\nAdditional Art and Copywriting\nElizabeth Docking\n\nEngine\nFlixel\n\nLevel Editor\nOgmo Editor\n\nSound Effects\nbfxr\n\nSpecial Thanks\nAdam Atomic and Semi Secret Software. Thank you for Flixel.\n\nHokori Interactive - Brett Chalupa\nTonnes of help with this version.\n\nIQPierce\nCracked the code to allow custom fonts.\nCheck out his Flixel game Connectrode.\n\nScott Rapson\nThanks for your in depth beta testing.\n\nMatt Thorson\nFor the Ogmo Editor\n\nJon K\nFlixel iOS template.\n\naxcho\nThanks for the retina help.\n\nChevy Ray\nGot me interested in the Ogmo Editor with the source code to the Ludum Dare winning game Flee Buster.\n\nAny resemblance to real persons, living or dead is purely coincidental.\n\nDedicated to Marten and Gerardus.\n\nOriginal/historical contact: initials {a} initialsgames.com\n";
+
 		public var creditsText:FlxText;
-		
-		
+
 		override public function create():void
 		{
 			FlxG.bgColor = 0xffF8CB8F;
-			
-			//	Make the gradient retro looking and "chunky" with the chucnkSize parameter (here set to 4)
-			var gradient2:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, FlxG.height, [0xffcac5ac, 0xffdedbc3 , 0xffdfdcc4], 10 ); //0xffd6d3ba
+
+			var gradient2:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, FlxG.height, [0xffcac5ac, 0xffdedbc3, 0xffdfdcc4], 10);
 			gradient2.x = 0;
 			gradient2.y = 0;
 			add(gradient2);
-			
+
 			creditsText = new FlxText(0, 250, FlxG.width, creditsStr);
 			creditsText.size = 16;
 			creditsText.alignment = "center";
 			creditsText.velocity.y = -30;
 			creditsText.color = 0xff7725a1;
 			add(creditsText);
-			
+
 			var borderTop:FlxTileblock = new FlxTileblock(0, 0, FlxG.width, 30);
-			borderTop.loadTiles(Registry.ImgLevel1Tiles, 10, 10, 0,true);
+			borderTop.loadTiles(Registry.ImgLevel1Tiles, 10, 10, 0, true);
 			add(borderTop);
-			
-			var borderBottom:FlxTileblock = new FlxTileblock(0, FlxG.height-30, FlxG.width, 30);
-			borderBottom.loadTiles(Registry.ImgLevel1Tiles, 10, 10, 0,true);
-			add(borderBottom);		
-			
-			var headingTxt:FlxText = new FlxText(0, 8, FlxG.width, "Credits", true);
+
+			var borderBottom:FlxTileblock = new FlxTileblock(0, FlxG.height - 30, FlxG.width, 30);
+			borderBottom.loadTiles(Registry.ImgLevel1Tiles, 10, 10, 0, true);
+			add(borderBottom);
+
+			var headingTxt:FlxText = new FlxText(0, 8, FlxG.width, "Credits / Port Info", true);
 			headingTxt.color = 0xffffffff;
 			headingTxt.size = 8;
 			headingTxt.alignment = "center";
 			add(headingTxt);
-			
-			var backBtn:FlxButton = new FlxButton(40, Registry.ySmallPos7 , "back", this.onQuit);
+
+			var backBtn:FlxButton = new FlxButton(40, Registry.ySmallPos7, "back", this.onQuit);
 			backBtn.y = FlxG.height - backBtn.height - 60;
 			backBtn.status = FlxButton.HIGHLIGHT;
 			backBtn.color = Registry.WAREHOUSE_PURPLE;
 			backBtn.label.color = 0xffffff;
-			add(backBtn);			
-			
-
-
+			add(backBtn);
 		}
 
 		override public function update():void
 		{
-			
-			if (FlxG.keys.any() ) {
+			if (FlxG.keys.any()) {
 				creditsText.velocity.y = -60;
 			}
 			else {
 				creditsText.velocity.y = -30;
 			}
-			
-			
-			
-			super.update();
-			
-			if ((FlxG.keys.justPressed(Registry.homeKey) || 
-			FlxG.keys.justPressed(Registry.p1Jump) ||
-			FlxG.keys.justPressed(Registry.p1Action) || 
-			FlxG.joystick.j1ButtonBackJustPressed || 
-			FlxG.joystick.j1ButtonAJustPressed || FlxG.ouyaController.o.pressed) && !fading) {
-				FlxG.play(Registry.SndPing,Registry.pingVolume);
-				onQuit();			
-				
-			}
-			
-			if (FlxG.ouyaController.a.pressed) onQuit();
-			
 
+			super.update();
+
+			if ((FlxG.keys.justPressed(Registry.homeKey) ||
+			FlxG.keys.justPressed(Registry.p1Jump) ||
+			FlxG.keys.justPressed(Registry.p1Action) ||
+			FlxG.joystick.j1ButtonBackJustPressed ||
+			FlxG.joystick.j1ButtonAJustPressed || FlxG.ouyaController.o.pressed) && !fading) {
+				FlxG.play(Registry.SndPing, Registry.pingVolume);
+				onQuit();
+			}
+
+			if (FlxG.ouyaController.a.pressed) onQuit();
 		}
-		
+
 		protected function onQuit():void
 		{
 			FlxG.switchState(new PCMenuState());
 		}
-		
-		
 	}
 }

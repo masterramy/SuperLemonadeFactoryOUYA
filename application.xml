@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <application xmlns="http://ns.adobe.com/air/application/51.3">
-  <id>com.initialsgames.SLF</id>
+  <id>com.ramybaheeg.slfport</id>
   <versionNumber>1.9</versionNumber>
   <supportedProfiles>mobileDevice</supportedProfiles>
-  <filename>Super Lemonade Factory</filename>
-  <name>Super Lemonade Factory</name>
+  <filename>Super Lemonade Factory Port</filename>
+  <name>Super Lemonade Factory Port</name>
   <android>
     <manifestAdditions><![CDATA[<manifest android:installLocation="auto">
 	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
@@ -39,7 +39,7 @@
     <requestedDisplayResolution>high</requestedDisplayResolution>
   </iPhone>
   <initialWindow>
-    <title>Super Lemonade Factory</title>
+    <title>Super Lemonade Factory Port</title>
     <content>SLFforOuya.swf</content>
     <visible>true</visible>
     <fullScreen>true</fullScreen>
