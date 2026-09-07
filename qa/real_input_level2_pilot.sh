@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 set +e
 mkdir -p qa-out/screens qa-out/logs
-APK="runtime-apk/SLF-real-input-qa.apk"
+APK="$(find runtime-apk -type f -name '*.apk' -print -quit)"
 PACKAGE="air.com.ramybaheeg.slfport"
 FAIL=0
+
+if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+  echo "No APK discovered under runtime-apk" > qa-out/install.txt
+  find runtime-apk -maxdepth 4 -type f -printf '%p\n' >> qa-out/install.txt 2>/dev/null || true
+  echo "INSTALL_FAIL_NO_APK" > qa-out/result.txt
+  exit 10
+fi
+
+echo "APK=$APK" > qa-out/apk-path.txt
 
 record_state() {
   local tag="$1"
