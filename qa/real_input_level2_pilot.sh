@@ -57,7 +57,6 @@ adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa-out/launch.txt 2>&1
 sleep 16
 record_state "00-startup-after-air-splash"
 
-# Shipping navigation path: intro -> main menu -> Factory Floor -> Level Select -> Level 2.
 pulse KEYCODE_X
 sleep 2
 pulse KEYCODE_X
@@ -71,7 +70,7 @@ pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
 
-# Proven true Liselot double-jump route.
+# Proven Liselot tall-platform route.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -86,14 +85,11 @@ sleep 0.35
 record_state "12-platform-landing"
 sleep 0.65
 record_state "13-platform-settled"
-
-# Move the crate left using ordinary collision. This can leave Liselot at the left base;
-# the route below deliberately recovers her through the same genuine double-jump path.
 combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Switch to Andre and replay the proven safe approach.
+# Proven Andre route to and onto the tall platform.
 pulse KEYCODE_V
 record_state "30-andre-resume"
 for i in 1 2 3 4; do
@@ -101,8 +97,6 @@ for i in 1 2 3 4; do
   sleep 0.45
   record_state "31-andre-approach-${i}"
 done
-
-# Reach the moving base step, then clear the tall x=740 face via genuine jump + ACTION air-dash.
 combo 300 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.30
 combo 220 KEYCODE_DPAD_RIGHT
@@ -117,8 +111,7 @@ record_state "41-after-step-airdash"
 sleep 0.75
 record_state "42-step-airdash-settled"
 
-# Reunite naturally: switch back to Liselot at the left base and repeat the proven
-# double-jump onto the tall platform. No teleport or coordinate mutation.
+# Proven natural Liselot reunion route.
 pulse KEYCODE_V
 sleep 0.30
 record_state "50-liselot-rejoin-start"
@@ -131,35 +124,50 @@ record_state "51-liselot-rejoin-landing"
 sleep 0.55
 record_state "52-liselot-rejoined"
 
-# Traverse Liselot across the spike gap using her shipping double jump, then continue
-# toward the exit area on ordinary ground/platform collision.
-combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C
+# Run 9 showed the previous jump started too far from the spike lip. Approach farther right
+# on the safe tall platform first, then keep right held throughout both genuine jump presses
+# and the airborne carry. No screenshot delay is inserted between the jump presses.
+combo 250 KEYCODE_DPAD_RIGHT
+sleep 0.20
+record_state "58-liselot-near-spike-lip"
+combo 240 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.06
 combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 360 KEYCODE_DPAD_RIGHT
-sleep 0.55
-record_state "60-liselot-after-spikes"
-combo 700 KEYCODE_DPAD_RIGHT
-sleep 0.50
-record_state "61-liselot-exit-approach"
+combo 520 KEYCODE_DPAD_RIGHT
+sleep 0.65
+record_state "60-liselot-spike-cross-attempt"
+sleep 0.45
+record_state "61-liselot-spike-cross-settled"
 
-# Switch to Andre and cross the same hazard with his shipping jump + ACTION air-dash.
+# Only if alive, ordinary rightward travel continues toward the exit area.
+combo 650 KEYCODE_DPAD_RIGHT
+sleep 0.55
+record_state "62-liselot-exit-approach"
+
+# Andre's ACTION dash uses stored _facing. Run 9 exposed that holding RIGHT with X is too late
+# when he is still facing LEFT. Establish RIGHT facing on safe platform before takeoff, then
+# jump and trigger the shipping ACTION dash while airborne.
 pulse KEYCODE_V
 sleep 0.30
 record_state "70-andre-spike-start"
+combo 180 KEYCODE_DPAD_RIGHT
+sleep 0.18
+record_state "71-andre-facing-right-near-lip"
 combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.06
-combo 220 KEYCODE_DPAD_RIGHT KEYCODE_X
-combo 360 KEYCODE_DPAD_RIGHT
-sleep 0.55
-record_state "71-andre-after-spikes"
-combo 700 KEYCODE_DPAD_RIGHT
-sleep 0.60
-record_state "72-both-exit-approach"
+combo 260 KEYCODE_DPAD_RIGHT KEYCODE_X
+combo 420 KEYCODE_DPAD_RIGHT
+sleep 0.65
+record_state "72-andre-spike-cross-attempt"
+sleep 0.45
+record_state "73-andre-spike-cross-settled"
+combo 650 KEYCODE_DPAD_RIGHT
+sleep 0.65
+record_state "74-both-exit-approach"
 
-# Small ordinary-input settling pushes only; completion must come from shipping exit logic.
-combo 240 KEYCODE_DPAD_RIGHT
-sleep 0.70
+# Completion must come only from shipping exit overlap/proximity logic.
+combo 220 KEYCODE_DPAD_RIGHT
+sleep 0.80
 record_state "80-natural-completion-check"
 sleep 1.25
 record_state "81-natural-completion-settled"
@@ -180,10 +188,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=natural-reunion-spike-and-exit-attempt"
+  echo "diagnostic=spike-lip-and-facing-corrected-natural-exit-attempt"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines genuine reunion, spike traversal, and whether shipping LEVEL COMPLETE occurred."
+  echo "NOTE=Manual sequential rendered review determines spike traversal and whether shipping LEVEL COMPLETE occurred."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
