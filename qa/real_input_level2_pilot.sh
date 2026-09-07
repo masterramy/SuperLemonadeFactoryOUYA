@@ -71,57 +71,56 @@ pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
 
-# Proven run-6 traversal: switch to Liselot, reach x=740 wall, execute true airborne double jump.
+# Proven true Liselot double-jump route from run 6.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
 combo 650 KEYCODE_DPAD_RIGHT
 sleep 0.20
 record_state "11-at-high-ledge-base"
-echo "profile=airborne-window first=220ms release~=120ms second=140ms carry=180ms" >> qa-out/input-sequence.txt
 combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.06
 combo 140 KEYCODE_DPAD_RIGHT KEYCODE_C
-record_state "12-after-true-second-press"
 combo 180 KEYCODE_DPAD_RIGHT
 sleep 0.35
-record_state "13-platform-landing"
-sleep 0.8
-record_state "14-platform-settled"
+record_state "12-platform-landing"
+sleep 0.65
+record_state "13-platform-settled"
 
-# level2.oel places L1_SmallCrate at x=763 on the platform; tutorial says push it left.
-# From the proven landing position to its right, drive left without action keys so normal
-# Flixel player<->crate collision is the only mechanism moving the crate.
-combo 520 KEYCODE_DPAD_LEFT
-sleep 0.5
-record_state "20-after-crate-push-left"
+# Short shove only: move the x=763 crate toward/off the left lip while trying to keep
+# Liselot herself on x=740..1020 platform. Shipping player/crate collision does the work.
+combo 300 KEYCODE_DPAD_LEFT
+sleep 0.35
+record_state "20-short-crate-shove"
 
-# Switch back to Andre. Do not use ACTION/X here: if a death screen ever appears, avoiding
-# action/switch confirmation prevents accidental navigation to menu while we diagnose.
+# Switch to Andre and replay the proven safe approach.
 pulse KEYCODE_V
 record_state "30-andre-resume"
-
-# Advance Andre toward the dropped crate with real right+jump movement, allowing a full
-# evidence/landing interval between jumps. Continuous ground spans the level; the moving
-# enemy is the main early hazard.
 for i in 1 2 3 4; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
   record_state "31-andre-approach-${i}"
 done
 
-# At the crate/high-platform region, use two measured jump attempts to step up. No coordinate
-# mutation, no piggyback state write, no levelOver call.
+# Reach the moving base step. Run 7 proved this timing can place Andre on it.
 combo 300 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.30
+combo 220 KEYCODE_DPAD_RIGHT
 sleep 0.35
+record_state "40-andre-on-moving-step-window"
+
+# Critical refinement: do not spend screenshot time between takeoff and action. Jump from
+# the moving step, then use shipping Andre ACTION/X air-dash while airborne to clear the
+# x=740 vertical face. No direct physics/state/coordinate mutation is performed.
+combo 220 KEYCODE_C
+sleep 0.06
+combo 180 KEYCODE_DPAD_RIGHT KEYCODE_X
 combo 260 KEYCODE_DPAD_RIGHT
-sleep 0.5
-record_state "40-andre-stepup-1"
-combo 320 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.35
-combo 300 KEYCODE_DPAD_RIGHT
-sleep 0.7
-record_state "41-andre-stepup-2"
+sleep 0.55
+record_state "41-after-step-airdash"
+sleep 0.75
+record_state "42-step-airdash-settled"
+
 record_state "50-diagnostic-final"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
@@ -140,10 +139,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=crate-assist-andre-stepup"
+  echo "diagnostic=short-crate-shove-andre-moving-step-airdash"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines crate displacement and Andre step-up progress."
+  echo "NOTE=Manual sequential rendered review determines whether Liselot stayed topside and Andre cleared x=740 via the shipping jump/airdash path."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
