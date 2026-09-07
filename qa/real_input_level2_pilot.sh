@@ -124,9 +124,7 @@ record_state "51-liselot-rejoin-landing"
 sleep 0.55
 record_state "52-liselot-rejoined"
 
-# Run 9 showed the previous jump started too far from the spike lip. Approach farther right
-# on the safe tall platform first, then keep right held throughout both genuine jump presses
-# and the airborne carry. No screenshot delay is inserted between the jump presses.
+# Proven run-10 Liselot spike crossing.
 combo 250 KEYCODE_DPAD_RIGHT
 sleep 0.20
 record_state "58-liselot-near-spike-lip"
@@ -138,29 +136,24 @@ sleep 0.65
 record_state "60-liselot-spike-cross-attempt"
 sleep 0.45
 record_state "61-liselot-spike-cross-settled"
-
-# Only if alive, ordinary rightward travel continues toward the exit area.
 combo 650 KEYCODE_DPAD_RIGHT
 sleep 0.55
 record_state "62-liselot-exit-approach"
 
-# Andre's ACTION dash uses stored _facing. Run 9 exposed that holding RIGHT with X is too late
-# when he is still facing LEFT. Establish RIGHT facing on safe platform before takeoff, then
-# jump and trigger the shipping ACTION dash while airborne.
+# Run 10 proved ACTION dash is unnecessary/unreliable for this hazard. Bring Andre close
+# to the safe right lip, then use a plain shipping running jump across the narrow gap.
 pulse KEYCODE_V
 sleep 0.30
 record_state "70-andre-spike-start"
-combo 180 KEYCODE_DPAD_RIGHT
-sleep 0.18
-record_state "71-andre-facing-right-near-lip"
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.06
-combo 260 KEYCODE_DPAD_RIGHT KEYCODE_X
-combo 420 KEYCODE_DPAD_RIGHT
-sleep 0.65
-record_state "72-andre-spike-cross-attempt"
-sleep 0.45
-record_state "73-andre-spike-cross-settled"
+combo 250 KEYCODE_DPAD_RIGHT
+sleep 0.20
+record_state "71-andre-near-spike-lip"
+combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 260 KEYCODE_DPAD_RIGHT
+sleep 0.70
+record_state "72-andre-plain-jump-cross-attempt"
+sleep 0.50
+record_state "73-andre-plain-jump-settled"
 combo 650 KEYCODE_DPAD_RIGHT
 sleep 0.65
 record_state "74-both-exit-approach"
@@ -188,10 +181,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=spike-lip-and-facing-corrected-natural-exit-attempt"
+  echo "diagnostic=liselot-proven-cross-andre-plain-running-jump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines spike traversal and whether shipping LEVEL COMPLETE occurred."
+  echo "NOTE=Manual sequential rendered review determines Andre spike traversal and whether shipping LEVEL COMPLETE occurred."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
