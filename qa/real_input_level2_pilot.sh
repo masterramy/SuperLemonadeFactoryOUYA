@@ -41,19 +41,6 @@ pulse() {
   sleep 0.25
 }
 
-double_jump_profile() {
-  local tag="$1" first="$2" gap="$3" second="$4" carry="$5"
-  echo "profile=$tag first=$first gap=$gap second=$second carry=$carry" >> qa-out/input-sequence.txt
-  combo "$first" KEYCODE_DPAD_RIGHT KEYCODE_C
-  record_state "${tag}-after-first"
-  sleep "$gap"
-  combo "$second" KEYCODE_DPAD_RIGHT KEYCODE_C
-  record_state "${tag}-after-second"
-  combo "$carry" KEYCODE_DPAD_RIGHT
-  sleep 0.30
-  record_state "${tag}-after-carry"
-}
-
 adb install -r "$APK" > qa-out/install.txt 2>&1
 if [ $? -ne 0 ]; then echo "INSTALL_FAIL" > qa-out/result.txt; exit 10; fi
 adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
@@ -84,27 +71,28 @@ pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
 
-# Switch immediately to Liselot. Shipping source says her second jump requires a NEW C
-# just-press after >0.1 s airborne. Run bounded profiles with explicit release gaps and
-# a post-double-jump RIGHT carry so she can move horizontally over the x=740 platform lip.
+# Switch immediately to Liselot and approach the x=740 high-platform wall.
 pulse KEYCODE_V
 sleep 1
 record_state "20-liselot-start"
-
-# Approach the base of the high platform without jumping.
 combo 650 KEYCODE_DPAD_RIGHT
-sleep 0.25
+sleep 0.20
 record_state "21-at-high-ledge-base"
 
-# Focused real-input timing sweep. No X/action, no state mutation, no completion hook.
-double_jump_profile "30-p1" 220 0.14 160 420
-sleep 0.60
-double_jump_profile "31-p2" 260 0.13 180 520
-sleep 0.60
-double_jump_profile "32-p3" 300 0.12 160 620
-sleep 0.60
-
-record_state "40-diagnostic-final"
+# IMPORTANT: no record_state/logcat/screencap between the two C presses. Character.jump()
+# requires the second C just-press while airborne and >0.1 s off the floor. The prior
+# diagnostic accidentally inserted a slow evidence capture between presses, converting
+# the intended second jump into another ground jump.
+echo "profile=airborne-window first=220ms release~=120ms second=140ms carry=180ms" >> qa-out/input-sequence.txt
+combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.06
+combo 140 KEYCODE_DPAD_RIGHT KEYCODE_C
+record_state "30-after-true-second-press"
+combo 180 KEYCODE_DPAD_RIGHT
+sleep 0.35
+record_state "31-after-platform-landing-window"
+sleep 1.0
+record_state "32-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -122,10 +110,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=liselot-double-jump-timing-sweep"
+  echo "diagnostic=liselot-true-airborne-double-jump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual rendered review determines whether Liselot cleared the high platform and which timing profile succeeded."
+  echo "NOTE=Manual rendered review determines whether Liselot cleared and landed on the x=740 high platform."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
