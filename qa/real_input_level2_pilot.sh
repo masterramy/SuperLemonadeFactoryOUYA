@@ -140,8 +140,9 @@ combo 650 KEYCODE_DPAD_RIGHT
 sleep 0.55
 record_state "62-liselot-exit-approach"
 
-# Run 10 proved ACTION dash is unnecessary/unreliable for this hazard. Bring Andre close
-# to the safe right lip, then use a plain shipping running jump across the narrow gap.
+# Andre's plain running jump is proven to cross the spike gap and settle alive on the
+# main platform. The run-11 failure happened only afterward when a blind right push
+# collided with the worker enemy. Jump over that enemy/crate cluster using shipping input.
 pulse KEYCODE_V
 sleep 0.30
 record_state "70-andre-spike-start"
@@ -154,9 +155,15 @@ sleep 0.70
 record_state "72-andre-plain-jump-cross-attempt"
 sleep 0.50
 record_state "73-andre-plain-jump-settled"
-combo 650 KEYCODE_DPAD_RIGHT
-sleep 0.65
-record_state "74-both-exit-approach"
+combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 260 KEYCODE_DPAD_RIGHT
+sleep 0.70
+record_state "74-andre-worker-jump-attempt"
+sleep 0.50
+record_state "75-andre-worker-jump-settled"
+combo 220 KEYCODE_DPAD_RIGHT
+sleep 0.80
+record_state "76-both-exit-approach"
 
 # Completion must come only from shipping exit overlap/proximity logic.
 combo 220 KEYCODE_DPAD_RIGHT
@@ -181,10 +188,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=liselot-proven-cross-andre-plain-running-jump"
+  echo "diagnostic=andre-proven-spike-landing-worker-jump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines Andre spike traversal and whether shipping LEVEL COMPLETE occurred."
+  echo "NOTE=Manual sequential rendered review determines worker clearance and whether shipping LEVEL COMPLETE occurred."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
