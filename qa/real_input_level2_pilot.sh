@@ -69,6 +69,11 @@ pulse KEYCODE_DPAD_RIGHT
 pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
+# The level cutscene explicitly advertises Y as its shipping skip control. Use it before
+# any traversal inputs so QA never accidentally consumes the route while advancing story text.
+pulse KEYCODE_Y
+sleep 2
+record_state "04-level2-post-cutscene"
 
 # Proven Liselot tall-platform route.
 pulse KEYCODE_V
@@ -188,7 +193,7 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=andre-proven-spike-landing-worker-jump"
+  echo "diagnostic=explicit-cutscene-skip-andre-worker-jump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
   echo "NOTE=Manual sequential rendered review determines worker clearance and whether shipping LEVEL COMPLETE occurred."
