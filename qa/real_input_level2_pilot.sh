@@ -60,7 +60,6 @@ adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
 adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa-out/launch.txt 2>&1
 sleep 16
 
-# Capture Android's real logical/physical input geometry before any touch assertions.
 adb shell wm size > qa-out/logs/wm-size.txt 2>&1 || true
 adb shell wm density > qa-out/logs/wm-density.txt 2>&1 || true
 adb shell dumpsys display > qa-out/logs/display.txt 2>&1 || true
@@ -83,8 +82,6 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Retain the proven keyboard-driven Liselot opening route so touch calibration starts
-# from a stable, visually recognizable, low-risk position.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -103,8 +100,6 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-before-touch-jump"
 
-# Calibrate ADB touch against the actual shipping JUMP control first. On the 3120x1440
-# rendered emulator image, JUMP is the far-right bottom control centered near 2630,1250.
 echo "tap x=2630 y=1250 label=shipping-mobile-jump-calibration" >> qa-out/input-sequence.txt
 adb shell input tap 2630 1250 >> qa-out/input-command.txt 2>&1 || true
 sleep 0.08
@@ -118,8 +113,7 @@ record_state "24-touch-jump-tplus700ms"
 sleep 0.80
 record_state "25-touch-jump-settled"
 
-# Only after the harmless JUMP calibration, probe the real shipping SWITCH button.
-echo "tap x=1350 y=1250 label=shipping-mobile-switch-after-calibration" >> qa-out/input-sequence.txt
+echo "tap x=1350 y=1250 label=shipping-mobile-switch-tap" >> qa-out/input-sequence.txt
 adb shell input tap 1350 1250 >> qa-out/input-command.txt 2>&1 || true
 sleep 0.15
 record_state "30-after-touch-switch-150ms"
@@ -128,16 +122,33 @@ record_state "31-after-touch-switch-500ms"
 sleep 0.70
 record_state "32-after-touch-switch-settled"
 
-# A second harmless JUMP tap provides a behavioral probe of whichever character is now
-# controlled; rendered review decides identity rather than assuming the switch worked.
-echo "tap x=2630 y=1250 label=post-switch-mobile-jump-probe" >> qa-out/input-sequence.txt
+echo "tap x=2630 y=1250 label=post-switch-tap-jump-probe" >> qa-out/input-sequence.txt
 adb shell input tap 2630 1250 >> qa-out/input-command.txt 2>&1 || true
 sleep 0.12
-record_state "33-post-switch-jump-120ms"
+record_state "33-post-switch-tap-jump-120ms"
 sleep 0.18
-record_state "34-post-switch-jump-300ms"
+record_state "34-post-switch-tap-jump-300ms"
 sleep 0.60
-record_state "35-post-switch-jump-settled"
+record_state "35-post-switch-tap-jump-settled"
+
+# Run 23 proved JUMP receives a normal tap while the same-coordinate SWITCH tap did not
+# change the subsequently jumping character. Distinguish a tap miss from press-duration
+# behavior by holding the center of the exact same rendered SWITCH control, then probing
+# with the already-calibrated shipping JUMP touch.
+echo "swipehold x=1350 y=1250 duration=300 label=shipping-mobile-switch-held" >> qa-out/input-sequence.txt
+adb shell input swipe 1350 1250 1350 1250 300 >> qa-out/input-command.txt 2>&1 || true
+sleep 0.15
+record_state "40-after-held-switch-150ms"
+sleep 0.45
+record_state "41-after-held-switch-settled"
+echo "tap x=2630 y=1250 label=post-held-switch-jump-probe" >> qa-out/input-sequence.txt
+adb shell input tap 2630 1250 >> qa-out/input-command.txt 2>&1 || true
+sleep 0.12
+record_state "42-post-held-switch-jump-120ms"
+sleep 0.20
+record_state "43-post-held-switch-jump-320ms"
+sleep 0.60
+record_state "44-post-held-switch-jump-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -150,10 +161,10 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run23-mobile-touch-coordinate-and-switch-calibration"
+  echo "diagnostic=run24-mobile-switch-tap-vs-held-touch"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Rendered review must first prove whether the shipping JUMP tap is received; only then may SWITCH behavior be interpreted."
+  echo "NOTE=Rendered review must identify which character jumps after tap SWITCH and after held SWITCH; do not infer from workflow success."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
