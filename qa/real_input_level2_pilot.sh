@@ -25,11 +25,15 @@ record_state() {
 combo() {
   local duration="$1"; shift
   echo "combo duration=${duration} keys=$*" >> qa-out/input-sequence.txt
-  adb shell input keycombination -t "$duration" "$@" >> qa-out/input-command.txt 2>&1
-  local rc=$?
-  if [ "$rc" -ne 0 ]; then
-    echo "keycombination failed rc=$rc; falling back to sequential keyevents" >> qa-out/input-command.txt
-    for key in "$@"; do adb shell input keyevent --longpress "$key" >> qa-out/input-command.txt 2>&1 || true; done
+  if [ "$#" -ge 2 ]; then
+    adb shell input keycombination -t "$duration" "$@" >> qa-out/input-command.txt 2>&1
+    local rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "keycombination failed rc=$rc; falling back to sequential keyevents" >> qa-out/input-command.txt
+      for key in "$@"; do adb shell input keyevent --longpress "$key" >> qa-out/input-command.txt 2>&1 || true; done
+    fi
+  else
+    adb shell input keyevent --longpress "$1" >> qa-out/input-command.txt 2>&1 || true
   fi
   sleep 0.06
 }
@@ -73,6 +77,7 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
+# Retain the already-proven Liselot opening route.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -89,37 +94,19 @@ sleep 0.65
 record_state "13-platform-settled"
 combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
-record_state "20-short-crate-shove"
+record_state "20-before-touch-switch"
 
-pulse KEYCODE_V
-sleep 0.30
-record_state "30-andre-resume"
-for i in 1 2 3 4; do
-  combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
-  sleep 0.45
-  record_state "31-andre-approach-${i}"
-done
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.70
-combo 300 KEYCODE_C
-sleep 0.06
-combo 420 KEYCODE_DPAD_RIGHT
-sleep 0.65
-record_state "40-andre-proven-left-step"
+# Run 21 proved the legacy V pulse is not deterministic at this exact handoff. Test the
+# actual shipping mobile SWITCH control instead. The emulator is rendered at 3120x1440;
+# this point is the center of the on-screen SWITCH button in the bottom control rail.
+echo "tap x=1345 y=1250 label=shipping-mobile-switch" >> qa-out/input-sequence.txt
+adb shell input tap 1345 1250 >> qa-out/input-command.txt 2>&1 || true
+sleep 1.00
+record_state "21-after-touch-switch"
 
-# Run 20 proved Andre alive on the small left step. A simultaneous right+jump from the
-# step did not move him onto the main platform. Test the ordinary shipping jump as a
-# vertical-first takeoff, then add right while airborne so the platform lip cannot block
-# horizontal motion at takeoff. Keep the patrol wait and do not capture inside the window.
-sleep 3.60
-combo 260 KEYCODE_C
-sleep 0.08
-combo 260 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 180 KEYCODE_DPAD_RIGHT
-sleep 0.75
-record_state "41-main-platform-vertical-first-attempt"
-sleep 0.90
-record_state "42-main-platform-vertical-first-settled"
+# One no-risk wait verifies camera/control stability without moving either character.
+sleep 1.00
+record_state "22-after-touch-switch-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -132,10 +119,10 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run21-proven-left-step-vertical-first-main-platform-jump"
+  echo "diagnostic=run22-shipping-mobile-switch-handoff"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual rendered review determines whether Andre lands alive on the main platform using a vertical-first ordinary shipping jump."
+  echo "NOTE=Manual rendered review determines whether the real on-screen SWITCH control reliably transfers camera/control from Liselot to Andre at the post-opening handoff."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
