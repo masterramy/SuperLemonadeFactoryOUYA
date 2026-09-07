@@ -73,7 +73,7 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Deterministic Liselot preparation retained from proven route.
+# Deterministic Liselot preparation retained from the proven route.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -92,26 +92,33 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Reach Andre's visually proven safe left-step state. Do not attempt the army yet.
+# Run 18 proved the old fourth approach jump reaches the first platform while the army
+# is directly underneath, and the following input causes a collision. Stop after three
+# safe jumps, settle left of the platform, then let the patrol move to its far-right phase.
 pulse KEYCODE_V
 sleep 0.30
 record_state "30-andre-resume"
-for i in 1 2 3 4; do
+for i in 1 2 3; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
   record_state "31-andre-approach-${i}"
 done
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.45
-record_state "40-andre-left-step-acquired"
+sleep 1.10
+record_state "32-andre-pre-final-jump-settled"
 
-# Map the live patrol phase while Andre remains stationary on the proven-safe step.
-# record_state itself consumes real time, which is intentional: each frame is the actual
-# observable state from which a future jump window will be selected.
-for i in 1 2 3 4 5 6 7 8; do
-  sleep 0.55
-  record_state "41-army-patrol-sample-${i}"
-done
+# Patrol starts moving left in the third-approach frame; give it time to hit its left
+# turnaround and traverse to the right side before committing the final ascent.
+sleep 7.20
+record_state "40-army-clear-window-before-jump"
+
+# One ordinary shipping running jump plus horizontal follow-through. No ACTION dash,
+# teleport, state mutation, or forced completion.
+combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 220 KEYCODE_DPAD_RIGHT
+sleep 0.85
+record_state "41-first-platform-jump-attempt"
+sleep 0.90
+record_state "42-first-platform-jump-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -129,10 +136,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run18-map-first-army-patrol-from-proven-left-step"
+  echo "diagnostic=run19-wait-before-final-army-platform-jump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review selects the actual clear patrol window; no army-cross claim is made by the harness."
+  echo "NOTE=Manual rendered review determines whether the army is actually clear and Andre lands alive on/through the first platform."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
