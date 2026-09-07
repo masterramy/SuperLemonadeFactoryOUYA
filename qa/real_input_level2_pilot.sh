@@ -59,6 +59,12 @@ adb logcat -c
 adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
 adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa-out/launch.txt 2>&1
 sleep 16
+
+# Capture Android's real logical/physical input geometry before any touch assertions.
+adb shell wm size > qa-out/logs/wm-size.txt 2>&1 || true
+adb shell wm density > qa-out/logs/wm-density.txt 2>&1 || true
+adb shell dumpsys display > qa-out/logs/display.txt 2>&1 || true
+adb shell dumpsys input > qa-out/logs/input.txt 2>&1 || true
 record_state "00-startup-after-air-splash"
 
 pulse KEYCODE_X
@@ -77,7 +83,8 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Retain the already-proven Liselot opening route.
+# Retain the proven keyboard-driven Liselot opening route so touch calibration starts
+# from a stable, visually recognizable, low-risk position.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -94,19 +101,43 @@ sleep 0.65
 record_state "13-platform-settled"
 combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
-record_state "20-before-touch-switch"
+record_state "20-before-touch-jump"
 
-# Run 21 proved the legacy V pulse is not deterministic at this exact handoff. Test the
-# actual shipping mobile SWITCH control instead. The emulator is rendered at 3120x1440;
-# this point is the center of the on-screen SWITCH button in the bottom control rail.
-echo "tap x=1345 y=1250 label=shipping-mobile-switch" >> qa-out/input-sequence.txt
-adb shell input tap 1345 1250 >> qa-out/input-command.txt 2>&1 || true
-sleep 1.00
-record_state "21-after-touch-switch"
+# Calibrate ADB touch against the actual shipping JUMP control first. On the 3120x1440
+# rendered emulator image, JUMP is the far-right bottom control centered near 2630,1250.
+echo "tap x=2630 y=1250 label=shipping-mobile-jump-calibration" >> qa-out/input-sequence.txt
+adb shell input tap 2630 1250 >> qa-out/input-command.txt 2>&1 || true
+sleep 0.08
+record_state "21-touch-jump-tplus080ms"
+sleep 0.10
+record_state "22-touch-jump-tplus180ms"
+sleep 0.17
+record_state "23-touch-jump-tplus350ms"
+sleep 0.35
+record_state "24-touch-jump-tplus700ms"
+sleep 0.80
+record_state "25-touch-jump-settled"
 
-# One no-risk wait verifies camera/control stability without moving either character.
-sleep 1.00
-record_state "22-after-touch-switch-settled"
+# Only after the harmless JUMP calibration, probe the real shipping SWITCH button.
+echo "tap x=1350 y=1250 label=shipping-mobile-switch-after-calibration" >> qa-out/input-sequence.txt
+adb shell input tap 1350 1250 >> qa-out/input-command.txt 2>&1 || true
+sleep 0.15
+record_state "30-after-touch-switch-150ms"
+sleep 0.35
+record_state "31-after-touch-switch-500ms"
+sleep 0.70
+record_state "32-after-touch-switch-settled"
+
+# A second harmless JUMP tap provides a behavioral probe of whichever character is now
+# controlled; rendered review decides identity rather than assuming the switch worked.
+echo "tap x=2630 y=1250 label=post-switch-mobile-jump-probe" >> qa-out/input-sequence.txt
+adb shell input tap 2630 1250 >> qa-out/input-command.txt 2>&1 || true
+sleep 0.12
+record_state "33-post-switch-jump-120ms"
+sleep 0.18
+record_state "34-post-switch-jump-300ms"
+sleep 0.60
+record_state "35-post-switch-jump-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -119,10 +150,10 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run22-shipping-mobile-switch-handoff"
+  echo "diagnostic=run23-mobile-touch-coordinate-and-switch-calibration"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual rendered review determines whether the real on-screen SWITCH control reliably transfers camera/control from Liselot to Andre at the post-opening handoff."
+  echo "NOTE=Rendered review must first prove whether the shipping JUMP tap is received; only then may SWITCH behavior be interpreted."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
