@@ -71,37 +71,26 @@ pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
 
-# Real-control pilot only: drive exactly the same keyboard input surface consumed by Character.
-# No state teleport, no forced coordinates, no levelOver call, and no QA completion key.
-# Andre: advance with genuine movement/jump/action combinations.
-for i in 1 2 3 4 5 6; do
-  combo 650 KEYCODE_DPAD_RIGHT KEYCODE_C
-  combo 450 KEYCODE_DPAD_RIGHT KEYCODE_X
-  record_state "10-andre-${i}"
-done
-
-# Switch using the shipping single-player switch input (Registry.p1Switch = V).
+# r13 diagnostic 2: the prior mixed Andre loop was proven unsafe because a death screen
+# accepts RIGHT as menu-selection movement and X/C/V as confirmation. Avoid that ambiguity.
+# Switch immediately to Liselot (shipping p1Switch = V), who starts beyond the first army
+# encounter, and exercise only three bounded double-jump traversal cycles. No action key.
 pulse KEYCODE_V
-record_state "20-after-switch-to-liselot"
+sleep 1
+record_state "20-liselot-start"
 
-# Liselot: repeated genuine movement + separate jump presses to exercise her double-jump path.
-for i in 1 2 3 4 5 6 7 8; do
-  combo 500 KEYCODE_DPAD_RIGHT KEYCODE_C
-  sleep 0.15
-  combo 350 KEYCODE_DPAD_RIGHT KEYCODE_C
-  record_state "30-liselot-${i}"
+for i in 1 2 3; do
+  combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+  record_state "21-liselot-${i}-jump1"
+  sleep 0.18
+  combo 260 KEYCODE_DPAD_RIGHT KEYCODE_C
+  record_state "22-liselot-${i}-jump2"
+  sleep 0.45
+  record_state "23-liselot-${i}-settled"
 done
 
-# Return to Andre and continue. If both characters legitimately reach the exit together,
-# shipping PlayState itself will call levelOver(); this harness never calls it.
-pulse KEYCODE_V
-for i in 1 2 3 4; do
-  combo 700 KEYCODE_DPAD_RIGHT KEYCODE_C
-  combo 450 KEYCODE_DPAD_RIGHT KEYCODE_X
-  record_state "40-andre-final-${i}"
-done
-sleep 3
-record_state "50-final"
+sleep 2
+record_state "30-diagnostic-final"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -119,9 +108,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
+  echo "diagnostic=liselot-bounded-traversal-no-action"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Completion is intentionally not self-asserted. Manual rendered review must determine whether the true shipping LEVEL COMPLETE state was reached."
+  echo "NOTE=Completion is intentionally not self-asserted. Manual rendered review determines gameplay state and next genuine-control input sequence."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
