@@ -69,13 +69,12 @@ pulse KEYCODE_DPAD_RIGHT
 pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
-# The level cutscene explicitly advertises Y as its shipping skip control. Use it before
-# any traversal inputs so QA never accidentally consumes the route while advancing story text.
 pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Proven Liselot tall-platform route.
+# Keep the proven Liselot preparation so the Level 2 object/patrol phase matches the
+# deterministic cutscene-skipped route. All movement is ordinary shipping input.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -94,10 +93,11 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Deterministic cutscene skipping changes the moving-platform phase. Four proven safe approach
-# jumps still place Andre immediately left of the tall platform, but the previous extra step-up
-# pushed him into the worker enemy. Use one short genuine running jump and settle on the left edge.
+# Run 14 semantic correction: the earlier tag called the x~220 state a platform
+# landing, but rendered review proves Andre was still below the first raised platform.
+# Reproduce the four safe approach jumps and the short base positioning only.
 pulse KEYCODE_V
+sleep 0.30
 record_state "30-andre-resume"
 for i in 1 2 3 4; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
@@ -106,60 +106,25 @@ for i in 1 2 3 4; do
 done
 combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.70
-record_state "40-andre-left-edge-landing"
-sleep 0.75
-record_state "42-andre-left-edge-settled"
+record_state "40-andre-platform-base"
 
-# Natural Liselot reunion attempt from the now-bounded Andre position.
-pulse KEYCODE_V
-sleep 0.30
-record_state "50-liselot-rejoin-start"
-combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.06
-combo 140 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 180 KEYCODE_DPAD_RIGHT
-sleep 0.50
-record_state "51-liselot-rejoin-landing"
-sleep 0.55
-record_state "52-liselot-rejoined"
-
-# Proven Liselot spike-cross sequence, attempted only through shipping controls.
-combo 250 KEYCODE_DPAD_RIGHT
-sleep 0.20
-record_state "58-liselot-near-spike-lip"
-combo 240 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.06
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 520 KEYCODE_DPAD_RIGHT
-sleep 0.65
-record_state "60-liselot-spike-cross-attempt"
-sleep 0.45
-record_state "61-liselot-spike-cross-settled"
-combo 650 KEYCODE_DPAD_RIGHT
-sleep 0.55
-record_state "62-liselot-exit-approach"
-
-# Andre continuation is intentionally bounded. If the left-edge landing remains alive,
-# switch back and test a worker-clearing jump before any blind rightward push.
-pulse KEYCODE_V
-sleep 0.30
-record_state "70-andre-resume-after-liselot"
+# First bounded jump reaches the small x~220 moving step. Stop all forward input there.
 combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 220 KEYCODE_DPAD_RIGHT
 sleep 0.70
-record_state "74-andre-worker-jump-attempt"
-sleep 0.50
-record_state "75-andre-worker-jump-settled"
-combo 220 KEYCODE_DPAD_RIGHT
-sleep 0.80
-record_state "76-both-exit-approach"
+record_state "41-andre-on-left-step"
 
-# Completion must come only from shipping exit overlap/proximity logic.
-combo 220 KEYCODE_DPAD_RIGHT
+# The first army patrol traverses x260..490 above Andre. Run 14 proved Andre can remain
+# alive on this step while the patrol walks away. Wait it out rather than colliding blindly.
+sleep 4.50
+record_state "42-army-clear-window"
+
+# From the step, use one full ordinary running jump to attempt the first raised platform.
+# No action dash, teleport, coordinate mutation, forced completion, or game-source hook.
+combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.80
-record_state "80-natural-completion-check"
-sleep 1.25
-record_state "81-natural-completion-settled"
+record_state "43-first-platform-ascent-attempt"
+sleep 0.85
+record_state "44-first-platform-ascent-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -177,10 +142,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=deterministic-cutscene-skip-short-andre-left-edge-landing"
+  echo "diagnostic=run15-first-army-wait-and-andre-first-platform-ascent"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines Andre survival/reunion, Liselot traversal, and whether shipping LEVEL COMPLETE occurred."
+  echo "NOTE=Manual sequential rendered review determines patrol clearance and whether Andre genuinely ascended the first raised platform."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
