@@ -71,7 +71,7 @@ pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
 
-# Proven true Liselot double-jump route from run 6.
+# Proven true Liselot double-jump route.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -87,8 +87,8 @@ record_state "12-platform-landing"
 sleep 0.65
 record_state "13-platform-settled"
 
-# Short shove only: move the x=763 crate toward/off the left lip while trying to keep
-# Liselot herself on x=740..1020 platform. Shipping player/crate collision does the work.
+# Move the crate left using ordinary collision. This can leave Liselot at the left base;
+# the route below deliberately recovers her through the same genuine double-jump path.
 combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
@@ -102,16 +102,12 @@ for i in 1 2 3 4; do
   record_state "31-andre-approach-${i}"
 done
 
-# Reach the moving base step. Run 7 proved this timing can place Andre on it.
+# Reach the moving base step, then clear the tall x=740 face via genuine jump + ACTION air-dash.
 combo 300 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.30
 combo 220 KEYCODE_DPAD_RIGHT
 sleep 0.35
 record_state "40-andre-on-moving-step-window"
-
-# Critical refinement: do not spend screenshot time between takeoff and action. Jump from
-# the moving step, then use shipping Andre ACTION/X air-dash while airborne to clear the
-# x=740 vertical face. No direct physics/state/coordinate mutation is performed.
 combo 220 KEYCODE_C
 sleep 0.06
 combo 180 KEYCODE_DPAD_RIGHT KEYCODE_X
@@ -121,7 +117,52 @@ record_state "41-after-step-airdash"
 sleep 0.75
 record_state "42-step-airdash-settled"
 
-record_state "50-diagnostic-final"
+# Reunite naturally: switch back to Liselot at the left base and repeat the proven
+# double-jump onto the tall platform. No teleport or coordinate mutation.
+pulse KEYCODE_V
+sleep 0.30
+record_state "50-liselot-rejoin-start"
+combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.06
+combo 140 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 180 KEYCODE_DPAD_RIGHT
+sleep 0.50
+record_state "51-liselot-rejoin-landing"
+sleep 0.55
+record_state "52-liselot-rejoined"
+
+# Traverse Liselot across the spike gap using her shipping double jump, then continue
+# toward the exit area on ordinary ground/platform collision.
+combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.06
+combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 360 KEYCODE_DPAD_RIGHT
+sleep 0.55
+record_state "60-liselot-after-spikes"
+combo 700 KEYCODE_DPAD_RIGHT
+sleep 0.50
+record_state "61-liselot-exit-approach"
+
+# Switch to Andre and cross the same hazard with his shipping jump + ACTION air-dash.
+pulse KEYCODE_V
+sleep 0.30
+record_state "70-andre-spike-start"
+combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.06
+combo 220 KEYCODE_DPAD_RIGHT KEYCODE_X
+combo 360 KEYCODE_DPAD_RIGHT
+sleep 0.55
+record_state "71-andre-after-spikes"
+combo 700 KEYCODE_DPAD_RIGHT
+sleep 0.60
+record_state "72-both-exit-approach"
+
+# Small ordinary-input settling pushes only; completion must come from shipping exit logic.
+combo 240 KEYCODE_DPAD_RIGHT
+sleep 0.70
+record_state "80-natural-completion-check"
+sleep 1.25
+record_state "81-natural-completion-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -139,10 +180,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=short-crate-shove-andre-moving-step-airdash"
+  echo "diagnostic=natural-reunion-spike-and-exit-attempt"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines whether Liselot stayed topside and Andre cleared x=740 via the shipping jump/airdash path."
+  echo "NOTE=Manual sequential rendered review determines genuine reunion, spike traversal, and whether shipping LEVEL COMPLETE occurred."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
