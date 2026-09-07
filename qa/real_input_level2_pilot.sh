@@ -73,8 +73,6 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Keep the proven Liselot preparation so the Level 2 object/patrol phase matches the
-# deterministic cutscene-skipped route. All movement is ordinary shipping input.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -93,9 +91,6 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Run 14 semantic correction: the earlier tag called the x~220 state a platform
-# landing, but rendered review proves Andre was still below the first raised platform.
-# Reproduce the four safe approach jumps and the short base positioning only.
 pulse KEYCODE_V
 sleep 0.30
 record_state "30-andre-resume"
@@ -108,22 +103,25 @@ combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.70
 record_state "40-andre-platform-base"
 
-# First bounded jump reaches the small x~220 moving step. Stop all forward input there.
+# Run 15 proved the jump arc itself is healthy but, without the old horizontal
+# follow-through, Andre falls back left of the moving step. Restore only that ordinary
+# RIGHT continuation so this phase reproduces Run 14's visually proven step position.
 combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.70
-record_state "41-andre-on-left-step"
+combo 220 KEYCODE_DPAD_RIGHT
+sleep 0.75
+record_state "41-andre-left-step-settled"
 
-# The first army patrol traverses x260..490 above Andre. Run 14 proved Andre can remain
-# alive on this step while the patrol walks away. Wait it out rather than colliding blindly.
+# Hold the safe step while the x260..490 army patrol moves away from the platform's left edge.
 sleep 4.50
 record_state "42-army-clear-window"
 
-# From the step, use one full ordinary running jump to attempt the first raised platform.
-# No action dash, teleport, coordinate mutation, forced completion, or game-source hook.
+# Then attempt the actual first-platform ascent, again with ordinary running jump plus
+# horizontal follow-through only. No ACTION dash or non-shipping state manipulation.
 combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.80
-record_state "43-first-platform-ascent-attempt"
+combo 220 KEYCODE_DPAD_RIGHT
 sleep 0.85
+record_state "43-first-platform-ascent-attempt"
+sleep 0.90
 record_state "44-first-platform-ascent-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
@@ -142,10 +140,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run15-first-army-wait-and-andre-first-platform-ascent"
+  echo "diagnostic=run16-step-followthrough-army-wait-first-platform-ascent"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines patrol clearance and whether Andre genuinely ascended the first raised platform."
+  echo "NOTE=Manual sequential rendered review determines step acquisition, patrol clearance, and genuine first-platform ascent."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
