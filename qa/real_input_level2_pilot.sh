@@ -94,7 +94,9 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Proven Andre route to and onto the tall platform.
+# Deterministic cutscene skipping changes the moving-platform phase. Four proven safe approach
+# jumps still place Andre immediately left of the tall platform, but the previous extra step-up
+# pushed him into the worker enemy. Use one short genuine running jump and settle on the left edge.
 pulse KEYCODE_V
 record_state "30-andre-resume"
 for i in 1 2 3 4; do
@@ -102,21 +104,13 @@ for i in 1 2 3 4; do
   sleep 0.45
   record_state "31-andre-approach-${i}"
 done
-combo 300 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.30
-combo 220 KEYCODE_DPAD_RIGHT
-sleep 0.35
-record_state "40-andre-on-moving-step-window"
-combo 220 KEYCODE_C
-sleep 0.06
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_X
-combo 260 KEYCODE_DPAD_RIGHT
-sleep 0.55
-record_state "41-after-step-airdash"
+combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.70
+record_state "40-andre-left-edge-landing"
 sleep 0.75
-record_state "42-step-airdash-settled"
+record_state "42-andre-left-edge-settled"
 
-# Proven natural Liselot reunion route.
+# Natural Liselot reunion attempt from the now-bounded Andre position.
 pulse KEYCODE_V
 sleep 0.30
 record_state "50-liselot-rejoin-start"
@@ -129,7 +123,7 @@ record_state "51-liselot-rejoin-landing"
 sleep 0.55
 record_state "52-liselot-rejoined"
 
-# Proven run-10 Liselot spike crossing.
+# Proven Liselot spike-cross sequence, attempted only through shipping controls.
 combo 250 KEYCODE_DPAD_RIGHT
 sleep 0.20
 record_state "58-liselot-near-spike-lip"
@@ -145,23 +139,13 @@ combo 650 KEYCODE_DPAD_RIGHT
 sleep 0.55
 record_state "62-liselot-exit-approach"
 
-# Andre's plain running jump is proven to cross the spike gap and settle alive on the
-# main platform. The run-11 failure happened only afterward when a blind right push
-# collided with the worker enemy. Jump over that enemy/crate cluster using shipping input.
+# Andre continuation is intentionally bounded. If the left-edge landing remains alive,
+# switch back and test a worker-clearing jump before any blind rightward push.
 pulse KEYCODE_V
 sleep 0.30
-record_state "70-andre-spike-start"
-combo 250 KEYCODE_DPAD_RIGHT
-sleep 0.20
-record_state "71-andre-near-spike-lip"
+record_state "70-andre-resume-after-liselot"
 combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 260 KEYCODE_DPAD_RIGHT
-sleep 0.70
-record_state "72-andre-plain-jump-cross-attempt"
-sleep 0.50
-record_state "73-andre-plain-jump-settled"
-combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 260 KEYCODE_DPAD_RIGHT
+combo 220 KEYCODE_DPAD_RIGHT
 sleep 0.70
 record_state "74-andre-worker-jump-attempt"
 sleep 0.50
@@ -193,10 +177,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=explicit-cutscene-skip-andre-worker-jump"
+  echo "diagnostic=deterministic-cutscene-skip-short-andre-left-edge-landing"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines worker clearance and whether shipping LEVEL COMPLETE occurred."
+  echo "NOTE=Manual sequential rendered review determines Andre survival/reunion, Liselot traversal, and whether shipping LEVEL COMPLETE occurred."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
