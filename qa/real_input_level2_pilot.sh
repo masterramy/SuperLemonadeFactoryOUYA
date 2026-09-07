@@ -73,6 +73,7 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
+# Proven deterministic Liselot preparation.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -91,6 +92,8 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
+# Run 16 rendered proof: four approach jumps plus this short running jump lands Andre
+# alive on TOP of the first raised platform, immediately left of the army patrol.
 pulse KEYCODE_V
 sleep 0.30
 record_state "30-andre-resume"
@@ -101,28 +104,22 @@ for i in 1 2 3 4; do
 done
 combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.70
-record_state "40-andre-platform-base"
 
-# Run 15 proved the jump arc itself is healthy but, without the old horizontal
-# follow-through, Andre falls back left of the moving step. Restore only that ordinary
-# RIGHT continuation so this phase reproduces Run 14's visually proven step position.
-combo 360 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 220 KEYCODE_DPAD_RIGHT
+# Do not repeat Run 16's next rightward charge, which rendered evidence proved collides
+# with the adjacent army. Jump mostly vertically first, then cross right while airborne.
+combo 300 KEYCODE_C
+sleep 0.06
+combo 420 KEYCODE_DPAD_RIGHT
+sleep 0.65
+record_state "40-andre-army-overjump-attempt"
 sleep 0.75
-record_state "41-andre-left-step-settled"
+record_state "41-andre-army-overjump-settled"
 
-# Hold the safe step while the x260..490 army patrol moves away from the platform's left edge.
-sleep 4.50
-record_state "42-army-clear-window"
-
-# Then attempt the actual first-platform ascent, again with ordinary running jump plus
-# horizontal follow-through only. No ACTION dash or non-shipping state manipulation.
-combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 220 KEYCODE_DPAD_RIGHT
-sleep 0.85
-record_state "43-first-platform-ascent-attempt"
-sleep 0.90
-record_state "44-first-platform-ascent-settled"
+# One small follow-up only if he remains alive; this establishes whether the route has
+# cleared the first patrol without blindly traversing the rest of the level.
+combo 180 KEYCODE_DPAD_RIGHT
+sleep 0.65
+record_state "42-andre-post-army-bounded"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -140,10 +137,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run16-step-followthrough-army-wait-first-platform-ascent"
+  echo "diagnostic=run17-proven-first-platform-landing-army-overjump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual sequential rendered review determines step acquisition, patrol clearance, and genuine first-platform ascent."
+  echo "NOTE=Manual rendered review determines whether Andre remains alive and clears the first army patrol from the proven first-platform landing."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
