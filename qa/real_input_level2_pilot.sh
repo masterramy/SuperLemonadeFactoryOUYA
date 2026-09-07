@@ -73,7 +73,6 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Deterministic Liselot preparation retained from the proven route.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -92,7 +91,6 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Reproduce the Run-17 route that visually proved Andre can reach the small left step alive.
 pulse KEYCODE_V
 sleep 0.30
 record_state "30-andre-resume"
@@ -109,25 +107,22 @@ combo 420 KEYCODE_DPAD_RIGHT
 sleep 0.65
 record_state "40-andre-proven-left-step"
 
-# Run 17 places the army near the left side when Andre reaches this step. Do not jump
-# immediately. Let the 40px/s patrol traverse toward the far right, then perform one
-# ordinary shipping running jump from the step to the 40px-higher main platform.
-# No evidence capture is inserted inside the timing window.
+# Run 20 proved Andre alive on the small left step. A simultaneous right+jump from the
+# step did not move him onto the main platform. Test the ordinary shipping jump as a
+# vertical-first takeoff, then add right while airborne so the platform lip cannot block
+# horizontal motion at takeoff. Keep the patrol wait and do not capture inside the window.
 sleep 3.60
-combo 320 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 260 KEYCODE_C
+sleep 0.08
+combo 260 KEYCODE_DPAD_RIGHT KEYCODE_C
 combo 180 KEYCODE_DPAD_RIGHT
 sleep 0.75
-record_state "41-main-platform-jump-attempt"
+record_state "41-main-platform-vertical-first-attempt"
 sleep 0.90
-record_state "42-main-platform-jump-settled"
+record_state "42-main-platform-vertical-first-settled"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
-if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
-  FAIL=1
-else
-  : > qa-out/fatal-scan.txt
-fi
-
+if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
 {
   echo "candidate_source=d7783af3dbaa0a27071c51d5965f2e9dec5864e2"
   echo "qa_branch=gate2a-customer-facing-qa-r13"
@@ -137,12 +132,11 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run20-proven-left-step-patrol-wait-main-platform-jump"
+  echo "diagnostic=run21-proven-left-step-vertical-first-main-platform-jump"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Manual rendered review determines whether Andre lands alive on the main platform after waiting out the first army patrol."
+  echo "NOTE=Manual rendered review determines whether Andre lands alive on the main platform using a vertical-first ordinary shipping jump."
 } > qa-out/metadata.txt
-
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
 exit 0
