@@ -31,7 +31,7 @@ combo() {
     echo "keycombination failed rc=$rc; falling back to sequential keyevents" >> qa-out/input-command.txt
     for key in "$@"; do adb shell input keyevent --longpress "$key" >> qa-out/input-command.txt 2>&1 || true; done
   fi
-  sleep 0.20
+  sleep 0.06
 }
 
 pulse() {
@@ -39,6 +39,19 @@ pulse() {
   echo "pulse key=$key" >> qa-out/input-sequence.txt
   adb shell input keyevent "$key" >> qa-out/input-command.txt 2>&1 || true
   sleep 0.25
+}
+
+double_jump_profile() {
+  local tag="$1" first="$2" gap="$3" second="$4" carry="$5"
+  echo "profile=$tag first=$first gap=$gap second=$second carry=$carry" >> qa-out/input-sequence.txt
+  combo "$first" KEYCODE_DPAD_RIGHT KEYCODE_C
+  record_state "${tag}-after-first"
+  sleep "$gap"
+  combo "$second" KEYCODE_DPAD_RIGHT KEYCODE_C
+  record_state "${tag}-after-second"
+  combo "$carry" KEYCODE_DPAD_RIGHT
+  sleep 0.30
+  record_state "${tag}-after-carry"
 }
 
 adb install -r "$APK" > qa-out/install.txt 2>&1
@@ -71,26 +84,27 @@ pulse KEYCODE_X
 sleep 12
 record_state "03-level2-start"
 
-# r13 diagnostic 2: the prior mixed Andre loop was proven unsafe because a death screen
-# accepts RIGHT as menu-selection movement and X/C/V as confirmation. Avoid that ambiguity.
-# Switch immediately to Liselot (shipping p1Switch = V), who starts beyond the first army
-# encounter, and exercise only three bounded double-jump traversal cycles. No action key.
+# Switch immediately to Liselot. Shipping source says her second jump requires a NEW C
+# just-press after >0.1 s airborne. Run bounded profiles with explicit release gaps and
+# a post-double-jump RIGHT carry so she can move horizontally over the x=740 platform lip.
 pulse KEYCODE_V
 sleep 1
 record_state "20-liselot-start"
 
-for i in 1 2 3; do
-  combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
-  record_state "21-liselot-${i}-jump1"
-  sleep 0.18
-  combo 260 KEYCODE_DPAD_RIGHT KEYCODE_C
-  record_state "22-liselot-${i}-jump2"
-  sleep 0.45
-  record_state "23-liselot-${i}-settled"
-done
+# Approach the base of the high platform without jumping.
+combo 650 KEYCODE_DPAD_RIGHT
+sleep 0.25
+record_state "21-at-high-ledge-base"
 
-sleep 2
-record_state "30-diagnostic-final"
+# Focused real-input timing sweep. No X/action, no state mutation, no completion hook.
+double_jump_profile "30-p1" 220 0.14 160 420
+sleep 0.60
+double_jump_profile "31-p2" 260 0.13 180 520
+sleep 0.60
+double_jump_profile "32-p3" 300 0.12 160 620
+sleep 0.60
+
+record_state "40-diagnostic-final"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then
@@ -108,10 +122,10 @@ fi
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=liselot-bounded-traversal-no-action"
+  echo "diagnostic=liselot-double-jump-timing-sweep"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Completion is intentionally not self-asserted. Manual rendered review determines gameplay state and next genuine-control input sequence."
+  echo "NOTE=Manual rendered review determines whether Liselot cleared the high platform and which timing profile succeeded."
 } > qa-out/metadata.txt
 
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
