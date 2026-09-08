@@ -133,35 +133,27 @@ for i in 01 02 03 04 05 06; do
 done
 record_state "51-safe-main-platform-landing"
 
-# Run 34 proved that waiting roughly 0.64 s and then jumping still lets Andre descend into
-# the patrol. Run 35 keeps that ordinary timing but adds the shipping on-screen ACTION control
-# while Andre is airborne. The customer-facing QA protocol explicitly requires Andre's male
-# action/air-dash, so this is both a traversal probe and a direct shipping-control proof attempt.
-for i in 01 02 03 04 05 06 07 08; do
-  sleep 0.08
-  shot "60-patrol-approach-wait-${i}"
-done
-
-echo "combo duration=700 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=staged-vault-with-midair-action" >> qa-out/input-sequence.txt
-adb shell input keycombination -t 700 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
-VAULT_PID=$!
-sleep 0.18
-shot "61-vault-before-action"
-echo "tap x=2200 y=1250 label=shipping-mobile-action-midair" >> qa-out/input-sequence.txt
-adb shell input tap 2200 1250 >> qa-out/input-command.txt 2>&1 || true
-for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+# Run 33 proved an immediate 1000 ms RIGHT+JUMP is too long. Runs 34-35 proved that
+# waiting about 0.64 s and then using 700 ms still descends into the returning patrol,
+# with the shipping ACTION tap not preventing damage. Run 36 therefore changes one bounded
+# variable only: immediately after the rendered-proven main-platform landing, use a shorter
+# 500 ms ordinary RIGHT+JUMP and densely capture the entire traverse/settle.
+echo "combo duration=500 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-short-main-platform-traverse" >> qa-out/input-sequence.txt
+adb shell input keycombination -t 500 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+TRAVERSE_PID=$!
+for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do
   sleep 0.06
-  shot "62-vault-after-action-${i}"
+  shot "60-immediate-short-traverse-${i}"
 done
-wait "$VAULT_PID" 2>/dev/null || true
-for i in 13 14 15 16 17 18; do
+wait "$TRAVERSE_PID" 2>/dev/null || true
+for i in 15 16 17 18 19 20; do
   sleep 0.08
-  shot "62-vault-post-${i}"
+  shot "60-immediate-short-post-${i}"
 done
 sleep 0.35
-record_state "63-action-vault-settle"
+record_state "61-immediate-short-settle"
 sleep 0.75
-record_state "64-action-vault-long-settle"
+record_state "62-immediate-short-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -174,14 +166,15 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run35-safe-landing-midair-shipping-action-vault"
+  echo "diagnostic=run36-safe-landing-immediate-short-traverse"
   echo "run31_safe_landing_reused=true"
-  echo "run34_staged_jump_collision_evidence_reconciled=true"
-  echo "shipping_action_tap_attempted=true"
-  echo "shipping_action_coordinate=2200,1250"
+  echo "run33_1000ms_collision_reconciled=true"
+  echo "run34_700ms_delayed_collision_reconciled=true"
+  echo "run35_midair_action_collision_reconciled=true"
+  echo "traverse_duration_ms=500"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 35 adds only one ordinary shipping ACTION tap while Andre is airborne during the staged jump; no game state or player position is mutated."
+  echo "NOTE=Review every rendered frame sequentially. Run 36 changes only ordinary input timing after the proven safe main-platform landing; no game state or player position is mutated."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
