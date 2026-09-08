@@ -14,6 +14,24 @@ record_state(){ local tag="$1"; adb shell dumpsys window > "qa-out/logs/${tag}-w
 shot(){ adb exec-out screencap -p > "qa-out/screens/$1.png" 2>/dev/null||true; }
 combo(){ local d="$1"; shift; echo "combo duration=$d keys=$*" >> qa-out/input-sequence.txt; adb shell input keycombination -t "$d" "$@" >> qa-out/input-command.txt 2>&1||true; sleep .06; }
 pulse(){ echo "pulse key=$1" >> qa-out/input-sequence.txt; adb shell input keyevent "$1" >> qa-out/input-command.txt 2>&1||true; sleep .25; }
+dismiss_launcher_anr(){
+  adb shell uiautomator dump /sdcard/gate2a-window.xml >/dev/null 2>&1||return 0
+  adb pull /sdcard/gate2a-window.xml qa-out/window.xml >/dev/null 2>&1||return 0
+  python3 - <<'PY' > qa-out/anr-target.txt 2>>qa-out/anr-dismiss-errors.txt
+import re,xml.etree.ElementTree as ET
+try:
+ root=ET.parse('qa-out/window.xml').getroot()
+ texts=' '.join(n.attrib.get('text','') for n in root.iter())
+ if "Pixel Launcher isn't responding" not in texts: raise SystemExit
+ for n in root.iter():
+  if n.attrib.get('text')=='Wait':
+   m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+   if m:
+    x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); break
+except Exception: pass
+PY
+  if read -r x y < qa-out/anr-target.txt && [ -n "$x" ] && [ -n "$y" ]; then echo "dismiss Pixel Launcher ANR via Wait at $x,$y" >> qa-out/system-dialog-actions.txt; adb shell input tap "$x" "$y" >/dev/null 2>&1||true; sleep 1; fi
+}
 if ! python3 -c 'import PIL,numpy' >/dev/null 2>&1; then python3 -m pip install --quiet pillow numpy >> qa-out/vision-setup.txt 2>&1||true; fi
 cat > qa-out/vision_state.py <<'PY'
 from PIL import Image
@@ -39,11 +57,11 @@ PY
 sense_file(){ vals="$(python3 qa-out/vision_state.py "$1" 2>>qa-out/vision-errors.txt)"; echo "$2 $vals" >> qa-out/vision-log.txt; eval "$vals"; }
 adb install -r "$APK" > qa-out/install.txt 2>&1||exit 10
 adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1||true; adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1||true; adb shell settings put system user_rotation 1 >/dev/null 2>&1||true; adb shell wm user-rotation lock 1 >/dev/null 2>&1||true
-adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa-out/launch.txt 2>&1; sleep 16; record_state 00-startup-after-air-splash
-pulse KEYCODE_X; sleep 2; pulse KEYCODE_X; sleep 6; record_state 01-main-menu; pulse KEYCODE_X; sleep 4; record_state 02-level-select; pulse KEYCODE_DPAD_RIGHT; pulse KEYCODE_X; sleep 12; record_state 03-level2-start; pulse KEYCODE_Y; sleep 2; record_state 04-level2-post-cutscene
+adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > qa-out/launch.txt 2>&1; sleep 16; dismiss_launcher_anr; record_state 00-startup-after-air-splash
+pulse KEYCODE_X; sleep 2; pulse KEYCODE_X; sleep 6; dismiss_launcher_anr; record_state 01-main-menu; pulse KEYCODE_X; sleep 4; dismiss_launcher_anr; record_state 02-level-select; pulse KEYCODE_DPAD_RIGHT; pulse KEYCODE_X; sleep 12; dismiss_launcher_anr; record_state 03-level2-start; pulse KEYCODE_Y; sleep 2; dismiss_launcher_anr; record_state 04-level2-post-cutscene
 pulse KEYCODE_V; sleep 1; record_state 10-liselot-start; combo 650 KEYCODE_DPAD_RIGHT; sleep .2; record_state 11-at-high-ledge-base; combo 220 KEYCODE_DPAD_RIGHT KEYCODE_C; sleep .06; combo 140 KEYCODE_DPAD_RIGHT KEYCODE_C; combo 180 KEYCODE_DPAD_RIGHT; sleep .35; record_state 12-platform-landing; sleep .65; record_state 13-platform-settled; combo 300 KEYCODE_DPAD_LEFT; sleep .35; record_state 20-short-crate-shove
 adb shell input swipe 1350 1250 1350 1250 300 >> qa-out/input-command.txt 2>&1||true; sleep .45; record_state 30-andre-after-held-switch; adb shell input tap 2630 1250 >> qa-out/input-command.txt 2>&1||true; sleep .12; record_state 31-andre-jump-probe-airborne; sleep .88; record_state 32-andre-jump-probe-settled
-# Run47: rendered closed-loop approach. Long jumps while clearly left; shorter jumps near the ledge face to avoid repeatedly overshooting the staging geometry.
+# Rendered closed-loop approach. Long jumps while clearly left; shorter jumps near the ledge face to avoid repeatedly overshooting the staging geometry.
 for i in $(seq 1 12); do
  APPROACH_COUNT=$i; shot "40-pre-${i}"; sense_file "qa-out/screens/40-pre-${i}.png" "pre-${i}"
  if [ "$ANDRE_X" -ge 1180 ] && [ "$ANDRE_X" -le 1480 ] && [ "$ANDRE_Y" -ge 400 ] && [ "$ANDRE_Y" -le 650 ]; then STAGING_REACHED=1; echo "decision staging_reached pre=$i" >> qa-out/vision-log.txt; break; fi
