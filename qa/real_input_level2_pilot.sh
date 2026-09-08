@@ -4,6 +4,10 @@ mkdir -p qa-out/screens qa-out/logs
 APK="$(find runtime-apk -type f -name '*.apk' -print -quit)"
 PACKAGE="air.com.ramybaheeg.slfport"
 FAIL=0
+STAGING_REACHED=0
+WORKER_PHASE_REACHED=0
+APPROACH_COUNT=0
+WORKER_X_AT_LAUNCH=-1
 
 if [ -z "$APK" ] || [ ! -f "$APK" ]; then
   echo "No APK discovered under runtime-apk" > qa-out/install.txt
@@ -48,6 +52,68 @@ pulse() {
   echo "pulse key=$key" >> qa-out/input-sequence.txt
   adb shell input keyevent "$key" >> qa-out/input-command.txt 2>&1 || true
   sleep 0.25
+}
+
+# Read-only rendered-state helper. It inspects screenshot pixels only; it does not read or mutate game state.
+if ! python3 -c 'import PIL, numpy' >/dev/null 2>&1; then
+  python3 -m pip install --quiet --disable-pip-version-check pillow numpy >> qa-out/vision-setup.txt 2>&1 || true
+fi
+cat > qa-out/vision_state.py <<'PY'
+from PIL import Image
+import numpy as np
+import sys
+
+path = sys.argv[1]
+a = np.asarray(Image.open(path).convert("RGB"))
+
+# Andre: green sprite pixels in gameplay area; HUD/icons are excluded by the crop.
+g = a[300:1000, 400:1800]
+gm = ((g[:,:,1] > 120) &
+      (g[:,:,1] > g[:,:,0] * 1.15) &
+      (g[:,:,1] > g[:,:,2] * 1.10) &
+      (g[:,:,0] < 220))
+gy, gx = np.where(gm)
+if gx.size >= 500:
+    andre_x = int(np.median(gx)) + 400
+    andre_y = int(np.median(gy)) + 300
+else:
+    andre_x = andre_y = -1
+
+# Worker: dense near-black 88-104 px silhouette in the main-platform band.
+w = a[500:680, 1000:2700]
+wm = np.all(w < 80, axis=2)
+counts = wm.sum(axis=0)
+xs = np.where(counts > 50)[0]
+runs = []
+if xs.size:
+    start = prev = int(xs[0])
+    for xv in xs[1:]:
+        xv = int(xv)
+        if xv > prev + 1:
+            runs.append((start, prev))
+            start = xv
+        prev = xv
+    runs.append((start, prev))
+worker_x = -1
+best_weight = -1
+for start, end in runs:
+    width = end - start + 1
+    if 40 <= width <= 130:
+        ww = counts[start:end+1]
+        weight = int(ww.sum())
+        if weight > best_weight:
+            xx = np.arange(start, end+1)
+            worker_x = int(np.average(xx, weights=ww)) + 1000
+            best_weight = weight
+print(f"ANDRE_X={andre_x} ANDRE_Y={andre_y} WORKER_X={worker_x}")
+PY
+
+sense_file() {
+  local file="$1" label="$2"
+  local vals
+  vals="$(python3 qa-out/vision_state.py "$file" 2>>qa-out/vision-errors.txt)"
+  echo "$label $vals" >> qa-out/vision-log.txt
+  eval "$vals"
 }
 
 adb install -r "$APK" > qa-out/install.txt 2>&1
@@ -111,37 +177,58 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-for i in 1 2 3; do
+# Closed-loop prerequisite: after each ordinary approach, let Andre settle and inspect only the rendered pixels.
+for i in 1 2 3 4 5 6 7 8; do
+  APPROACH_COUNT=$i
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
-  record_state "40-andre-approach-${i}"
+  shot "40-visual-approach-${i}-mid"
+  sleep 0.70
+  shot "40-visual-approach-${i}-settle"
+  sense_file "qa-out/screens/40-visual-approach-${i}-settle.png" "approach-${i}"
+  if [ "$ANDRE_X" -ge 1180 ] && [ "$ANDRE_X" -le 1480 ] && [ "$ANDRE_Y" -ge 400 ] && [ "$ANDRE_Y" -le 620 ]; then
+    STAGING_REACHED=1
+    echo "decision staging_reached approach=$i andre_x=$ANDRE_X andre_y=$ANDRE_Y" >> qa-out/vision-log.txt
+    break
+  fi
 done
 
-sleep 0.85
-record_state "41-andre-staging-ledge-settled"
-for i in 01 02 03 04; do
-  sleep 0.50
-  shot "42-worker-far-right-wait-${i}"
-done
+if [ "$STAGING_REACHED" -eq 1 ]; then
+  PREV_WORKER_X=-1
+  for i in $(seq -w 1 24); do
+    sleep 0.25
+    shot "42-visual-worker-poll-${i}"
+    sense_file "qa-out/screens/42-visual-worker-poll-${i}.png" "worker-poll-${i}"
+    if [ "$WORKER_X" -ge 2080 ] && [ "$PREV_WORKER_X" -ge 0 ] && [ "$WORKER_X" -gt $((PREV_WORKER_X + 15)) ]; then
+      WORKER_PHASE_REACHED=1
+      WORKER_X_AT_LAUNCH=$WORKER_X
+      echo "decision worker_rightward_phase worker_x=$WORKER_X previous_x=$PREV_WORKER_X" >> qa-out/vision-log.txt
+      break
+    fi
+    if [ "$WORKER_X" -ge 0 ]; then PREV_WORKER_X=$WORKER_X; fi
+  done
+fi
 
-# Run 44 showed the worker is far right around wait 04-05 but has returned toward the landing edge by wait 08.
-# Change only patrol phase: preserve the isolated ordinary 650 ms final jump and launch after wait 04 (~2 s).
-echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=isolated-final-platform-jump-far-right-phase" >> qa-out/input-sequence.txt
-adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
-LAND_PID=$!
-for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18; do
-  sleep 0.05
-  shot "50-far-right-phase-platform-jump-${i}"
-done
-wait "$LAND_PID" 2>/dev/null || true
-for i in 19 20 21 22 23 24; do
-  sleep 0.08
-  shot "50-far-right-phase-platform-jump-post-${i}"
-done
-sleep 0.25
-record_state "51-far-right-phase-platform-jump-settle"
-sleep 0.75
-record_state "52-far-right-phase-platform-jump-long-settle"
+if [ "$STAGING_REACHED" -eq 1 ] && [ "$WORKER_PHASE_REACHED" -eq 1 ]; then
+  echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=visual-guided-final-platform-jump" >> qa-out/input-sequence.txt
+  adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+  LAND_PID=$!
+  for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18; do
+    sleep 0.05
+    shot "50-visual-guided-platform-jump-${i}"
+  done
+  wait "$LAND_PID" 2>/dev/null || true
+  for i in 19 20 21 22 23 24; do
+    sleep 0.08
+    shot "50-visual-guided-platform-jump-post-${i}"
+  done
+  sleep 0.25
+  record_state "51-visual-guided-platform-jump-settle"
+  sleep 0.75
+  record_state "52-visual-guided-platform-jump-long-settle"
+else
+  record_state "49-visual-controller-prerequisite-not-reached"
+fi
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -152,17 +239,21 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "forced_completion_used=false"
   echo "state_teleport_used=false"
   echo "player_coordinate_mutation_used=false"
+  echo "internal_game_state_sensing_used=false"
+  echo "rendered_screenshot_sensing_only=true"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run45-isolated-650ms-jump-far-right-patrol-phase"
-  echo "isolated_final_jump_duration_ms=650"
-  echo "patrol_wait_frames=4"
-  echo "patrol_wait_interval_ms=500"
-  echo "downstream_clear_inputs_executed=false"
+  echo "diagnostic=run46-visual-closed-loop-staging-and-worker-phase"
   echo "ordinary_input_only=true"
+  echo "staging_reached=$STAGING_REACHED"
+  echo "approach_count=$APPROACH_COUNT"
+  echo "worker_phase_reached=$WORKER_PHASE_REACHED"
+  echo "worker_x_at_launch=$WORKER_X_AT_LAUNCH"
+  echo "isolated_final_jump_duration_ms=650"
+  echo "downstream_clear_inputs_executed=false"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 45 preserves Run 44's isolated 650 ms final RIGHT+JUMP and changes only patrol phase by launching after four 0.5 s wait captures (~2 s), when Run 44 showed the worker far right, instead of eight (~4 s), when the worker had returned left. No downstream clear/continuation input is executed. Shipping game state/source are untouched."
+  echo "NOTE=Run 46 rejects elapsed-time state assumptions. A QA-only detector reads rendered screenshot pixels for Andre and worker location, then decides when to issue only ordinary shipping RIGHT/JUMP inputs. It never reads or mutates internal game state. Semantic proof still requires sequential review of all captured frames. Shipping game source/state are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
