@@ -136,26 +136,31 @@ for i in 01 02 03 04 05 06; do
 done
 record_state "51-safe-main-platform-landing"
 
-# Run 32 proved 420 ms RIGHT+JUMP does not carry Andre far enough right: the input ends,
-# Andre stops left of the worker, and the returning patrol removes one heart. Run 33 changes
-# only that ordinary input duration. Hold RIGHT+JUMP for 1000 ms and capture while the shipping
-# controls are actively held, so the entire attempted airborne pass is rendered-observable.
-echo "combo duration=1000 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=extended-safe-window-traverse" >> qa-out/input-sequence.txt
-adb shell input keycombination -t 1000 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
-TRAVERSE_PID=$!
-for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18; do
-  sleep 0.06
-  shot "60-extended-traverse-held-${i}"
-done
-wait "$TRAVERSE_PID" 2>/dev/null || true
-for i in 19 20 21 22 23 24; do
+# Run 33 proved an immediate continuous 1000 ms RIGHT+JUMP makes Andre and the returning
+# patrol converge and collide. Run 34 instead stages the shipping controls: Andre holds his
+# landing position briefly while the patrol approaches, then performs one ordinary RIGHT+JUMP
+# intended to vault the patrol. Dense captures cover both the no-input wait and the held jump.
+for i in 01 02 03 04 05 06 07 08; do
   sleep 0.08
-  shot "60-extended-traverse-post-${i}"
+  shot "60-patrol-approach-wait-${i}"
+done
+
+echo "combo duration=700 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=staged-patrol-vault" >> qa-out/input-sequence.txt
+adb shell input keycombination -t 700 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+VAULT_PID=$!
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+  sleep 0.06
+  shot "61-staged-vault-held-${i}"
+done
+wait "$VAULT_PID" 2>/dev/null || true
+for i in 13 14 15 16 17 18; do
+  sleep 0.08
+  shot "61-staged-vault-post-${i}"
 done
 sleep 0.35
-record_state "61-extended-traverse-settle"
+record_state "62-staged-vault-settle"
 sleep 0.75
-record_state "62-extended-traverse-long-settle"
+record_state "63-staged-vault-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -168,12 +173,12 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run33-safe-landing-extended-1000ms-right-jump-traverse"
+  echo "diagnostic=run34-safe-landing-staged-patrol-vault"
   echo "run31_safe_landing_reused=true"
-  echo "run32_420ms_collision_evidence_reconciled=true"
+  echo "run33_immediate_1000ms_collision_evidence_reconciled=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 32 proved the safe landing survives but 420 ms of RIGHT+JUMP ends before Andre clears the worker. Run 33 changes only the ordinary RIGHT+JUMP hold to 1000 ms and captures during the held input."
+  echo "NOTE=Review every rendered frame sequentially. Run 34 changes only ordinary input timing after the proven safe landing: a brief no-input patrol-approach stage followed by one 700 ms RIGHT+JUMP vault attempt."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
