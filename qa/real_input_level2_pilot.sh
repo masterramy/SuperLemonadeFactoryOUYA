@@ -130,9 +130,7 @@ for i in 01 02 03 04 05 06; do
   shot "50-safe-final-jump-${i}"
 done
 
-# Reproducibility probe: preserve Run 39's exact ordinary-input timing and sequence.
-# The only change in this commit is QA metadata so a fresh rendered run can determine
-# whether the nominal 650 ms main-platform landing reproduces before any hop is interpreted.
+# Preserve the Run-40 rendered-proven prerequisite route exactly.
 echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=early-main-platform-landing" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 LAND_PID=$!
@@ -150,14 +148,25 @@ for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
   shot "70-patrol-clear-hop-${i}"
 done
 wait "$HOP_PID" 2>/dev/null || true
+
+# Run 41 changes only the post-clear continuation: immediately chain one bounded
+# ordinary RIGHT+JUMP after the proven clear window, before the patrol can return.
+echo "combo duration=420 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-post-clear-continuation" >> qa-out/input-sequence.txt
+adb shell input keycombination -t 420 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+CONT_PID=$!
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+  sleep 0.06
+  shot "80-post-clear-continuation-${i}"
+done
+wait "$CONT_PID" 2>/dev/null || true
 for i in 13 14 15 16 17 18; do
   sleep 0.08
-  shot "70-patrol-clear-post-${i}"
+  shot "80-post-clear-continuation-post-${i}"
 done
 sleep 0.30
-record_state "71-patrol-clear-settle"
+record_state "81-post-clear-continuation-settle"
 sleep 0.75
-record_state "72-patrol-clear-long-settle"
+record_state "82-post-clear-continuation-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -170,15 +179,15 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run40-repro-exact-run39-timing"
-  echo "run38_early_main_platform_landing_reconciled=true"
-  echo "run39_nonreproduction_reconciled=true"
+  echo "diagnostic=run41-post-clear-continuation"
+  echo "run40_main_platform_and_patrol_clear_reconciled=true"
   echo "landing_input_duration_ms=650"
   echo "post_landing_hop_duration_ms=420"
+  echo "post_clear_continuation_duration_ms=420"
   echo "ordinary_input_only=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. This reproducibility probe preserves Run 39's exact ordinary-input timing and sequence; only QA metadata changed to trigger a fresh run. The 420 ms hop counts only if this same run first renders a genuine main-platform landing. Shipping game state/source are untouched."
+  echo "NOTE=Review every rendered frame sequentially. This probe preserves the Run-40 prerequisite route and changes only the immediate post-clear continuation. The continuation counts only if this same run first renders a genuine main-platform landing and patrol clear. Shipping game state/source are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
