@@ -135,25 +135,26 @@ record_state "51-safe-main-platform-landing"
 
 # Run 33 proved an immediate 1000 ms RIGHT+JUMP is too long. Runs 34-35 proved that
 # waiting about 0.64 s and then using 700 ms still descends into the returning patrol,
-# with the shipping ACTION tap not preventing damage. Run 36 therefore changes one bounded
-# variable only: immediately after the rendered-proven main-platform landing, use a shorter
-# 500 ms ordinary RIGHT+JUMP and densely capture the entire traverse/settle.
-echo "combo duration=500 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-short-main-platform-traverse" >> qa-out/input-sequence.txt
-adb shell input keycombination -t 500 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+# with the shipping ACTION tap not preventing damage. Run 36 proved immediate 500 ms
+# is too short to establish distance. Change one bounded variable only: immediately
+# after the rendered-proven main-platform landing, use an intermediate 650 ms ordinary
+# RIGHT+JUMP and densely capture the entire traverse/settle.
+echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-intermediate-main-platform-traverse" >> qa-out/input-sequence.txt
+adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 TRAVERSE_PID=$!
 for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do
   sleep 0.06
-  shot "60-immediate-short-traverse-${i}"
+  shot "60-immediate-intermediate-traverse-${i}"
 done
 wait "$TRAVERSE_PID" 2>/dev/null || true
 for i in 15 16 17 18 19 20; do
   sleep 0.08
-  shot "60-immediate-short-post-${i}"
+  shot "60-immediate-intermediate-post-${i}"
 done
 sleep 0.35
-record_state "61-immediate-short-settle"
+record_state "61-immediate-intermediate-settle"
 sleep 0.75
-record_state "62-immediate-short-long-settle"
+record_state "62-immediate-intermediate-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -166,15 +167,16 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run36-safe-landing-immediate-short-traverse"
+  echo "diagnostic=run37-safe-landing-immediate-intermediate-traverse"
   echo "run31_safe_landing_reused=true"
   echo "run33_1000ms_collision_reconciled=true"
   echo "run34_700ms_delayed_collision_reconciled=true"
   echo "run35_midair_action_collision_reconciled=true"
-  echo "traverse_duration_ms=500"
+  echo "run36_500ms_collision_reconciled=true"
+  echo "traverse_duration_ms=650"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 36 changes only ordinary input timing after the proven safe main-platform landing; no game state or player position is mutated."
+  echo "NOTE=Review every rendered frame sequentially. Run 37 changes only ordinary input timing after the proven safe main-platform landing; no game state or player position is mutated."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
