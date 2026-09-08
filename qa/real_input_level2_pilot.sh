@@ -113,10 +113,9 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reproduce the ordinary-input Andre route. Run 27 sequential rendered review proved that
-# this approach can land Andre on the main platform, where the patrol then damages him.
-# Run 28 reproduced the same approach but settled on the narrow left ledge instead, showing
-# that the exact landing is timing-sensitive across emulator runs.
+# Reproduce the ordinary-input Andre route. Run 27 proved a genuine main-platform landing
+# followed by patrol collision. Runs 28-29 instead reproduced the narrow left-side staging
+# ledge, confirming timing-sensitive route divergence without a shipping-source change.
 for i in 1 2 3; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
@@ -126,26 +125,37 @@ combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.45
 record_state "40-andre-approach-4-airborne"
 
-# Preserve the same dense landing window. Then use one longer ordinary RIGHT+JUMP. If the
-# timing reproduces Run 28's narrow-left-ledge state, the extra hold tests whether enough
-# rightward travel clears the platform lip. If it reproduces Run 27's main-platform landing,
-# the same ordinary jump is also a patrol-evasion attempt. No game-state sensing, teleport,
-# coordinate mutation, forced completion, hidden gameplay behavior, or shipping mutation.
 sleep 0.10
 shot "50-platform-landing-window-01"
 sleep 0.10
 shot "50-platform-landing-window-02"
 sleep 0.10
 shot "50-platform-landing-window-03"
-combo 650 KEYCODE_DPAD_RIGHT KEYCODE_C
-for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
-  sleep 0.08
-  shot "51-platform-clearance-right-jump-${i}"
+
+# Runs 28-29 show simultaneous RIGHT+JUMP can leave Andre pinned against the vertical lip.
+# Test ordinary controls in two phases instead: issue JUMP first, then while Andre is airborne
+# apply RIGHT. The RIGHT keyevent runs asynchronously only so screenshots can observe the
+# movement while the ordinary shipping input is active; it does not inspect or mutate game state.
+echo "pulse key=KEYCODE_C label=ledge-clearance-jump-first" >> qa-out/input-sequence.txt
+adb shell input keyevent KEYCODE_C >> qa-out/input-command.txt 2>&1 || true
+sleep 0.10
+shot "51-staged-clearance-takeoff"
+echo "longpress key=KEYCODE_DPAD_RIGHT label=airborne-right-after-jump" >> qa-out/input-sequence.txt
+adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >> qa-out/input-command.txt 2>&1 &
+RIGHT_PID=$!
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+  sleep 0.06
+  shot "52-staged-airborne-right-${i}"
+done
+wait "$RIGHT_PID" 2>/dev/null || true
+for i in 13 14 15 16 17 18 19 20; do
+  sleep 0.06
+  shot "52-staged-airborne-right-${i}"
 done
 sleep 0.35
-record_state "52-platform-clearance-jump-settle"
+record_state "53-staged-clearance-settle"
 sleep 0.75
-record_state "53-platform-clearance-jump-long-settle"
+record_state "54-staged-clearance-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -158,11 +168,11 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run29-andre-longer-platform-lip-clearance-jump"
-  echo "clearance_right_jump_duration_ms=650"
+  echo "diagnostic=run30-andre-staged-jump-then-airborne-right"
+  echo "staged_jump_then_right=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 27 proved a main-platform landing followed by patrol collision; Run 28 instead settled on the narrow left ledge and a 420 ms RIGHT+JUMP did not clear the platform lip. Run 29 changes only that one ordinary jump to 650 ms."
+  echo "NOTE=Review every rendered frame sequentially. Runs 28-29 settled on the narrow left ledge; Run 30 changes only the lip-clearance control timing from simultaneous RIGHT+JUMP to ordinary JUMP first followed by RIGHT while airborne."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
