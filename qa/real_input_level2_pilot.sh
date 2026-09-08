@@ -82,9 +82,7 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# The initial legacy V handoff has repeatedly rendered Liselot correctly; retain only this
-# already-proven setup handoff. The critical Liselot->Andre transition below uses the
-# shipping mobile SWITCH hold proven behaviorally in Run 24.
+# Keep the already-proven Liselot setup route unchanged.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -103,9 +101,7 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Run 24 proved a 300 ms hold on the real shipping SWITCH surface transfers control to
-# Andre, while a normal tap does not. Use that exact handoff, then prove identity again
-# with the calibrated shipping JUMP before starting traversal timing.
+# Use the rendered-proven 300 ms real shipping SWITCH hold, then reconfirm Andre identity.
 echo "swipehold x=1350 y=1250 duration=300 label=shipping-mobile-switch-held-to-andre" >> qa-out/input-sequence.txt
 adb shell input swipe 1350 1250 1350 1250 300 >> qa-out/input-command.txt 2>&1 || true
 sleep 0.45
@@ -117,37 +113,36 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reproduce the exact ordinary-input route that Run 26 rendered ending on the stable
-# narrow lower-left step. Do not inject any movement after approach 4 until the step has
-# settled and been captured.
-for i in 1 2 3 4; do
+# Reproduce the ordinary-input Andre route. Run 27 sequential rendered review corrected the
+# earlier Run-26 interpretation: after approach 4 Andre genuinely lands on the main platform,
+# then the left-moving black-clothed worker reaches him, damages him, and knocks him back down.
+for i in 1 2 3; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
   record_state "40-andre-approach-${i}"
 done
+combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+sleep 0.45
+record_state "40-andre-approach-4-airborne"
 
-for i in 01 02 03 04 05 06 07 08 09 10; do
-  sleep 0.15
-  record_state "50-andre-post-approach-settle-${i}"
-done
-sleep 0.75
-record_state "51-andre-post-approach-long-settle"
-
-# Run 26 proved the long-settle position above is a stable small-step landing immediately
-# left of the main platform. From that rendered-proven staging point, issue exactly one
-# short ordinary RIGHT+JUMP input. Capture densely without additional gameplay input so
-# rendered review can adjudicate takeoff, platform contact, landing, fall, patrol collision,
-# or other outcome without ambiguity.
-record_state "60-small-step-prejump"
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+# Capture the landing window quickly, then issue one ordinary RIGHT+JUMP escape before the
+# patrol can repeat the proven collision. No teleport, coordinate mutation, forced completion,
+# hidden gameplay behavior, or shipping-source mutation is used.
+sleep 0.10
+shot "50-platform-landing-window-01"
+sleep 0.10
+shot "50-platform-landing-window-02"
+sleep 0.10
+shot "50-platform-landing-window-03"
+combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
   sleep 0.08
-  shot "61-small-step-jump-${i}"
+  shot "51-platform-evasive-right-jump-${i}"
 done
-sleep 0.50
-record_state "62-small-step-jump-settle"
+sleep 0.35
+record_state "52-platform-evasive-jump-settle"
 sleep 0.75
-record_state "63-small-step-jump-long-settle"
+record_state "53-platform-evasive-jump-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -160,11 +155,11 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run27-andre-single-jump-from-rendered-proven-small-step"
-  echo "small_step_jump_duration_ms=180"
+  echo "diagnostic=run28-andre-evade-worker-after-rendered-proven-main-platform-landing"
+  echo "evasive_right_jump_duration_ms=420"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Rendered review must first reconfirm the stable small-step pre-jump frame, then review every 61-small-step-jump frame sequentially through both settle frames. No further gameplay input occurs after the single 180 ms RIGHT+JUMP."
+  echo "NOTE=Review every rendered frame sequentially. Run 27 proved actual main-platform landing followed by worker collision and one-heart damage; Run 28 tests one ordinary RIGHT+JUMP escape timed before that collision."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
