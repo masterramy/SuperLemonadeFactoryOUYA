@@ -112,33 +112,23 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reuse the rendered-proven Andre approach to the small left step, now from a
-# behaviorally proven control handoff instead of an unreliable second KEYCODE_V.
+# Reuse only the ordinary-input approach that Run 25 rendered advancing Andre up and
+# right toward/above the main platform. The prior harness injected additional movement
+# immediately after approach 4, so it could not distinguish a genuine landing from the
+# subsequent fall/damage/respawn. This probe intentionally stops injecting gameplay
+# input after approach 4 and captures a dense no-input settle sequence.
 for i in 1 2 3 4; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
   record_state "40-andre-approach-${i}"
 done
-combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.70
-combo 300 KEYCODE_C
-sleep 0.06
-combo 420 KEYCODE_DPAD_RIGHT
-sleep 0.65
-record_state "50-andre-left-step"
 
-# Wait out the first worker patrol and retry the vertical-first ordinary shipping jump
-# from the small step to the 40px-higher main platform. Do not insert evidence capture
-# inside the timing window.
-sleep 3.60
-combo 260 KEYCODE_C
-sleep 0.08
-combo 260 KEYCODE_DPAD_RIGHT KEYCODE_C
-combo 180 KEYCODE_DPAD_RIGHT
+for i in 01 02 03 04 05 06 07 08 09 10; do
+  sleep 0.15
+  record_state "50-andre-post-approach-settle-${i}"
+done
 sleep 0.75
-record_state "51-main-platform-vertical-first-attempt"
-sleep 0.90
-record_state "52-main-platform-vertical-first-settled"
+record_state "51-andre-post-approach-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -151,10 +141,10 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run25-proven-held-switch-andre-route-main-platform"
+  echo "diagnostic=run26-dense-andre-main-platform-landing-adjudication"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Rendered review must reconfirm Andre on the post-switch JUMP probe, then judge the left-step and main-platform traversal semantically."
+  echo "NOTE=Rendered review must reconfirm Andre on the post-switch JUMP probe, then inspect every dense post-approach frame in order to adjudicate genuine landing versus fall/damage/respawn."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
