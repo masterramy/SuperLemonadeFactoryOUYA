@@ -124,13 +124,17 @@ for i in 01 02 03 04 05 06 07 08; do
   shot "42-worker-walkaway-wait-${i}"
 done
 
-combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+# Run 41 plus its unchanged second attempt showed the previous 420 ms final jump is threshold-sensitive:
+# Run 40 landed on the main platform by the end of this stage, while both Run-41 attempts fell back
+# onto the narrow left ledge. Change only this upstream landing input, 420 ms -> 500 ms.
+combo 500 KEYCODE_DPAD_RIGHT KEYCODE_C
 for i in 01 02 03 04 05 06; do
   sleep 0.08
   shot "50-safe-final-jump-${i}"
 done
 
-# Preserve the Run-40 rendered-proven prerequisite route exactly.
+# Preserve all downstream Run-41 inputs unchanged. These stages count only if the same-run
+# 500 ms final jump first renders a genuine main-platform landing.
 echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=early-main-platform-landing" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 LAND_PID=$!
@@ -149,8 +153,6 @@ for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
 done
 wait "$HOP_PID" 2>/dev/null || true
 
-# Run 41 changes only the post-clear continuation: immediately chain one bounded
-# ordinary RIGHT+JUMP after the proven clear window, before the patrol can return.
 echo "combo duration=420 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-post-clear-continuation" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 420 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 CONT_PID=$!
@@ -179,15 +181,15 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run41-post-clear-continuation"
-  echo "run40_main_platform_and_patrol_clear_reconciled=true"
+  echo "diagnostic=run42-stabilize-safe-final-jump-500ms"
+  echo "safe_final_jump_duration_ms=500"
   echo "landing_input_duration_ms=650"
   echo "post_landing_hop_duration_ms=420"
   echo "post_clear_continuation_duration_ms=420"
   echo "ordinary_input_only=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. This probe preserves the Run-40 prerequisite route and changes only the immediate post-clear continuation. The continuation counts only if this same run first renders a genuine main-platform landing and patrol clear. Shipping game state/source are untouched."
+  echo "NOTE=Review every rendered frame sequentially. Run 42 changes only the upstream final RIGHT+JUMP from 420 ms to 500 ms after two consecutive Run-41 attempts failed to reproduce the Run-40 main-platform landing. Downstream 650/420/420 inputs are unchanged and count only if same-run rendered evidence first proves main-platform landing. Shipping game state/source are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
