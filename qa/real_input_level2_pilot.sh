@@ -22,6 +22,11 @@ record_state() {
   adb logcat -d > "qa-out/logs/${tag}-logcat.txt" 2>&1 || true
 }
 
+shot() {
+  local tag="$1"
+  adb exec-out screencap -p > "qa-out/screens/${tag}.png" 2>/dev/null || true
+}
+
 combo() {
   local duration="$1"; shift
   echo "combo duration=${duration} keys=$*" >> qa-out/input-sequence.txt
@@ -112,11 +117,9 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reuse only the ordinary-input approach that Run 25 rendered advancing Andre up and
-# right toward/above the main platform. The prior harness injected additional movement
-# immediately after approach 4, so it could not distinguish a genuine landing from the
-# subsequent fall/damage/respawn. This probe intentionally stops injecting gameplay
-# input after approach 4 and captures a dense no-input settle sequence.
+# Reproduce the exact ordinary-input route that Run 26 rendered ending on the stable
+# narrow lower-left step. Do not inject any movement after approach 4 until the step has
+# settled and been captured.
 for i in 1 2 3 4; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
@@ -130,6 +133,22 @@ done
 sleep 0.75
 record_state "51-andre-post-approach-long-settle"
 
+# Run 26 proved the long-settle position above is a stable small-step landing immediately
+# left of the main platform. From that rendered-proven staging point, issue exactly one
+# short ordinary RIGHT+JUMP input. Capture densely without additional gameplay input so
+# rendered review can adjudicate takeoff, platform contact, landing, fall, patrol collision,
+# or other outcome without ambiguity.
+record_state "60-small-step-prejump"
+combo 180 KEYCODE_DPAD_RIGHT KEYCODE_C
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+  sleep 0.08
+  shot "61-small-step-jump-${i}"
+done
+sleep 0.50
+record_state "62-small-step-jump-settle"
+sleep 0.75
+record_state "63-small-step-jump-long-settle"
+
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
 {
@@ -141,10 +160,11 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run26-dense-andre-main-platform-landing-adjudication"
+  echo "diagnostic=run27-andre-single-jump-from-rendered-proven-small-step"
+  echo "small_step_jump_duration_ms=180"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Rendered review must reconfirm Andre on the post-switch JUMP probe, then inspect every dense post-approach frame in order to adjudicate genuine landing versus fall/damage/respawn."
+  echo "NOTE=Rendered review must first reconfirm the stable small-step pre-jump frame, then review every 61-small-step-jump frame sequentially through both settle frames. No further gameplay input occurs after the single 180 ms RIGHT+JUMP."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
