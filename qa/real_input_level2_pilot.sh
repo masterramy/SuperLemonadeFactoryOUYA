@@ -113,49 +113,39 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reproduce the ordinary-input Andre route. Run 27 proved a genuine main-platform landing
-# followed by patrol collision. Runs 28-29 instead reproduced the narrow left-side staging
-# ledge, confirming timing-sensitive route divergence without a shipping-source change.
+# Reproduce the first three ordinary-input Andre approaches unchanged. Run 30 showed that
+# jumping only after the final-platform landing is too late: the worker reaches Andre during
+# the escape. Frozen Level 2 data shows the final platform begins at x=1210 while the worker
+# patrols from approximately x=1226 to x=1540 at 40 px/s, so the proven left-edge landing is
+# almost exactly on the patrol turnaround. Run 31 therefore changes timing, not game state.
 for i in 1 2 3; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
   record_state "40-andre-approach-${i}"
 done
-combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
-sleep 0.45
-record_state "40-andre-approach-4-airborne"
 
-sleep 0.10
-shot "50-platform-landing-window-01"
-sleep 0.10
-shot "50-platform-landing-window-02"
-sleep 0.10
-shot "50-platform-landing-window-03"
-
-# Runs 28-29 show simultaneous RIGHT+JUMP can leave Andre pinned against the vertical lip.
-# Test ordinary controls in two phases instead: issue JUMP first, then while Andre is airborne
-# apply RIGHT. The RIGHT keyevent runs asynchronously only so screenshots can observe the
-# movement while the ordinary shipping input is active; it does not inspect or mutate game state.
-echo "pulse key=KEYCODE_C label=ledge-clearance-jump-first" >> qa-out/input-sequence.txt
-adb shell input keyevent KEYCODE_C >> qa-out/input-command.txt 2>&1 || true
-sleep 0.10
-shot "51-staged-clearance-takeoff"
-echo "longpress key=KEYCODE_DPAD_RIGHT label=airborne-right-after-jump" >> qa-out/input-sequence.txt
-adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >> qa-out/input-command.txt 2>&1 &
-RIGHT_PID=$!
-for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
-  sleep 0.06
-  shot "52-staged-airborne-right-${i}"
+# Allow Andre to settle on the already-rendered narrow x=1020..1210 staging ledge. Then wait
+# there with no gameplay input while the ordinary in-game worker patrol walks away to the right.
+# Periodic screenshots prove the patrol phase visually; there is no state sensing or mutation.
+sleep 0.85
+record_state "41-andre-staging-ledge-settled"
+for i in 01 02 03 04 05 06 07 08; do
+  sleep 0.50
+  shot "42-worker-walkaway-wait-${i}"
 done
-wait "$RIGHT_PID" 2>/dev/null || true
-for i in 13 14 15 16 17 18 19 20; do
-  sleep 0.06
-  shot "52-staged-airborne-right-${i}"
+
+# Make the same previously proven fourth RIGHT+JUMP only after the patrol wait. Capture the
+# entire contact/landing window densely, then leave Andre untouched long enough to distinguish
+# a safe landing from delayed patrol collision.
+combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20; do
+  sleep 0.08
+  shot "50-post-wait-final-jump-${i}"
 done
 sleep 0.35
-record_state "53-staged-clearance-settle"
+record_state "51-post-wait-landing-settle"
 sleep 0.75
-record_state "54-staged-clearance-long-settle"
+record_state "52-post-wait-landing-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -168,11 +158,11 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run30-andre-staged-jump-then-airborne-right"
-  echo "staged_jump_then_right=true"
+  echo "diagnostic=run31-andre-wait-for-worker-before-final-platform-jump"
+  echo "staging_wait_seconds=4.0-plus-capture-overhead"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Runs 28-29 settled on the narrow left ledge; Run 30 changes only the lip-clearance control timing from simultaneous RIGHT+JUMP to ordinary JUMP first followed by RIGHT while airborne."
+  echo "NOTE=Review every rendered frame sequentially. Run 30 proved post-landing evasion is too late. Frozen Level 2 geometry places the final-platform left edge at x=1210 and worker patrol at roughly x=1226..1540. Run 31 uses only no-input waiting on the safe staging ledge before the same ordinary final RIGHT+JUMP."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
