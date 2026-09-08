@@ -82,7 +82,6 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Preserve the rendered-proven Liselot setup.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -101,7 +100,6 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Use the rendered-proven shipping SWITCH hold, then reconfirm Andre identity.
 echo "swipehold x=1350 y=1250 duration=300 label=shipping-mobile-switch-held-to-andre" >> qa-out/input-sequence.txt
 adb shell input swipe 1350 1250 1350 1250 300 >> qa-out/input-command.txt 2>&1 || true
 sleep 0.45
@@ -131,30 +129,27 @@ for i in 01 02 03 04 05 06; do
   sleep 0.08
   shot "50-safe-final-jump-${i}"
 done
-record_state "51-safe-main-platform-landing"
 
-# Run 33 proved an immediate 1000 ms RIGHT+JUMP is too long. Runs 34-35 proved that
-# waiting about 0.64 s and then using 700 ms still descends into the returning patrol,
-# with the shipping ACTION tap not preventing damage. Run 36 proved immediate 500 ms
-# is too short to establish distance. Change one bounded variable only: immediately
-# after the rendered-proven main-platform landing, use an intermediate 650 ms ordinary
-# RIGHT+JUMP and densely capture the entire traverse/settle.
-echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-intermediate-main-platform-traverse" >> qa-out/input-sequence.txt
+# Run 37 showed the former "immediate" second traverse actually started late because
+# record_state performed dumpsys + pidof + screencap + logcat after the landing capture.
+# Change only that start timing: preserve the same ordinary 650 ms RIGHT+JUMP, but chain it
+# immediately after the dense final-jump screenshots, before any expensive record_state call.
+echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=early-chained-main-platform-traverse" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 TRAVERSE_PID=$!
 for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do
   sleep 0.06
-  shot "60-immediate-intermediate-traverse-${i}"
+  shot "60-early-chained-traverse-${i}"
 done
 wait "$TRAVERSE_PID" 2>/dev/null || true
 for i in 15 16 17 18 19 20; do
   sleep 0.08
-  shot "60-immediate-intermediate-post-${i}"
+  shot "60-early-chained-post-${i}"
 done
 sleep 0.35
-record_state "61-immediate-intermediate-settle"
+record_state "61-early-chained-settle"
 sleep 0.75
-record_state "62-immediate-intermediate-long-settle"
+record_state "62-early-chained-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -167,16 +162,18 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run37-safe-landing-immediate-intermediate-traverse"
+  echo "diagnostic=run38-early-chained-650ms-main-platform-traverse"
   echo "run31_safe_landing_reused=true"
   echo "run33_1000ms_collision_reconciled=true"
   echo "run34_700ms_delayed_collision_reconciled=true"
   echo "run35_midair_action_collision_reconciled=true"
   echo "run36_500ms_collision_reconciled=true"
+  echo "run37_650ms_late_start_collision_reconciled=true"
   echo "traverse_duration_ms=650"
+  echo "pre_traverse_record_state_removed=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 37 changes only ordinary input timing after the proven safe main-platform landing; no game state or player position is mutated."
+  echo "NOTE=Review every rendered frame sequentially. Run 38 changes only second-jump start timing by removing pre-traverse record_state latency; shipping game state/source are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
