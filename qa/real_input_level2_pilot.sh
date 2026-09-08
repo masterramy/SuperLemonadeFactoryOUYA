@@ -119,30 +119,29 @@ done
 
 sleep 0.85
 record_state "41-andre-staging-ledge-settled"
-for i in 01 02 03 04 05 06 07 08; do
+for i in 01 02 03 04; do
   sleep 0.50
-  shot "42-worker-walkaway-wait-${i}"
+  shot "42-worker-far-right-wait-${i}"
 done
 
-# Run 43 proved the 500 ms final staging jump is not reproducible. Isolate only this prerequisite.
-# Use one ordinary 650 ms RIGHT+JUMP, capture while held and through settle, and deliberately stop
-# before any patrol-clear or continuation input so downstream labels cannot obscure landing truth.
-echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=isolated-final-platform-jump" >> qa-out/input-sequence.txt
+# Run 44 showed the worker is far right around wait 04-05 but has returned toward the landing edge by wait 08.
+# Change only patrol phase: preserve the isolated ordinary 650 ms final jump and launch after wait 04 (~2 s).
+echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=isolated-final-platform-jump-far-right-phase" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 LAND_PID=$!
 for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18; do
   sleep 0.05
-  shot "50-isolated-platform-jump-${i}"
+  shot "50-far-right-phase-platform-jump-${i}"
 done
 wait "$LAND_PID" 2>/dev/null || true
 for i in 19 20 21 22 23 24; do
   sleep 0.08
-  shot "50-isolated-platform-jump-post-${i}"
+  shot "50-far-right-phase-platform-jump-post-${i}"
 done
 sleep 0.25
-record_state "51-isolated-platform-jump-settle"
+record_state "51-far-right-phase-platform-jump-settle"
 sleep 0.75
-record_state "52-isolated-platform-jump-long-settle"
+record_state "52-far-right-phase-platform-jump-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -155,13 +154,15 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run44-isolated-final-platform-jump-650ms"
+  echo "diagnostic=run45-isolated-650ms-jump-far-right-patrol-phase"
   echo "isolated_final_jump_duration_ms=650"
+  echo "patrol_wait_frames=4"
+  echo "patrol_wait_interval_ms=500"
   echo "downstream_clear_inputs_executed=false"
   echo "ordinary_input_only=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 44 isolates only the final platform-landing prerequisite after Run 43 showed 500 ms is not reproducible. One ordinary 650 ms RIGHT+JUMP is densely captured and no downstream clear/continuation input is executed. Shipping game state/source are untouched."
+  echo "NOTE=Review every rendered frame sequentially. Run 45 preserves Run 44's isolated 650 ms final RIGHT+JUMP and changes only patrol phase by launching after four 0.5 s wait captures (~2 s), when Run 44 showed the worker far right, instead of eight (~4 s), when the worker had returned left. No downstream clear/continuation input is executed. Shipping game state/source are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
