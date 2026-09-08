@@ -113,9 +113,10 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reproduce the ordinary-input Andre route. Run 27 sequential rendered review corrected the
-# earlier Run-26 interpretation: after approach 4 Andre genuinely lands on the main platform,
-# then the left-moving black-clothed worker reaches him, damages him, and knocks him back down.
+# Reproduce the ordinary-input Andre route. Run 27 sequential rendered review proved that
+# this approach can land Andre on the main platform, where the patrol then damages him.
+# Run 28 reproduced the same approach but settled on the narrow left ledge instead, showing
+# that the exact landing is timing-sensitive across emulator runs.
 for i in 1 2 3; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
@@ -125,24 +126,26 @@ combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
 sleep 0.45
 record_state "40-andre-approach-4-airborne"
 
-# Capture the landing window quickly, then issue one ordinary RIGHT+JUMP escape before the
-# patrol can repeat the proven collision. No teleport, coordinate mutation, forced completion,
-# hidden gameplay behavior, or shipping-source mutation is used.
+# Preserve the same dense landing window. Then use one longer ordinary RIGHT+JUMP. If the
+# timing reproduces Run 28's narrow-left-ledge state, the extra hold tests whether enough
+# rightward travel clears the platform lip. If it reproduces Run 27's main-platform landing,
+# the same ordinary jump is also a patrol-evasion attempt. No game-state sensing, teleport,
+# coordinate mutation, forced completion, hidden gameplay behavior, or shipping mutation.
 sleep 0.10
 shot "50-platform-landing-window-01"
 sleep 0.10
 shot "50-platform-landing-window-02"
 sleep 0.10
 shot "50-platform-landing-window-03"
-combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+combo 650 KEYCODE_DPAD_RIGHT KEYCODE_C
 for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16; do
   sleep 0.08
-  shot "51-platform-evasive-right-jump-${i}"
+  shot "51-platform-clearance-right-jump-${i}"
 done
 sleep 0.35
-record_state "52-platform-evasive-jump-settle"
+record_state "52-platform-clearance-jump-settle"
 sleep 0.75
-record_state "53-platform-evasive-jump-long-settle"
+record_state "53-platform-clearance-jump-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -155,11 +158,11 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run28-andre-evade-worker-after-rendered-proven-main-platform-landing"
-  echo "evasive_right_jump_duration_ms=420"
+  echo "diagnostic=run29-andre-longer-platform-lip-clearance-jump"
+  echo "clearance_right_jump_duration_ms=650"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 27 proved actual main-platform landing followed by worker collision and one-heart damage; Run 28 tests one ordinary RIGHT+JUMP escape timed before that collision."
+  echo "NOTE=Review every rendered frame sequentially. Run 27 proved a main-platform landing followed by patrol collision; Run 28 instead settled on the narrow left ledge and a 420 ms RIGHT+JUMP did not clear the platform lip. Run 29 changes only that one ordinary jump to 650 ms."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
