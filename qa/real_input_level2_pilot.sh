@@ -120,8 +120,7 @@ for i in 1 2 3; do
   record_state "40-andre-approach-${i}"
 done
 
-# Run 31 rendered-proved that waiting on the narrow staging ledge lets the worker patrol
-# away to the right before Andre makes the final platform jump. Keep that successful timing.
+# Keep Run 31's rendered-proven patrol wait before the final platform jump.
 sleep 0.85
 record_state "41-andre-staging-ledge-settled"
 for i in 01 02 03 04 05 06 07 08; do
@@ -129,7 +128,7 @@ for i in 01 02 03 04 05 06 07 08; do
   shot "42-worker-walkaway-wait-${i}"
 done
 
-# Make the same ordinary final RIGHT+JUMP and capture its landing window.
+# Make the same ordinary final RIGHT+JUMP and capture the safe landing window.
 combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
 for i in 01 02 03 04 05 06; do
   sleep 0.08
@@ -137,18 +136,26 @@ for i in 01 02 03 04 05 06; do
 done
 record_state "51-safe-main-platform-landing"
 
-# Run 31 proved Andre can be safely on the final platform with two hearts while the worker
-# is still to the right. Test one immediate ordinary RIGHT+JUMP from that safe landing window
-# to traverse behind/over the worker before its return. No state sensing or mutation is used.
-combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
-for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20; do
+# Run 32 proved 420 ms RIGHT+JUMP does not carry Andre far enough right: the input ends,
+# Andre stops left of the worker, and the returning patrol removes one heart. Run 33 changes
+# only that ordinary input duration. Hold RIGHT+JUMP for 1000 ms and capture while the shipping
+# controls are actively held, so the entire attempted airborne pass is rendered-observable.
+echo "combo duration=1000 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=extended-safe-window-traverse" >> qa-out/input-sequence.txt
+adb shell input keycombination -t 1000 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+TRAVERSE_PID=$!
+for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18; do
+  sleep 0.06
+  shot "60-extended-traverse-held-${i}"
+done
+wait "$TRAVERSE_PID" 2>/dev/null || true
+for i in 19 20 21 22 23 24; do
   sleep 0.08
-  shot "60-post-landing-traverse-${i}"
+  shot "60-extended-traverse-post-${i}"
 done
 sleep 0.35
-record_state "61-post-traverse-settle"
+record_state "61-extended-traverse-settle"
 sleep 0.75
-record_state "62-post-traverse-long-settle"
+record_state "62-extended-traverse-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -161,11 +168,12 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run32-safe-landing-immediate-right-jump-traverse"
+  echo "diagnostic=run33-safe-landing-extended-1000ms-right-jump-traverse"
   echo "run31_safe_landing_reused=true"
+  echo "run32_420ms_collision_evidence_reconciled=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 31 proved the pre-jump patrol wait yields a safe two-heart main-platform landing. Run 32 keeps that timing and adds exactly one immediate ordinary RIGHT+JUMP from the safe landing window to test traversal past the worker."
+  echo "NOTE=Review every rendered frame sequentially. Run 32 proved the safe landing survives but 420 ms of RIGHT+JUMP ends before Andre clears the worker. Run 33 changes only the ordinary RIGHT+JUMP hold to 1000 ms and captures during the held input."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
