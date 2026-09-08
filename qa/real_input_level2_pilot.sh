@@ -82,7 +82,7 @@ pulse KEYCODE_Y
 sleep 2
 record_state "04-level2-post-cutscene"
 
-# Keep the already-proven Liselot setup route unchanged.
+# Preserve the rendered-proven Liselot setup.
 pulse KEYCODE_V
 sleep 1
 record_state "10-liselot-start"
@@ -101,7 +101,7 @@ combo 300 KEYCODE_DPAD_LEFT
 sleep 0.35
 record_state "20-short-crate-shove"
 
-# Use the rendered-proven 300 ms real shipping SWITCH hold, then reconfirm Andre identity.
+# Use the rendered-proven shipping SWITCH hold, then reconfirm Andre identity.
 echo "swipehold x=1350 y=1250 duration=300 label=shipping-mobile-switch-held-to-andre" >> qa-out/input-sequence.txt
 adb shell input swipe 1350 1250 1350 1250 300 >> qa-out/input-command.txt 2>&1 || true
 sleep 0.45
@@ -113,20 +113,15 @@ record_state "31-andre-jump-probe-airborne"
 sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
-# Reproduce the first three ordinary-input Andre approaches unchanged. Run 30 showed that
-# jumping only after the final-platform landing is too late: the worker reaches Andre during
-# the escape. Frozen Level 2 data shows the final platform begins at x=1210 while the worker
-# patrols from approximately x=1226 to x=1540 at 40 px/s, so the proven left-edge landing is
-# almost exactly on the patrol turnaround. Run 31 therefore changes timing, not game state.
+# Reproduce the first three ordinary Andre approaches.
 for i in 1 2 3; do
   combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
   sleep 0.45
   record_state "40-andre-approach-${i}"
 done
 
-# Allow Andre to settle on the already-rendered narrow x=1020..1210 staging ledge. Then wait
-# there with no gameplay input while the ordinary in-game worker patrol walks away to the right.
-# Periodic screenshots prove the patrol phase visually; there is no state sensing or mutation.
+# Run 31 rendered-proved that waiting on the narrow staging ledge lets the worker patrol
+# away to the right before Andre makes the final platform jump. Keep that successful timing.
 sleep 0.85
 record_state "41-andre-staging-ledge-settled"
 for i in 01 02 03 04 05 06 07 08; do
@@ -134,18 +129,26 @@ for i in 01 02 03 04 05 06 07 08; do
   shot "42-worker-walkaway-wait-${i}"
 done
 
-# Make the same previously proven fourth RIGHT+JUMP only after the patrol wait. Capture the
-# entire contact/landing window densely, then leave Andre untouched long enough to distinguish
-# a safe landing from delayed patrol collision.
+# Make the same ordinary final RIGHT+JUMP and capture its landing window.
+combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
+for i in 01 02 03 04 05 06; do
+  sleep 0.08
+  shot "50-safe-final-jump-${i}"
+done
+record_state "51-safe-main-platform-landing"
+
+# Run 31 proved Andre can be safely on the final platform with two hearts while the worker
+# is still to the right. Test one immediate ordinary RIGHT+JUMP from that safe landing window
+# to traverse behind/over the worker before its return. No state sensing or mutation is used.
 combo 420 KEYCODE_DPAD_RIGHT KEYCODE_C
 for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20; do
   sleep 0.08
-  shot "50-post-wait-final-jump-${i}"
+  shot "60-post-landing-traverse-${i}"
 done
 sleep 0.35
-record_state "51-post-wait-landing-settle"
+record_state "61-post-traverse-settle"
 sleep 0.75
-record_state "52-post-wait-landing-long-settle"
+record_state "62-post-traverse-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -158,11 +161,11 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run31-andre-wait-for-worker-before-final-platform-jump"
-  echo "staging_wait_seconds=4.0-plus-capture-overhead"
+  echo "diagnostic=run32-safe-landing-immediate-right-jump-traverse"
+  echo "run31_safe_landing_reused=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 30 proved post-landing evasion is too late. Frozen Level 2 geometry places the final-platform left edge at x=1210 and worker patrol at roughly x=1226..1540. Run 31 uses only no-input waiting on the safe staging ledge before the same ordinary final RIGHT+JUMP."
+  echo "NOTE=Review every rendered frame sequentially. Run 31 proved the pre-jump patrol wait yields a safe two-heart main-platform landing. Run 32 keeps that timing and adds exactly one immediate ordinary RIGHT+JUMP from the safe landing window to test traversal past the worker."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
