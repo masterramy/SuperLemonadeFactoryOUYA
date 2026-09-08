@@ -130,10 +130,9 @@ for i in 01 02 03 04 05 06; do
   shot "50-safe-final-jump-${i}"
 done
 
-# Run 38 proved this early 650 ms ordinary RIGHT+JUMP gets Andre onto the main platform
-# before the patrol reaches him. The remaining failure is becoming stationary while the patrol
-# closes. Keep the proven landing timing, then immediately chain one ordinary 420 ms RIGHT+JUMP
-# after the 650 ms input completes to test a genuine patrol-clear hop.
+# Reproducibility probe: preserve Run 39's exact ordinary-input timing and sequence.
+# The only change in this commit is QA metadata so a fresh rendered run can determine
+# whether the nominal 650 ms main-platform landing reproduces before any hop is interpreted.
 echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=early-main-platform-landing" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
 LAND_PID=$!
@@ -171,14 +170,15 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run39-immediate-post-landing-patrol-clear-hop"
+  echo "diagnostic=run40-repro-exact-run39-timing"
   echo "run38_early_main_platform_landing_reconciled=true"
+  echo "run39_nonreproduction_reconciled=true"
   echo "landing_input_duration_ms=650"
   echo "post_landing_hop_duration_ms=420"
   echo "ordinary_input_only=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 39 keeps Run 38's proven early main-platform landing timing and changes only the next ordinary input by chaining one immediate 420 ms RIGHT+JUMP to test clearing the returning patrol. Shipping game state/source are untouched."
+  echo "NOTE=Review every rendered frame sequentially. This reproducibility probe preserves Run 39's exact ordinary-input timing and sequence; only QA metadata changed to trigger a fresh run. The 420 ms hop counts only if this same run first renders a genuine main-platform landing. Shipping game state/source are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
