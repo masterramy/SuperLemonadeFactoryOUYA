@@ -170,8 +170,7 @@ sleep 0.88
 record_state "32-andre-jump-probe-settled"
 
 dismiss_any_anr
-# Rendered closed-loop staging approach. Run 46 proved the detector tracks Andre correctly.
-# Use shorter ordinary jumps near the ledge face and judge the actual settled rendered position.
+# Preserve Run-49 rendered closed-loop staging approach unchanged.
 for i in $(seq 1 12); do
   APPROACH_COUNT=$i
   shot "40-pre-${i}"
@@ -198,7 +197,7 @@ for i in $(seq 1 12); do
   fi
 done
 
-# Once the actual staging position exists, observe rendered patrol motion until the worker is safely rightward and moving right.
+# Preserve Run-49 rendered patrol-phase gate unchanged.
 if [ "$STAGING_REACHED" -eq 1 ]; then
   PREV_WORKER_X=-1
   for i in $(seq -w 1 24); do
@@ -215,16 +214,22 @@ if [ "$STAGING_REACHED" -eq 1 ]; then
   done
 fi
 
+# Run 50 changes only final input geometry: jump first, then push right after vertical lead.
 if [ "$STAGING_REACHED" -eq 1 ] && [ "$WORKER_PHASE_REACHED" -eq 1 ]; then
-  echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=guided-final-platform-jump" >> qa-out/input-sequence.txt
-  adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+  echo "pulse key=KEYCODE_C label=guided-final-jump-first" >> qa-out/input-sequence.txt
+  adb shell input keyevent KEYCODE_C >> qa-out/input-command.txt 2>&1 || true
+  sleep 0.08
+  shot "50-jump-first-vertical-lead"
+  echo "combo duration=520 keys=KEYCODE_DPAD_RIGHT label=guided-airborne-right-after-jump" >> qa-out/input-sequence.txt
+  adb shell input keycombination -t 520 KEYCODE_DPAD_RIGHT >> qa-out/input-command.txt 2>&1 &
   P=$!
-  for i in $(seq -w 1 18); do sleep 0.05; shot "50-guided-jump-${i}"; done
+  for i in $(seq -w 1 18); do sleep 0.05; shot "51-airborne-right-${i}"; done
   wait "$P" 2>/dev/null || true
-  sleep 0.30
-  record_state "51-guided-settle"
+  for i in $(seq -w 1 6); do sleep 0.08; shot "52-post-right-${i}"; done
+  sleep 0.25
+  record_state "53-jump-first-settle"
   sleep 0.75
-  record_state "52-guided-long-settle"
+  record_state "54-jump-first-long-settle"
 else
   record_state "49-visual-controller-prerequisite-not-reached"
 fi
@@ -242,15 +247,17 @@ ANR_DISMISSALS="$(grep -c '^dismiss ANR' qa-out/system-dialog-actions.txt 2>/dev
   echo "internal_game_state_sensing_used=false"
   echo "rendered_screenshot_sensing_only=true"
   echo "ordinary_input_only=true"
-  echo "diagnostic=run49-restore-visual-controller-after-anr-overlay"
+  echo "diagnostic=run50-jump-first-then-airborne-right"
   echo "staging_reached=$STAGING_REACHED"
   echo "approach_count=$APPROACH_COUNT"
   echo "worker_phase_reached=$WORKER_PHASE_REACHED"
   echo "worker_x_at_launch=$WORKER_X_AT_LAUNCH"
+  echo "jump_first_vertical_lead_target_ms=80"
+  echo "airborne_right_duration_ms=520"
   echo "anr_wait_dismissals=${ANR_DISMISSALS:-0}"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Run 49 restores the Run-46 rendered detector after Runs 47-48 exposed an Android ANR overlay regression. It restores hide_error_dialogs, can dismiss any visible ANR by choosing Wait, uses Run-47 shorter ordinary near-ledge jumps, and recognizes the settled staging band from rendered coordinates. Internal game state is never read or mutated. Semantic proof still requires sequential rendered review."
+  echo "NOTE=Run 50 preserves Run49 closed-loop staging and far-right/rightward patrol prerequisites. It changes only final ordinary-input geometry from simultaneous RIGHT+JUMP to JUMP first, a brief vertical lead, then RIGHT while airborne. No internal state sensing or mutation. Semantic proof requires sequential rendered review."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
