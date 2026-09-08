@@ -130,26 +130,35 @@ for i in 01 02 03 04 05 06; do
   shot "50-safe-final-jump-${i}"
 done
 
-# Run 37 showed the former "immediate" second traverse actually started late because
-# record_state performed dumpsys + pidof + screencap + logcat after the landing capture.
-# Change only that start timing: preserve the same ordinary 650 ms RIGHT+JUMP, but chain it
-# immediately after the dense final-jump screenshots, before any expensive record_state call.
-echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=early-chained-main-platform-traverse" >> qa-out/input-sequence.txt
+# Run 38 proved this early 650 ms ordinary RIGHT+JUMP gets Andre onto the main platform
+# before the patrol reaches him. The remaining failure is becoming stationary while the patrol
+# closes. Keep the proven landing timing, then immediately chain one ordinary 420 ms RIGHT+JUMP
+# after the 650 ms input completes to test a genuine patrol-clear hop.
+echo "combo duration=650 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=early-main-platform-landing" >> qa-out/input-sequence.txt
 adb shell input keycombination -t 650 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
-TRAVERSE_PID=$!
+LAND_PID=$!
 for i in 01 02 03 04 05 06 07 08 09 10 11 12 13 14; do
   sleep 0.06
-  shot "60-early-chained-traverse-${i}"
+  shot "60-early-main-platform-landing-${i}"
 done
-wait "$TRAVERSE_PID" 2>/dev/null || true
-for i in 15 16 17 18 19 20; do
+wait "$LAND_PID" 2>/dev/null || true
+
+echo "combo duration=420 keys=KEYCODE_DPAD_RIGHT KEYCODE_C label=immediate-post-landing-patrol-clear-hop" >> qa-out/input-sequence.txt
+adb shell input keycombination -t 420 KEYCODE_DPAD_RIGHT KEYCODE_C >> qa-out/input-command.txt 2>&1 &
+HOP_PID=$!
+for i in 01 02 03 04 05 06 07 08 09 10 11 12; do
+  sleep 0.06
+  shot "70-patrol-clear-hop-${i}"
+done
+wait "$HOP_PID" 2>/dev/null || true
+for i in 13 14 15 16 17 18; do
   sleep 0.08
-  shot "60-early-chained-post-${i}"
+  shot "70-patrol-clear-post-${i}"
 done
-sleep 0.35
-record_state "61-early-chained-settle"
+sleep 0.30
+record_state "71-patrol-clear-settle"
 sleep 0.75
-record_state "62-early-chained-long-settle"
+record_state "72-patrol-clear-long-settle"
 
 adb logcat -d > qa-out/logcat-final.txt 2>&1 || true
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|ArgumentError|ReferenceError|TypeError|VerifyError|RangeError" qa-out/logcat-final.txt > qa-out/fatal-scan.txt; then FAIL=1; else : > qa-out/fatal-scan.txt; fi
@@ -162,18 +171,14 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|SecurityError|Argumen
   echo "player_coordinate_mutation_used=false"
   echo "level=2"
   echo "mode=normal"
-  echo "diagnostic=run38-early-chained-650ms-main-platform-traverse"
-  echo "run31_safe_landing_reused=true"
-  echo "run33_1000ms_collision_reconciled=true"
-  echo "run34_700ms_delayed_collision_reconciled=true"
-  echo "run35_midair_action_collision_reconciled=true"
-  echo "run36_500ms_collision_reconciled=true"
-  echo "run37_650ms_late_start_collision_reconciled=true"
-  echo "traverse_duration_ms=650"
-  echo "pre_traverse_record_state_removed=true"
+  echo "diagnostic=run39-immediate-post-landing-patrol-clear-hop"
+  echo "run38_early_main_platform_landing_reconciled=true"
+  echo "landing_input_duration_ms=650"
+  echo "post_landing_hop_duration_ms=420"
+  echo "ordinary_input_only=true"
   echo "fatal_scan=$FAIL"
   echo "screenshots=$(find qa-out/screens -type f -name '*.png' | wc -l)"
-  echo "NOTE=Review every rendered frame sequentially. Run 38 changes only second-jump start timing by removing pre-traverse record_state latency; shipping game state/source are untouched."
+  echo "NOTE=Review every rendered frame sequentially. Run 39 keeps Run 38's proven early main-platform landing timing and changes only the next ordinary input by chaining one immediate 420 ms RIGHT+JUMP to test clearing the returning patrol. Shipping game state/source are untouched."
 } > qa-out/metadata.txt
 if [ "$FAIL" -ne 0 ]; then echo "FAIL_FATAL_RUNTIME" > qa-out/result.txt; exit 20; fi
 echo "PILOT_EXECUTED_REAL_INPUT_PATH" > qa-out/result.txt
