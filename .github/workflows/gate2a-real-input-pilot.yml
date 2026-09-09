@@ -105,7 +105,7 @@ jobs:
           profile: pixel_7_pro
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: bash qa/real_input_level2_pilot.sh
+          script: bash qa/run51_mobile_right_wrapper.sh
       - name: Upload real-input rendered evidence
         if: always()
         uses: actions/upload-artifact@v4
