@@ -1,15 +1,15 @@
-name: Gate2A rev41 controlled source write
+name: Gate2A rev41 notice dry-run
 on:
   push:
     branches:
       - gate2a-rev41-source-write-helper-18
 permissions:
-  contents: write
+  contents: read
 jobs:
-  source-write:
+  notice-dry-run:
     runs-on: ubuntu-24.04
     steps:
-      - name: Clone and verify exact-final preimage
+      - name: Clone and verify post-source exact-final
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -17,64 +17,20 @@ jobs:
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo
           git checkout gate2a-rev41-exact-final
-          test "$(git rev-parse HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
-          test "$(git rev-parse HEAD^{tree})" = "4efe662c11d9d305ace9f6fdabaec21f4b3e34a4"
+          test "$(git rev-parse HEAD)" = "0f93e1c68d9f02505e908f9aa30a93cc1da4f7b3"
+          test "$(git rev-parse HEAD^{tree})" = "aff31b45da9a45771073aa594b953c9c29d6750a"
           test -z "$(git status --porcelain)"
-
-      - name: Fetch and verify current Drive applicator
+      - name: Fetch and verify sealed notice kit
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error 'https://sdmntprwestus.oaiusercontent.com/files/00000000-0a14-8230-87cb-0bbec58e9691/raw?se=2026-09-12T21%3A31%3A04Z&sp=r&sv=2026-02-06&sr=b&scid=ba42c663-a8e2-5db4-a98d-369986ab8fcf&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A16%3A33Z&ske=2026-09-13T01%3A16%3A33Z&sks=b&skv=2026-02-06&sig=7d9NjRQkp2Qj9IcSnmZw4FRERY%2BuZMwe3cpCFdM8/yg%3D' -o /tmp/app.py
-          echo '5e9f9539588a50c0447b2d07d9cb2e2fee6f5bd38f29442b769477f7f1f7ca7d  /tmp/app.py' | sha256sum --check --strict
-          python -m py_compile /tmp/app.py
-
-      - name: Reconfirm full dry-run then write exact nine-source delta
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-7c30-81fd-bc57-dcfde22c3156/raw?se=2026-09-12T21%3A36%3A04Z&sp=r&sv=2026-02-06&sr=b&scid=8a7421ea-798b-5749-b592-a288b3e15f68&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T03%3A22%3A52Z&ske=2026-09-13T03%3A22%3A52Z&sks=b&skv=2026-02-06&sig=0C79Wy8gAoLYACmKO8b7qsKjG97nJK5miyD5r54bOeM%3D' -o /tmp/notice_installer.py
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-ccc0-81fd-8245-c0c01d94cdd7/raw?se=2026-09-12T21%3A36%3A09Z&sp=r&sv=2026-02-06&sr=b&scid=58b1b841-9e73-5945-9a8d-7f01c1b3da9a&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A06%3A45Z&ske=2026-09-13T01%3A06%3A45Z&sks=b&skv=2026-02-06&sig=oqOCELK3usBxrNq/4hhW6yZP6Md9rkkDJnFkag7mZSE%3D' -o /tmp/gate2a_rev41_notice_payload.zip
+          echo '04825c050ae6786f1607035b2794744d8cb6f3286582a36c0bb7c1e62634a48c  /tmp/notice_installer.py' | sha256sum --check --strict
+          echo 'cddf2779327b89946c4781883a8d1fd71a9c9e47c28001ec654caf69f2280738  /tmp/gate2a_rev41_notice_payload.zip' | sha256sum --check --strict
+          python -m py_compile /tmp/notice_installer.py
+      - name: Fail-closed notice installer dry-run
         run: |
           set -euo pipefail
-          python /tmp/app.py --root repo
-          test -z "$(git -C repo status --porcelain)"
-          python /tmp/app.py --root repo --write
-          git -C repo diff --check
-          actual="$(git -C repo diff --name-only | LC_ALL=C sort)"
-          expected="$(cat <<'EOF'
-          src/PCCinematicState.as
-          src/PCLevelSelectState.as
-          src/PCMenuState.as
-          src/PCOptionsState.as
-          src/PCPlayState.as
-          src/PlayState.as
-          src/Registry.as
-          src/org/flixel/FlxG.as
-          src/org/flixel/FlxGame.as
-          EOF
-          )"
-          expected="$(printf '%s\n' "$expected" | sed 's/^[[:space:]]*//' | LC_ALL=C sort)"
-          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
-          test "$actual" = "$expected"
-          test "$(git -C repo diff --name-only | wc -l)" -eq 9
-
-      - name: Refuse remote drift then commit and push source-only result
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git -C repo fetch origin gate2a-rev41-exact-final
-          test "$(git -C repo rev-parse FETCH_HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
-          test "$(git -C repo rev-parse HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
-          git -C repo config user.name 'Gate 2A Alfred'
-          git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
-          git -C repo add -- \
-            src/PCCinematicState.as \
-            src/PCLevelSelectState.as \
-            src/PCMenuState.as \
-            src/PCOptionsState.as \
-            src/PCPlayState.as \
-            src/PlayState.as \
-            src/Registry.as \
-            src/org/flixel/FlxG.as \
-            src/org/flixel/FlxGame.as
-          test "$(git -C repo diff --cached --name-only | wc -l)" -eq 9
-          git -C repo commit -m 'Gate 2A rev41: apply remaining source hardening'
-          echo "SOURCE_COMMIT=$(git -C repo rev-parse HEAD)"
-          echo "SOURCE_TREE=$(git -C repo rev-parse HEAD^{tree})"
-          git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
+          cd repo
+          python /tmp/notice_installer.py /tmp/gate2a_rev41_notice_payload.zip
+          test -z "$(git status --porcelain)"
