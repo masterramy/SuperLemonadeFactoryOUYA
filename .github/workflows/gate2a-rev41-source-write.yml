@@ -1,12 +1,12 @@
-name: Gate2A rev41 notice dry-run
+name: Gate2A rev41 controlled notice write
 on:
   push:
     branches:
       - gate2a-rev41-source-write-helper-18
 permissions:
-  contents: read
+  contents: write
 jobs:
-  notice-dry-run:
+  notice-write:
     runs-on: ubuntu-24.04
     steps:
       - name: Clone and verify post-source exact-final
@@ -28,9 +28,39 @@ jobs:
           echo '04825c050ae6786f1607035b2794744d8cb6f3286582a36c0bb7c1e62634a48c  /tmp/notice_installer.py' | sha256sum --check --strict
           echo 'cddf2779327b89946c4781883a8d1fd71a9c9e47c28001ec654caf69f2280738  /tmp/gate2a_rev41_notice_payload.zip' | sha256sum --check --strict
           python -m py_compile /tmp/notice_installer.py
-      - name: Fail-closed notice installer dry-run
+      - name: Reconfirm dry-run then write exact notice paths
         run: |
           set -euo pipefail
           cd repo
           python /tmp/notice_installer.py /tmp/gate2a_rev41_notice_payload.zip
           test -z "$(git status --porcelain)"
+          python /tmp/notice_installer.py /tmp/gate2a_rev41_notice_payload.zip --write
+          git diff --check
+          actual="$(git status --porcelain | sed 's/^?? //' | sed 's/^...//' | LC_ALL=C sort)"
+          expected="$(cat <<'EOF'
+          THIRD_PARTY_NOTICES.md
+          third_party/licenses/as3-controller-input-MIT.txt
+          third_party/licenses/flixel-2.55-MIT.txt
+          third_party/licenses/flixel-power-tools-Simplified-BSD.txt
+          EOF
+          )"
+          expected="$(printf '%s\n' "$expected" | sed 's/^[[:space:]]*//' | LC_ALL=C sort)"
+          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
+          test "$actual" = "$expected"
+          test "$(git status --porcelain | wc -l)" -eq 4
+      - name: Refuse remote drift then commit and push notice-only result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -C repo fetch origin gate2a-rev41-exact-final
+          test "$(git -C repo rev-parse FETCH_HEAD)" = "0f93e1c68d9f02505e908f9aa30a93cc1da4f7b3"
+          test "$(git -C repo rev-parse HEAD)" = "0f93e1c68d9f02505e908f9aa30a93cc1da4f7b3"
+          git -C repo config user.name 'Gate 2A Alfred'
+          git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
+          git -C repo add -- THIRD_PARTY_NOTICES.md third_party/licenses/as3-controller-input-MIT.txt third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt
+          test "$(git -C repo diff --cached --name-only | wc -l)" -eq 4
+          git -C repo commit -m 'Gate 2A rev41: install third-party notices'
+          echo "NOTICE_COMMIT=$(git -C repo rev-parse HEAD)"
+          echo "NOTICE_TREE=$(git -C repo rev-parse HEAD^{tree})"
+          git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
