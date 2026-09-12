@@ -1,0 +1,31 @@
+name: Gate2A rev41 current applicator dry-run
+on:
+  push:
+    branches:
+      - gate2a-rev41-dryrun-helper-15
+permissions:
+  contents: read
+jobs:
+  dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Clone exact repository state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git checkout gate2a-rev41-exact-final
+          test "$(git rev-parse HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
+          test "$(git rev-parse HEAD^{tree})" = "4efe662c11d9d305ace9f6fdabaec21f4b3e34a4"
+      - name: Fetch and verify current authenticated Drive applicator
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-01a4-81fd-92e5-1e3c06db5fad/raw?se=2026-09-12T21%3A04%3A44Z&sp=r&sv=2026-02-06&sr=b&scid=f82670dc-4f2a-5b04-bca3-b69067c68a32&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T03%3A22%3A47Z&ske=2026-09-13T03%3A22%3A47Z&sks=b&skv=2026-02-06&sig=AywwygWVrRB7CzrV5jKt4NkwcmZHEccm7QcEypquvw0%3D' -o /tmp/app.py
+          echo '5c35fbb8370392f6690a77ee3fb4bff368bb65e74933a45183519de369c939df  /tmp/app.py' | sha256sum --check --strict
+          python -m py_compile /tmp/app.py
+      - name: Full fail-closed dry-run
+        run: |
+          set -euo pipefail
+          python /tmp/app.py --root repo
