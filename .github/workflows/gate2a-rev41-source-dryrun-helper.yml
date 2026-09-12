@@ -25,9 +25,9 @@ jobs:
         run: |
           set -euo pipefail
           base64 -d helper/.github/rev41-source-applicator.py.xz.b64 > /tmp/rev41-applicator.py.xz
-          echo '35a00d12ee3a7e65e88c5e1e8353d3040991cc4e576345102ff9f5edb6c5c76e  /tmp/rev41-applicator.py.xz' | sha256sum -c -
+          echo 'acb81c3f1332b6e97ab5adcf5804447c39a4f8d3515cec7333d4d671c4283f11  /tmp/rev41-applicator.py.xz' | sha256sum -c -
           xz -dc /tmp/rev41-applicator.py.xz > /tmp/rev41-applicator.py
-          echo '985332a1d8a94bca8eb44ff5b84eddad587749302c4251d063431a4f930a2eb9  /tmp/rev41-applicator.py' | sha256sum -c -
+          echo '47431b1816f7aa2679081fa91c14365c7b51a3befd913afd1b98a81300b30ff2  /tmp/rev41-applicator.py' | sha256sum -c -
           python -m py_compile /tmp/rev41-applicator.py
 
       - name: Checkout exact-final source candidate
