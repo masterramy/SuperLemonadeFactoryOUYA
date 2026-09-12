@@ -926,9 +926,6 @@ package
 		
 		protected function beginFade():void
 		{
-			//not playing a custom level, so when ESCAPE go to this menu. 
-			Registry.isPlayingCustomLevel = false;
-			
 			var l:int = currentButton - 2;	
 			var shakeAmt:Number = 0.01;
 			
