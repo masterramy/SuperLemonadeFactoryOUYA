@@ -1,0 +1,37 @@
+name: Gate 2A icon regeneration diagnostic
+on:
+  push:
+    branches: [gate2a-rev41-png-fastdiag]
+permissions:
+  contents: read
+jobs:
+  regen:
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fb89f9780d43127156ec86a1d666292e11ffb7cd
+          persist-credentials: false
+          fetch-depth: 1
+      - shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check --no-input pillow==11.3.0
+          @'
+          from PIL import Image
+          import hashlib, pathlib
+          src=Image.open('icons/android/icons/icon_144.png').convert('RGBA')
+          out=src.resize((192,192), Image.Resampling.LANCZOS)
+          for opt in [None,False,True]:
+              name=f'regen_{opt}.png'
+              kw={} if opt is None else {'optimize':opt}
+              out.save(name, format='PNG', **kw)
+              b=pathlib.Path(name).read_bytes()
+              print(name,len(b),hashlib.sha256(b).hexdigest())
+          '@ | Set-Content -Encoding utf8 regen.py
+          python regen.py
+          if(Get-Command magick -ErrorAction SilentlyContinue){
+            magick icons/android/icons/icon_144.png -filter Lanczos -resize 192x192 magick.png
+            Write-Host "magick bytes=$((Get-Item magick.png).Length) sha=$((Get-FileHash -Algorithm SHA256 magick.png).Hash.ToLowerInvariant())"
+          } else { Write-Host 'magick unavailable' }
