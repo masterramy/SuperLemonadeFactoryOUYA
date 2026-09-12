@@ -15,9 +15,6 @@
     <source-path append="true">
       <path-element>../src</path-element>
     </source-path>
-    <include-libraries>
-      <library>../lib/OUYAControllerANELib/OUYAControllerANE.ane</library>
-    </include-libraries>
     <library-path append="true" />
   </compiler>
   <file-specs>
