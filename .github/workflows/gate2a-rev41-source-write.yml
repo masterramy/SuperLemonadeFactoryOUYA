@@ -1,15 +1,15 @@
-name: Gate2A rev41 controlled workflow write
+name: Gate2A rev41 export validated hardened workflows
 on:
   push:
     branches:
       - gate2a-rev41-source-write-helper-18
 permissions:
-  contents: write
+  contents: read
 jobs:
-  workflow-write:
+  export-workflows:
     runs-on: ubuntu-24.04
     steps:
-      - name: Clone and verify post-notice exact-final
+      - name: Clone and verify exact-final preimage
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -21,14 +21,13 @@ jobs:
           test "$(git rev-parse HEAD^{tree})" = "6736b64d4df5863a0858bca03adde8b8001bebb7"
           test "$(git rev-parse HEAD:.github/workflows/gate2a-android-release.yml)" = "1e9ae00f9748dc982ea92ec3e55eb47662776cfe"
           test "$(git rev-parse HEAD:.github/workflows/gate2a-air-baseline.yml)" = "dd124aed3826ebd16722881793024faa4a3bc5f3"
-          test -z "$(git status --porcelain)"
-      - name: Fetch and verify workflow applicator
+      - name: Fetch and verify EOF-clean workflow applicator
         run: |
           set -euo pipefail
           curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-6b18-81fd-94e2-db3162fe5a4c/raw?se=2026-09-12T21%3A46%3A14Z&sp=r&sv=2026-02-06&sr=b&scid=3f805ca3-c5a9-5539-9e89-ed178f58bc9f&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T14%3A16%3A43Z&ske=2026-09-13T14%3A16%3A43Z&sks=b&skv=2026-02-06&sig=HyGRB36%2BuRsBJhVoq%2Blz8pfTITwhQGUwlzdZWxqfzrM%3D' -o /tmp/workflow_app.py
           echo '34ed44b7ecadc8c18b05cb4c6ef882ac582f75ffca2c450d345f61efbbb7532b  /tmp/workflow_app.py' | sha256sum --check --strict
           python -m py_compile /tmp/workflow_app.py
-      - name: Reconfirm dry-run then write exact workflow delta
+      - name: Generate and validate exact workflow bytes
         run: |
           set -euo pipefail
           cd repo
@@ -36,29 +35,19 @@ jobs:
           test -z "$(git status --porcelain)"
           python /tmp/workflow_app.py --write
           git diff --check
-          actual="$(git diff --name-only | LC_ALL=C sort)"
-          expected="$(printf '%s\n' '.github/workflows/gate2a-air-baseline.yml' '.github/workflows/gate2a-android-release.yml' | LC_ALL=C sort)"
-          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
-          test "$actual" = "$expected"
-          test "$(git diff --name-only | wc -l)" -eq 2
+          test "$(sha256sum .github/workflows/gate2a-android-release.yml | cut -d' ' -f1)" = '0870a86a7b71372c886d6cea9f87dee817bce2bafe5aa39cb6e74d88d0b76731'
+          test "$(sha256sum .github/workflows/gate2a-air-baseline.yml | cut -d' ' -f1)" = '16e6f39b308620719bc6bd0d294622e74f37824206c3ec312df35a33b9b4cd31'
           ! grep -Fq 'gate2a-rev41-exact-final' .github/workflows/gate2a-air-baseline.yml
           ! grep -Fq 'gate2a-rev41-exact-final' .github/workflows/gate2a-android-release.yml
-          grep -Fq -- '- gate2a-android-modernization' .github/workflows/gate2a-air-baseline.yml
-          grep -Fq -- '- gate2a-android-modernization' .github/workflows/gate2a-android-release.yml
-          grep -Fq -- '- gate2a-release-hardening-staging' .github/workflows/gate2a-android-release.yml
-      - name: Refuse remote drift then commit and push workflow-only result
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git -C repo fetch origin gate2a-rev41-exact-final
-          test "$(git -C repo rev-parse FETCH_HEAD)" = "3d9069ccd1b84f4f216f4ca790984cd0b931b641"
-          test "$(git -C repo rev-parse HEAD)" = "3d9069ccd1b84f4f216f4ca790984cd0b931b641"
-          git -C repo config user.name 'Gate 2A Alfred'
-          git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
-          git -C repo add -- .github/workflows/gate2a-air-baseline.yml .github/workflows/gate2a-android-release.yml
-          test "$(git -C repo diff --cached --name-only | wc -l)" -eq 2
-          git -C repo commit -m 'Gate 2A rev41: harden exact-final workflows'
-          echo "WORKFLOW_COMMIT=$(git -C repo rev-parse HEAD)"
-          echo "WORKFLOW_TREE=$(git -C repo rev-parse HEAD^{tree})"
-          git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
+          mkdir -p ../validated-workflows
+          cp .github/workflows/gate2a-air-baseline.yml ../validated-workflows/
+          cp .github/workflows/gate2a-android-release.yml ../validated-workflows/
+          printf '%s  %s\n' '16e6f39b308620719bc6bd0d294622e74f37824206c3ec312df35a33b9b4cd31' 'gate2a-air-baseline.yml' > ../validated-workflows/SHA256SUMS.txt
+          printf '%s  %s\n' '0870a86a7b71372c886d6cea9f87dee817bce2bafe5aa39cb6e74d88d0b76731' 'gate2a-android-release.yml' >> ../validated-workflows/SHA256SUMS.txt
+      - name: Upload validated workflow byte bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rev41-validated-hardened-workflows
+          path: validated-workflows
+          if-no-files-found: error
+          retention-days: 1
