@@ -24,8 +24,8 @@ jobs:
       - name: Fetch and verify current Drive applicator
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-1744-81fd-b7f8-fe1a7220bb90/raw?se=2026-09-12T21%3A16%3A27Z&sp=r&sv=2026-02-06&sr=b&scid=8ea3f133-8cb2-502b-8702-b069f347245b&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T03%3A38%3A57Z&ske=2026-09-13T03%3A38%3A57Z&sks=b&skv=2026-02-06&sig=wnIAo83is/FpVNhTX77riYDhV/5qmro67VGuSE8o2F0%3D' -o /tmp/app.py
-          echo '08eb9048a36b5c61c9276da09147ee6d7ff18df155663fa3d949d0803ad0df75  /tmp/app.py' | sha256sum --check --strict
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-570c-81fd-9ec0-fd5ba7555d41/raw?se=2026-09-12T21%3A27%3A28Z&sp=r&sv=2026-02-06&sr=b&scid=f41cea43-ccc4-5fca-9ec1-a16aabddd99a&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A14%3A02Z&ske=2026-09-13T01%3A14%3A02Z&sks=b&skv=2026-02-06&sig=2/OlWGETlJFeAk4IJKDxsMOucNQj9zZtbcg%2BDAvsAfs%3D' -o /tmp/app.py
+          echo 'fab29694a65d368d59d0aedba98fa41309e5e5441d9068133a792e8cacf1caff  /tmp/app.py' | sha256sum --check --strict
           python -m py_compile /tmp/app.py
 
       - name: Reconfirm full dry-run then write exact nine-source delta
