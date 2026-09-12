@@ -73,19 +73,10 @@ package
 		
 		private function localiseForInput():void
 		{
-			
-			if (true) {
-				_helpString = _helpString.replace(_actionString, _joystickActionButton);
-				_helpString = _helpString.replace(_jumpString, _joystickJumpButton);
-				_helpString = _helpString.replace(_switchString, _joystickSwitchButton);
-				_helpString = _helpString.replace(_piggyString, _joystickPiggyButton);
-			}
-			else {
-				_helpString = _helpString.replace(_actionString, _keyboardActionButton);
-				_helpString = _helpString.replace(_jumpString, _keyboardJumpButton);
-				_helpString = _helpString.replace(_switchString, _keyboardSwitchButton);
-				_helpString = _helpString.replace(_piggyString, _keyboardPiggyButton);				
-			}
+			_helpString = _helpString.replace(_actionString, "ACTION");
+			_helpString = _helpString.replace(_jumpString, "JUMP");
+			_helpString = _helpString.replace(_switchString, "SWITCH");
+			_helpString = _helpString.replace(_piggyString, "PIGGY");
 		}
 
 		override public function update():void
