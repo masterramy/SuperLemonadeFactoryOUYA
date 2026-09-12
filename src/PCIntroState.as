@@ -23,13 +23,6 @@
  /*
  * PCIntroState.as
  * Created On: 7/05/2012 8:27 PM
- * 
- * 
- * HOW TO CHEAT MODE DEBUG
- * 
- * FlxG.ouyaController.u x 10;
- * FlxG.ouyaController.y + FlxG.ouyaController.dpad.up
- * 
  */
 
 package 
@@ -38,6 +31,7 @@ package
 	import flash.ui.GameInputControl;
 	import io.arkeus.ouya.controller.OuyaController;
 	import io.arkeus.ouya.controller.Xbox360Controller;
+	import io.arkeus.ouya.controller.GameController;
 	import io.arkeus.ouya.ControllerInput;
 	
 	import org.flixel.*;
@@ -63,18 +57,10 @@ package
 		private var controllerReady:Boolean;
 		private var frameCounter:int;
 		private var frameDelta:int;
-		private var cheat:int;
-		private var cheat2:int;
-		private var cheat3:int;
 		
 		override public function create():void
 		{
 			//FlxG.showDebugger();
-			
-			
-			cheat = 0;
-			cheat2 = 0;
-			cheat3 = 0;
 			
 			controllerReady = false;
 			
@@ -161,13 +147,11 @@ package
 			
 			
 			if (ControllerInput.hasReadyController()) {
-				//FlxG.log("adding controller" + ControllerInput.getReadyController());
-				//FlxG.xboxController = ControllerInput.getReadyController() as Xbox360Controller;
-				
-				FlxG.ouyaController = ControllerInput.getReadyController() as OuyaController;
-				
-				//FlxG.log("adding controller" + ControllerInput.getReadyController());
-				
+				var readyController:GameController = ControllerInput.getReadyController();
+				if (readyController is OuyaController)
+					FlxG.ouyaController = readyController as OuyaController;
+				else if (readyController is Xbox360Controller)
+					FlxG.xboxController = readyController as Xbox360Controller;
 				controllerReady = true;
 			}
 
@@ -190,24 +174,6 @@ package
 			{
 				
 				//FlxG.log(FlxG.ouyaController.o.pressed);
-				if (FlxG.ouyaController.u.pressed && FlxG.ouyaController.dpad.right.held) {
-					cheat++;
-					
-				}
-				if (FlxG.ouyaController.a.pressed && FlxG.ouyaController.dpad.left.held) {
-					cheat2++;
-					
-				}
-				if (FlxG.ouyaController.y.pressed && FlxG.ouyaController.dpad.down.held) {
-					cheat3++;
-					
-				}
-				if (cheat>20 && cheat2>20 && cheat3>20 && FlxG.ouyaController.y.pressed  ) {
-						FlxG.debug = true;
-						FlxG.shake();
-						
-				}
-					
 				if (FlxG.ouyaController.o.pressed) {
 					//FlxG.log("O Pressed" + FlxG.ouyaController);
 					
