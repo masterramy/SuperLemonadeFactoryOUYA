@@ -27,13 +27,14 @@ package io.arkeus.ouya.controller {
 		 * Sets the enabled flag to false.
 		 */
 		public function disable():void {
-			device.enabled = true;
+			if (device != null) device.enabled = false;
 		}
 
 		/**
 		 * Sets the controller as removed.
 		 */
 		public function remove():void {
+			reset();
 			removed = true;
 		}
 
