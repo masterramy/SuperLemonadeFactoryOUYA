@@ -1,4 +1,4 @@
-name: Gate2A provenance-fix blob builder
+name: Gate2A rev41 source-closure applicator
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  build-blobs:
+  apply-source-closure:
     runs-on: windows-2025
     timeout-minutes: 10
     steps:
@@ -19,38 +19,30 @@ jobs:
           ref: gate2a-rev41-exact-final
           fetch-depth: 0
           persist-credentials: true
-      - name: Build verified corrected workflow blobs outside workflow paths
+      - name: Remove stale retired-custom-level Registry write
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedHead = 'f8b64cec087051d600b5fea39cadf4a326077866'
+          $expectedHead = 'a79e49bba19ab02e283268a64145bea1ea45aeeb'
           $actualHead = (& git rev-parse HEAD).Trim().ToLowerInvariant()
           if ($actualHead -ne $expectedHead) { throw "Exact-final moved: expected $expectedHead, got $actualHead" }
-          $paths = @('.github/workflows/gate2a-android-release.yml','.github/workflows/gate2a-air-baseline.yml')
-          $old = "(if (Test-Path (Join-Path `$androidSdk 'platform-tools')) { 'platform-tools' })"
-          $new = "`$(if (Test-Path (Join-Path `$androidSdk 'platform-tools')) { 'platform-tools' })"
-          New-Item -ItemType Directory -Force -Path ARTIFACTS/provenance-fix-blobs | Out-Null
-          foreach ($path in $paths) {
-            $text = [IO.File]::ReadAllText($path)
-            $count = ([regex]::Matches($text,[regex]::Escape($old))).Count
-            if ($count -ne 1) { throw "$path expected exactly one bad provenance expression, found $count" }
-            $fixed = $text.Replace($old,$new)
-            $leaf = Split-Path $path -Leaf
-            [IO.File]::WriteAllText((Join-Path 'ARTIFACTS/provenance-fix-blobs' $leaf),$fixed,[Text.UTF8Encoding]::new($false))
+          $path = 'src/PCLevelSelectState.as'
+          $text = [IO.File]::ReadAllText($path)
+          $old = "`t`t`t//not playing a custom level, so when ESCAPE go to this menu. `r`n`t`t`tRegistry.isPlayingCustomLevel = false;`r`n`t`t`t`r`n"
+          if (-not $text.Contains($old)) {
+            $old = "`t`t`t//not playing a custom level, so when ESCAPE go to this menu. `n`t`t`tRegistry.isPlayingCustomLevel = false;`n`t`t`t`n"
           }
-          foreach ($path in $paths) {
-            if ((git status --porcelain -- $path)) { throw "Canonical workflow unexpectedly modified in worktree: $path" }
-          }
-          $releaseBlob = (& git hash-object ARTIFACTS/provenance-fix-blobs/gate2a-android-release.yml).Trim()
-          $baselineBlob = (& git hash-object ARTIFACTS/provenance-fix-blobs/gate2a-air-baseline.yml).Trim()
-          @(
-            "parent=$expectedHead"
-            "release_blob=$releaseBlob"
-            "baseline_blob=$baselineBlob"
-            "semantic_change=replace invalid PowerShell parenthesized if expression with subexpression form"
-          ) | Set-Content ARTIFACTS/provenance-fix-blobs/RECEIPT.txt -Encoding utf8
+          $count = ([regex]::Matches($text,[regex]::Escape($old))).Count
+          if ($count -ne 1) { throw "Expected exactly one stale custom-level flag block, found $count" }
+          [IO.File]::WriteAllText($path,$text.Replace($old,''),[Text.UTF8Encoding]::new($false))
+          $remaining = Select-String -Path src/*.as -Pattern 'isPlayingCustomLevel' -SimpleMatch -ErrorAction SilentlyContinue
+          if ($remaining) { throw "isPlayingCustomLevel remains in live src after bounded closure: $($remaining.Path -join ', ')" }
+          $changed = @(& git diff --name-only)
+          if ($changed.Count -ne 1 -or $changed[0] -ne $path) { throw "Unexpected changed files: $($changed -join ', ')" }
+          $diff = (& git diff --unified=3 -- $path | Out-String)
+          if ($diff -notmatch 'Registry\.isPlayingCustomLevel = false;') { throw 'Expected retired flag assignment not present in diff.' }
           git config user.name 'Gate2A QA Worker'
           git config user.email 'actions@users.noreply.github.com'
-          git add ARTIFACTS/provenance-fix-blobs
-          git commit -m 'Gate 2A diagnostic: materialize provenance-fix workflow blobs'
-          git push origin HEAD:gate2a-provenance-fix-blobs
+          git add -- $path
+          git commit -m 'Gate 2A rev41: close retired custom-level flag reference'
+          git push origin HEAD:gate2a-rev41-exact-final
