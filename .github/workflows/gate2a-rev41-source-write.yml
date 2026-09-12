@@ -1,0 +1,80 @@
+name: Gate2A rev41 controlled source write
+on:
+  push:
+    branches:
+      - gate2a-rev41-source-write-helper-18
+permissions:
+  contents: write
+jobs:
+  source-write:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Clone and verify exact-final preimage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git checkout gate2a-rev41-exact-final
+          test "$(git rev-parse HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
+          test "$(git rev-parse HEAD^{tree})" = "4efe662c11d9d305ace9f6fdabaec21f4b3e34a4"
+          test -z "$(git status --porcelain)"
+
+      - name: Fetch and verify current Drive applicator
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-1744-81fd-b7f8-fe1a7220bb90/raw?se=2026-09-12T21%3A16%3A27Z&sp=r&sv=2026-02-06&sr=b&scid=8ea3f133-8cb2-502b-8702-b069f347245b&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T03%3A38%3A57Z&ske=2026-09-13T03%3A38%3A57Z&sks=b&skv=2026-02-06&sig=wnIAo83is/FpVNhTX77riYDhV/5qmro67VGuSE8o2F0%3D' -o /tmp/app.py
+          echo '08eb9048a36b5c61c9276da09147ee6d7ff18df155663fa3d949d0803ad0df75  /tmp/app.py' | sha256sum --check --strict
+          python -m py_compile /tmp/app.py
+
+      - name: Reconfirm full dry-run then write exact nine-source delta
+        run: |
+          set -euo pipefail
+          python /tmp/app.py --root repo
+          test -z "$(git -C repo status --porcelain)"
+          python /tmp/app.py --root repo --write
+          git -C repo diff --check
+          actual="$(git -C repo diff --name-only | LC_ALL=C sort)"
+          expected="$(cat <<'EOF'
+          src/PCCinematicState.as
+          src/PCLevelSelectState.as
+          src/PCMenuState.as
+          src/PCOptionsState.as
+          src/PCPlayState.as
+          src/PlayState.as
+          src/Registry.as
+          src/org/flixel/FlxG.as
+          src/org/flixel/FlxGame.as
+          EOF
+          )"
+          expected="$(printf '%s\n' "$expected" | sed 's/^[[:space:]]*//' | LC_ALL=C sort)"
+          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
+          test "$actual" = "$expected"
+          test "$(git -C repo diff --name-only | wc -l)" -eq 9
+
+      - name: Refuse remote drift then commit and push source-only result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git -C repo fetch origin gate2a-rev41-exact-final
+          test "$(git -C repo rev-parse FETCH_HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
+          test "$(git -C repo rev-parse HEAD)" = "d147d5621a3b7cb7607a8c092565586ca7009699"
+          git -C repo config user.name 'Gate 2A Alfred'
+          git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
+          git -C repo add -- \
+            src/PCCinematicState.as \
+            src/PCLevelSelectState.as \
+            src/PCMenuState.as \
+            src/PCOptionsState.as \
+            src/PCPlayState.as \
+            src/PlayState.as \
+            src/Registry.as \
+            src/org/flixel/FlxG.as \
+            src/org/flixel/FlxGame.as
+          test "$(git -C repo diff --cached --name-only | wc -l)" -eq 9
+          git -C repo commit -m 'Gate 2A rev41: apply remaining source hardening'
+          echo "SOURCE_COMMIT=$(git -C repo rev-parse HEAD)"
+          echo "SOURCE_TREE=$(git -C repo rev-parse HEAD^{tree})"
+          git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
