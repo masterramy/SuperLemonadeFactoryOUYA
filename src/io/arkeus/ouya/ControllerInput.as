@@ -126,7 +126,25 @@ package io.arkeus.ouya {
 				// Unknown device
 				return;
 			}
-			readyControllers.push(new controllerClass(device));
+			var attachedController:GameController = new controllerClass(device);
+
+			if (attachedController is OuyaController &&
+				(FlxG.ouyaController == null || FlxG.ouyaController.device == null || FlxG.ouyaController.removed)) {
+				attachedController.enable();
+				controllers.push(attachedController);
+				FlxG.ouyaController = attachedController as OuyaController;
+				return;
+			}
+
+			if (attachedController is Xbox360Controller &&
+				(FlxG.xboxController == null || FlxG.xboxController.device == null || FlxG.xboxController.removed)) {
+				attachedController.enable();
+				controllers.push(attachedController);
+				FlxG.xboxController = attachedController as Xbox360Controller;
+				return;
+			}
+
+			readyControllers.push(attachedController);
 		}
 
 		/**
