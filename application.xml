@@ -6,6 +6,7 @@
   <filename>Super Lemonade Factory Port</filename>
   <name>Super Lemonade Factory Port</name>
   <android>
+    <addAirToAppID>false</addAirToAppID>
     <manifestAdditions><![CDATA[<manifest android:installLocation="auto">
 	<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
 	<uses-feature android:required="true" android:name="android.hardware.touchscreen.multitouch" />
@@ -57,7 +58,7 @@
     <image96x96>icons/icon_96.png</image96x96>
     <image114x114>icons/icon_114.png</image114x114>
     <image144x144>icons/icon_144.png</image144x144>
-    <image732x412>res/drawable-xhdpi/ouya_icon.png</image732x412>
+    <image192x192>icons/icon_192.png</image192x192>
   </icon>
   <!-- 
 	AIR options:
