@@ -18,20 +18,24 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          fetch-depth: 1
+          fetch-depth: 3
 
-      - name: Verify candidate parent identity
+      - name: Verify candidate product identity
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $parent = (& git rev-parse 'HEAD^').Trim().ToLowerInvariant()
-          $expected = 'fb89f9780d43127156ec86a1d666292e11ffb7cd'
-          if ($parent -ne $expected) { throw "Diagnostic commit parent mismatch. Expected $expected, got $parent." }
+          $candidate = 'fb89f9780d43127156ec86a1d666292e11ffb7cd'
+          & git cat-file -e "$candidate`^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw "Candidate commit $candidate is unavailable in diagnostic checkout." }
+          $changed = @(& git diff --name-only $candidate HEAD)
+          $unexpected = @($changed | Where-Object { $_ -ne '.github/workflows/gate2a-aapt2-provider-diagnostic.yml' })
+          if ($unexpected.Count -ne 0) { throw "Diagnostic branch changes product/non-diagnostic bytes: $($unexpected -join ', ')" }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           @(
             "diagnostic_head=$((& git rev-parse HEAD).Trim())"
-            "candidate_parent=$parent"
-            "candidate_tree=$((& git rev-parse 'HEAD^^{tree}').Trim())"
+            "candidate_commit=$candidate"
+            "candidate_tree=$((& git rev-parse "$candidate`^{tree}").Trim())"
+            "diagnostic_only_delta=.github/workflows/gate2a-aapt2-provider-diagnostic.yml"
           ) | Set-Content dist/diagnostic-source.txt -Encoding utf8
 
       - name: Set up Java
