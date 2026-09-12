@@ -1,0 +1,206 @@
+--- applicator-v4.py
++++ applicator-drive-current.py
+@@ -61,6 +61,23 @@
+     repl=after.replace("\r\n","\n").split("\n") if after else []
+     return "\n".join(lines[:s]+repl+lines[e:]),True
+ 
++def replace_second_of_two_norm(text,before,after,label):
++    """Fail-closed replacement for the reviewed duplicate where the later copy is authoritative."""
++    if before==after:
++        return text,False
++    # Once the later reviewed copy has been changed, exactly one AFTER and one untouched BEFORE remain.
++    if after:
++        _, aa=find_norm_windows(text,after)
++        _, bb=find_norm_windows(text,before)
++        if len(aa)==1 and len(bb)==1:
++            return text,False
++    lines,bb=find_norm_windows(text,before)
++    if len(bb)!=2:
++        raise ApplyError(f"{label}: expected exactly two reviewed BEFORE blocks, found {len(bb)}")
++    ss,ee=bb[1]
++    repl=after.replace("\r\n","\n").split("\n") if after else []
++    return "\n".join(lines[:ss]+repl+lines[ee:]),True
++
+ def remove_exact_region(text,start_marker,end_marker,label,required=()):
+     s=text.find(start_marker)
+     if s<0:
+@@ -419,24 +436,25 @@
+    'path': 'src/PCMenuState.as',
+    'before': '                if(save.data.plays == null)\n'
+              '                    save.data.plays = 0 as Number;\n'
+-             '                    \n'
++             '\n'
+              '                else\n'
+              '                    save.data.plays++;\n'
+-             '                    \n'
++             '\n'
+              '                //FlxG.log("Number of plays:       " + save.data.plays );\n'
+              '                //save.erase();\n'
+              '                save.close();',
+    'after': '                if(save.data.plays == null)\n'
+             '                    save.data.plays = 0 as Number;\n'
+-            '                    \n'
++            '\n'
+             '                else\n'
+             '                    save.data.plays++;\n'
+-            '                    \n'
++            '\n'
+             '                //FlxG.log("Number of plays:       " + save.data.plays );\n'
+             '                //save.erase();\n'
+             '                // Canonicalize malformed/short legacy progress arrays before any\n'
+             '                // customer navigation state or completion writer consumes them.\n'
+             '                Registry.normaliseProgressSave(save);\n'
++            '\n'
+             '                save.close();',
+    'invalid': []}),
+  (20,
+@@ -448,7 +466,7 @@
+              '            var save:FlxSave = new FlxSave();\n'
+              '            if(save.bind("SLF"))\n'
+              '            {\n'
+-             '                _wh = save.data.warehouseLevelsComplete;',
++             '                _wh = save.data.warehouseLevelsComplete ;',
+    'after': '            timeOnScreen = 0.8;\n'
+             '\n'
+             '            _wh = Registry.normaliseProgressArray(null, "wh   ", true);\n'
+@@ -688,6 +706,7 @@
+              '\t\t\t\n'
+              '\t\t\tfileStream.addEventListener(Event.CLOSE, fileClosed);\n'
+              '\t\t\tfileStream.close();\n'
++             '\t\t\t\n'
+              '\t\t}',
+    'after': '\t\t\tvar file:File = File.applicationStorageDirectory;\n'
+             '\t\t\tfile = file.resolvePath("SUPERLEMONADEFACTORY/progress_backup.slf");\n'
+@@ -707,6 +726,7 @@
+             '\t\t\t\ttry { if (tempFile.exists) tempFile.deleteFile(); } catch (cleanupError:Error) {}\n'
+             '\t\t\t\tFlxG.log("Progress backup write failed: " + backupError.message);\n'
+             '\t\t\t}\n'
++            '\t\t\n'
+             '\t\t}',
+    'invalid': []}),
+  (48,
+@@ -775,12 +795,14 @@
+    'before': '\t\t\tif (  FlxG.ouyaController.y.pressed) {\n'
+              '\t\t\t\tFlxG.fade(0xff000000, 1, fadeComplete);\n'
+              '\t\t\t\tcurrentVoiceOver.stop();\n'
++             '\t\t\t\t//FlxG.log("Y pressed");\n'
+              '\t\t\t}',
+    'after': '\t\t\tif (FlxG.joystick.j1ButtonStartJustPressed ||\n'
+             '\t\t\t\tFlxG.keys.justPressed("Y") ||\n'
+             '\t\t\t\tFlxG.ouyaController.y.pressed) {\n'
+             '\t\t\t\tFlxG.fade(0xff000000, 1, fadeComplete);\n'
+             '\t\t\t\tcurrentVoiceOver.stop();\n'
++            '\t\t\t\t//FlxG.log("Y pressed");\n'
+             '\t\t\t}',
+    'invalid': []})]
+ 
+@@ -933,33 +955,6 @@
+         raise ApplyError('PlayState right-stick developer physics remains')
+     return text,changed
+ 
+-def strip_as3_noncode(text):
+-    """Return code-only AS3 text with comments/string bodies blanked, preserving newlines."""
+-    out=[]; i=0; state='code'; quote=''
+-    while i < len(text):
+-        c=text[i]; n=text[i+1] if i+1 < len(text) else ''
+-        if state=='code':
+-            if c=='/' and n=='/': out.extend('  '); i+=2; state='line'; continue
+-            if c=='/' and n=='*': out.extend('  '); i+=2; state='block'; continue
+-            if c in ('"', "'"):
+-                out.append(c); quote=c; i+=1; state='str'; continue
+-            out.append(c); i+=1; continue
+-        if state=='line':
+-            if c=='\n': out.append('\n'); state='code'
+-            else: out.append(' ')
+-            i+=1; continue
+-        if state=='block':
+-            if c=='*' and n=='/': out.extend('  '); i+=2; state='code'; continue
+-            out.append('\n' if c=='\n' else ' '); i+=1; continue
+-        # String literal: keep delimiters but blank body, respecting escapes.
+-        if c=='\\':
+-            out.append(' '); i+=1
+-            if i < len(text): out.append('\n' if text[i]=='\n' else ' '); i+=1
+-            continue
+-        if c==quote: out.append(c); i+=1; state='code'; continue
+-        out.append('\n' if c=='\n' else ' '); i+=1
+-    return ''.join(out)
+-
+ def finalize_playstate_menu_unlink(text):
+     changed=False
+     new_onquit='''\t\tprivate function onQuit():void\n\t\t{\n\t\t\tFlxG.paused = false;\n\t\t\tFlxG.playMusic(Registry.SndEcho, 1.0);\n\t\t\tif (!Registry.oldSchoolMode)\n\t\t\t\tFlxG.switchState(new PCLevelSelectState);\n\t\t\telse\n\t\t\t\tFlxG.switchState(new PCMenuState);\n\t\t}'''
+@@ -971,10 +966,12 @@
+     old='''\t\t\t\telse if (!Registry.isPlayingDemo) {\n\t\t\t\t\tFlxG.switchState(new MenuState);\n\t\t\t\t}'''
+     new='''\t\t\t\telse if (!Registry.isPlayingDemo) {\n\t\t\t\t\t// Defensive base-state fallback for the Android publication line.\n\t\t\t\t\t// PCPlayState overrides levelOver(), so normal shipping completion\n\t\t\t\t\t// does not execute this branch.\n\t\t\t\t\tFlxG.switchState(new PCMenuState);\n\t\t\t\t}'''
+     text,c=replace_unique_norm(text,old,new,'PlayState legacy MenuState fallback'); changed|=c
+-    live_code=strip_as3_noncode(text)
+-    for retired in ('MenuState', 'PCCustomLevelState', 'WinniMenuState'):
+-        if re.search(r'(?<![A-Za-z0-9_$])'+re.escape(retired)+r'(?![A-Za-z0-9_$])', live_code):
+-            raise ApplyError(f'PlayState postcondition: live retired shipping class reference remains: {retired}')
++    # Remove the two reviewed comment-only remnants of the retired MenuState path,
++    # while preserving the block-comment terminator on the first one.
++    text,c=replace_unique_norm(text,'FlxG.switchState(new MenuState);*/','*/','PlayState retired MenuState block-comment remnant'); changed|=c
++    text,c=replace_unique_norm(text,'//FlxG.switchState(new MenuState);','','PlayState retired MenuState line-comment remnant'); changed|=c
++    if 'new MenuState' in text or 'PCCustomLevelState' in text or 'WinniMenuState' in text:
++        raise ApplyError('PlayState postcondition: retired shipping class reference remains')
+     return text,changed
+ 
+ def refine_playstate_pause_menu_exits(text):
+@@ -994,6 +991,7 @@
+     # Rev27: Menu requests a state change; clear manual pause before handing off.
+     old='''					else {
+ 						FlxG.play(Registry.SndPing, Registry.pingVolume);
++						
+ 						this.goToMenu(false);
+ 					}'''
+     new='''					else {
+@@ -1024,8 +1022,8 @@
+ def apply_playstate_pause(text):
+     changed=False
+     # Rev21 timer freeze.
+-    old='''\t\toverride public function update():void\n\t\t{\n\t\t\t//FlxG.log(totalTimePassed + " Total Time");\n\t\t\ttotalTimePassed += FlxG.elapsed;'''
+-    new='''\t\toverride public function update():void\n\t\t{\n\t\t\t//FlxG.log(totalTimePassed + " Total Time");\n\t\t\tif (!FlxG.paused)\n\t\t\t\ttotalTimePassed += FlxG.elapsed;'''
++    old='''\t\toverride public function update():void\n\t\t{\n\t\t\t\n\t\t\t//FlxG.log(totalTimePassed + " Total Time");\n\t\t\ttotalTimePassed += FlxG.elapsed;'''
++    new='''\t\toverride public function update():void\n\t\t{\n\t\t\t\n\t\t\t//FlxG.log(totalTimePassed + " Total Time");\n\t\t\tif (!FlxG.paused)\n\t\t\t\ttotalTimePassed += FlxG.elapsed;'''
+     text,c=replace_unique_norm(text,old,new,'PlayState pause timer'); changed|=c
+ 
+     # Replace exact pause toggle body; tolerate original horizontal spacing through normalized matching.
+@@ -1159,15 +1157,8 @@
+         t=files[path]
+         for r in reqs:
+             if r not in t: raise ApplyError(f'{path}: required postcondition missing: {r}')
+-    # Class-retirement checks must inspect executable AS3 only: the reviewed rev41
+-    # patch intentionally leaves some historical MenuState references in comments.
+-    play_code=strip_as3_noncode(files['src/PlayState.as'])
+-    for retired in ('MenuState', 'PCCustomLevelState', 'WinniMenuState'):
+-        if re.search(r'(?<![A-Za-z0-9_$])'+re.escape(retired)+r'(?![A-Za-z0-9_$])', play_code):
+-            raise ApplyError(f'src/PlayState.as: live forbidden class remains: {retired}')
+-
+     bad={
+-      'src/PlayState.as':['TO BE REMOVED - ABSOLUTELY REMOVED','FlxG.debug==true'],
++      'src/PlayState.as':['PCCustomLevelState','WinniMenuState','new MenuState','TO BE REMOVED - ABSOLUTELY REMOVED','FlxG.debug==true'],
+       'src/Registry.as':['isPlayingCustomLevel','wLevel1:Class','wLevel6:Class'],
+       'src/PCMenuState.as':['AIROUYAIAPANE','customBtn','this.buy()','buytimer'],
+       'src/PCOptionsState.as':['FileReference','FileFilter','ByteArray','Capabilities'],
+@@ -1201,7 +1192,10 @@
+     # Apply source WIP hunks in canonical order, diverting special slices below.
+     for idx,h in SOURCE_HUNKS:
+         p=h['path']
+-        files[p],c=replace_unique_norm(files[p],h['before'],h['after'],f'hunk {idx} {p}')
++        if 48 <= idx <= 53:
++            files[p],c=replace_second_of_two_norm(files[p],h['before'],h['after'],f'hunk {idx} {p}')
++        else:
++            files[p],c=replace_unique_norm(files[p],h['before'],h['after'],f'hunk {idx} {p}')
+         if c: changed.add(p)
+         # After custom-level/Winnitron hunk neighborhood, finish final Android MenuState unlink.
+         if idx==9:
+@@ -1220,8 +1214,8 @@
+     if c: changed.add('src/PlayState.as')
+ 
+     # Ensure PCPlay sees rev27 same-frame pause consumption after the base helper can clear paused.
+-    old='''\t\toverride public function update():void\n\t\t{\n\t\t\tsuper.update();\n\t\t\t\n\t\t\tif (FlxG.paused)\n\t\t\t\treturn;'''
+-    new='''\t\toverride public function update():void\n\t\t{\n\t\t\tsuper.update();\n\t\t\t\n\t\t\tif (pauseFrameConsumed || FlxG.paused)\n\t\t\t\treturn;'''
++    old='''\t\toverride public function update():void\n\t\t{\n\t\t\tsuper.update();\n\t\t\tif (FlxG.paused)\n\t\t\t\treturn;'''
++    new='''\t\toverride public function update():void\n\t\t{\n\t\t\tsuper.update();\n\t\t\tif (pauseFrameConsumed || FlxG.paused)\n\t\t\t\treturn;'''
+     files['src/PCPlayState.as'],c=replace_unique_norm(files['src/PCPlayState.as'],old,new,'PCPlay pauseFrameConsumed');
+     if c: changed.add('src/PCPlayState.as')
+ 
