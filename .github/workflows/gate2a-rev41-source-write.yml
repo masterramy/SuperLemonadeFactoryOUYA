@@ -36,7 +36,7 @@ jobs:
           test -z "$(git status --porcelain)"
           python /tmp/notice_installer.py /tmp/gate2a_rev41_notice_payload.zip --write
           git diff --check
-          actual="$(git status --porcelain | sed 's/^?? //' | sed 's/^...//' | LC_ALL=C sort)"
+          actual="$(git ls-files --others --exclude-standard | LC_ALL=C sort)"
           expected="$(cat <<'EOF'
           THIRD_PARTY_NOTICES.md
           third_party/licenses/as3-controller-input-MIT.txt
@@ -47,7 +47,7 @@ jobs:
           expected="$(printf '%s\n' "$expected" | sed 's/^[[:space:]]*//' | LC_ALL=C sort)"
           printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
           test "$actual" = "$expected"
-          test "$(git status --porcelain | wc -l)" -eq 4
+          test "$(git ls-files --others --exclude-standard | wc -l)" -eq 4
       - name: Refuse remote drift then commit and push notice-only result
         env:
           GH_TOKEN: ${{ github.token }}
