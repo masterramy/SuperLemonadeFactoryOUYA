@@ -1,0 +1,56 @@
+name: Gate 2A rev41 source dry-run helper
+
+on:
+  push:
+    branches:
+      - gate2a-rev41-source-apply-helper
+
+permissions:
+  contents: read
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper payload
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: helper
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Reconstruct and verify cold-verified applicator
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d helper/.github/rev41-source-applicator.py.xz.b64 > /tmp/rev41-applicator.py.xz
+          echo '226fa569a2412726e82ca440ebc61952ebd399cb3563fcf9312cebbf8a1bf0dd  /tmp/rev41-applicator.py.xz' | sha256sum -c -
+          xz -dc /tmp/rev41-applicator.py.xz > /tmp/rev41-applicator.py
+          echo 'b5019971c3d5e3b33a89d6e383fb6c2d2b04750fea094532181f1c74fd734078  /tmp/rev41-applicator.py' | sha256sum -c -
+          python -m py_compile /tmp/rev41-applicator.py
+
+      - name: Checkout exact-final source candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-rev41-exact-final
+          path: exact-final
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact-final authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd exact-final
+          test "$(git rev-parse HEAD)" = 'd147d5621a3b7cb7607a8c092565586ca7009699'
+          test "$(git rev-parse 'HEAD^{tree}')" = '4efe662c11d9d305ace9f6fdabaec21f4b3e34a4'
+          git checkout -B gate2a-rev41-exact-final d147d5621a3b7cb7607a8c092565586ca7009699
+          test -z "$(git status --porcelain)"
+
+      - name: Run fail-closed source applicator dry-run only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python /tmp/rev41-applicator.py --root exact-final
+          test -z "$(git -C exact-final status --porcelain)"
