@@ -1,15 +1,15 @@
-name: Gate2A rev41 exact-license blob repair
+name: Gate2A rev41 workflow applicator dry-run
 on:
   push:
     branches:
       - gate2a-rev41-source-write-helper-18
 permissions:
-  contents: write
+  contents: read
 jobs:
-  exact-license-repair:
+  workflow-dry-run:
     runs-on: ubuntu-24.04
     steps:
-      - name: Clone and verify notice commit preimage
+      - name: Clone and verify post-notice exact-final
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -17,48 +17,20 @@ jobs:
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo
           git checkout gate2a-rev41-exact-final
-          test "$(git rev-parse HEAD)" = "d15bccaf9c09dad65ab431fbf2601f9a335f4de5"
-          test "$(git rev-parse HEAD^{tree})" = "a4868f1cd4ecb57da12e1d1d877405d97b0d51f5"
-          test "$(git rev-parse HEAD:third_party/licenses/as3-controller-input-MIT.txt)" = "9cede535fda51085173331cb202face1bd2a883c"
+          test "$(git rev-parse HEAD)" = "3d9069ccd1b84f4f216f4ca790984cd0b931b641"
+          test "$(git rev-parse HEAD^{tree})" = "6736b64d4df5863a0858bca03adde8b8001bebb7"
+          test "$(git rev-parse HEAD:.github/workflows/gate2a-android-release.yml)" = "1e9ae00f9748dc982ea92ec3e55eb47662776cfe"
+          test "$(git rev-parse HEAD:.github/workflows/gate2a-air-baseline.yml)" = "dd124aed3826ebd16722881793024faa4a3bc5f3"
           test -z "$(git status --porcelain)"
-      - name: Fetch and verify sealed notice payload
+      - name: Fetch and verify workflow applicator
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-ccc0-81fd-8245-c0c01d94cdd7/raw?se=2026-09-12T21%3A36%3A09Z&sp=r&sv=2026-02-06&sr=b&scid=58b1b841-9e73-5945-9a8d-7f01c1b3da9a&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A06%3A45Z&ske=2026-09-13T01%3A06%3A45Z&sks=b&skv=2026-02-06&sig=oqOCELK3usBxrNq/4hhW6yZP6Md9rkkDJnFkag7mZSE%3D' -o /tmp/gate2a_rev41_notice_payload.zip
-          echo 'cddf2779327b89946c4781883a8d1fd71a9c9e47c28001ec654caf69f2280738  /tmp/gate2a_rev41_notice_payload.zip' | sha256sum --check --strict
-      - name: Preserve exact upstream controller-license bytes
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-b878-81fd-9080-6393ff9cb314/raw?se=2026-09-12T21%3A44%3A26Z&sp=r&sv=2026-02-06&sr=b&scid=f8b73b60-b784-5152-b216-6cdf7d39e594&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A06%3A45Z&ske=2026-09-13T01%3A06%3A45Z&sks=b&skv=2026-02-06&sig=Fnhbb1Hwvxy8bCWoZIQ3lflOBtqWYv9sqloqnXAINyQ%3D' -o /tmp/workflow_app.py
+          echo 'eb6bddeb6ddc19b8c414740caa00b66eef12aa7ffa3e8209f1d1d2a6a7ee6b91  /tmp/workflow_app.py' | sha256sum --check --strict
+          python -m py_compile /tmp/workflow_app.py
+      - name: Full fail-closed workflow dry-run
         run: |
           set -euo pipefail
           cd repo
-          test "$(cat .gitattributes)" = $'# Auto detect text files and perform LF normalization\n* text=auto'
-          printf '\nthird_party/licenses/as3-controller-input-MIT.txt -text\n' >> .gitattributes
-          python - <<'PY'
-          import zipfile, pathlib, hashlib
-          z=zipfile.ZipFile('/tmp/gate2a_rev41_notice_payload.zip')
-          b=z.read('third_party/licenses/as3-controller-input-MIT.txt')
-          assert hashlib.sha256(b).hexdigest()=='b99b3b30b265cd7aee751b99506ff1266829095dd581c1391df32090f5249780'
-          pathlib.Path('third_party/licenses/as3-controller-input-MIT.txt').write_bytes(b)
-          PY
-          test "$(git check-attr text -- third_party/licenses/as3-controller-input-MIT.txt)" = 'third_party/licenses/as3-controller-input-MIT.txt: text: unset'
-          test "$(git hash-object --no-filters third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
-          git add -- .gitattributes third_party/licenses/as3-controller-input-MIT.txt
-          git diff --cached --check -- .gitattributes
-          test "$(git rev-parse :third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
-          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
-          expected="$(printf '%s\n' '.gitattributes' 'third_party/licenses/as3-controller-input-MIT.txt' | LC_ALL=C sort)"
-          test "$actual" = "$expected"
-      - name: Refuse remote drift then commit and push exact-blob repair
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git -C repo fetch origin gate2a-rev41-exact-final
-          test "$(git -C repo rev-parse FETCH_HEAD)" = "d15bccaf9c09dad65ab431fbf2601f9a335f4de5"
-          test "$(git -C repo rev-parse HEAD)" = "d15bccaf9c09dad65ab431fbf2601f9a335f4de5"
-          git -C repo config user.name 'Gate 2A Alfred'
-          git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
-          git -C repo commit -m 'Gate 2A rev41: preserve exact controller license blob'
-          echo "NOTICE_REPAIR_COMMIT=$(git -C repo rev-parse HEAD)"
-          echo "NOTICE_REPAIR_TREE=$(git -C repo rev-parse HEAD^{tree})"
-          test "$(git -C repo rev-parse HEAD:third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
-          git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
+          python /tmp/workflow_app.py
+          test -z "$(git status --porcelain)"
