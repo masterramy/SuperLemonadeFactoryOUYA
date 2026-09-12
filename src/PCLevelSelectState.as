@@ -157,12 +157,38 @@ package
 				FlxG.mouse.hide();
 			}
 			
-			timeOnScreen = 0.8;
-			
-			var save:FlxSave = new FlxSave();
-			if(save.bind("SLF"))
-			{
-				_wh = save.data.warehouseLevelsComplete ;
+            timeOnScreen = 0.8;
+
+            _wh = Registry.normaliseProgressArray(null, "wh   ", true);
+            _ftry = Registry.normaliseProgressArray(null, "fc   ", true);
+            _mgmt = Registry.normaliseProgressArray(null, "mgmt ", true);
+            _hcwh = Registry.normaliseProgressArray(null, "xwh  ", true);
+            _hcftry = Registry.normaliseProgressArray(null, "xfc  ", true);
+            _hcmgmt = Registry.normaliseProgressArray(null, "xmgmt", true);
+            _whtalk = Registry.normaliseProgressArray(null, "wh-talk   ", false);
+            _ftrytalk = Registry.normaliseProgressArray(null, "fc-talk   ", false);
+            _mgmttalk = Registry.normaliseProgressArray(null, "mgmt-talk ", false);
+            _hcwhtalk = Registry.normaliseProgressArray(null, "xwh-talk  ", false);
+            _hcftrytalk = Registry.normaliseProgressArray(null, "xfc-talk  ", false);
+            _hcmgmttalk = Registry.normaliseProgressArray(null, "xmgmt-talk", false);
+            _whtalkandre = Registry.normaliseProgressArray(null, "wh-talk-andre   ", false);
+            _ftrytalkandre = Registry.normaliseProgressArray(null, "fc-talk-andre   ", false);
+            _mgmttalkandre = Registry.normaliseProgressArray(null, "mgmt-talk-andre ", false);
+            _hcwhtalkandre = Registry.normaliseProgressArray(null, "xwh-talk-andre  ", false);
+            _hcftrytalkandre = Registry.normaliseProgressArray(null, "xfc-talk-andre  ", false);
+            _hcmgmttalkandre = Registry.normaliseProgressArray(null, "xmgmt-talk-andre", false);
+            _whcap = Registry.normaliseProgressArray(null, "whcap   ", false);
+            _ftrycap = Registry.normaliseProgressArray(null, "fccap   ", false);
+            _mgmtcap = Registry.normaliseProgressArray(null, "mgmtcap ", false);
+            _hcwhcap = Registry.normaliseProgressArray(null, "xwhcap  ", false);
+            _hcftrycap = Registry.normaliseProgressArray(null, "xfccap  ", false);
+            _hcmgmtcap = Registry.normaliseProgressArray(null, "xmgmtcap", false);
+
+            var save:FlxSave = new FlxSave();
+            if(save.bind("SLF"))
+            {
+                Registry.normaliseProgressSave(save);
+                _wh = save.data.warehouseLevelsComplete;
 				_ftry = save.data.factoryLevelsComplete ;
 				_mgmt = save.data.mgmtLevelsComplete ;
 				_hcwh = save.data.hcwarehouseLevelsComplete ;
@@ -893,7 +919,7 @@ package
 			}
 			else
 			{
-				headingTxt.text = "Collect more caps to unlock!";
+				headingTxt.text = "Collect all caps and conversations to unlock!";
 				
 			}
 		}
@@ -1316,15 +1342,15 @@ package
 		protected function onBtnLevel11():void 
 		{
 			currentButton = 13;
-			FlxG.fade(0xff000000, 0.4, completeFade);
+			this.beginFade();
 		}
 		
 		protected function onBtnLevel12():void 
 		{
 			currentButton = 14;
-			FlxG.fade(0xff000000, 0.4, completeFade);
+			this.beginFade();
 			
-		}		
+		}
 		
 		protected function completeFade():void
 		{

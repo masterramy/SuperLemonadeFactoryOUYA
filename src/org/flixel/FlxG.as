@@ -196,6 +196,9 @@ package org.flixel
 		 * A list of all the sounds being played in the game.
 		 */
 		static public var sounds:FlxGroup;
+		static protected var _globalSoundPauseActive:Boolean;
+		static protected var _globalPausedMusic:Boolean;
+		static protected var _globalPausedSounds:Array;
 		/**
 		 * Whether or not the game sounds are muted.
 		 */
@@ -629,6 +632,14 @@ package org.flixel
 				if((sound != null) && (ForceDestroy || !sound.survive))
 					sound.destroy();
 			}
+			clearGlobalSoundPauseLedger();
+		}
+
+		static protected function clearGlobalSoundPauseLedger():void
+		{
+			_globalSoundPauseActive = false;
+			_globalPausedMusic = false;
+			_globalPausedSounds = new Array();
 		}
 		
 		/**
@@ -647,8 +658,19 @@ package org.flixel
 		 */
 		static public function pauseSounds():void
 		{
+			// Nested pause owners (manual pause + app deactivation) must not replace
+			// the original active-sound set.
+			if(_globalSoundPauseActive)
+				return;
+			_globalSoundPauseActive = true;
+			_globalPausedMusic = false;
+			_globalPausedSounds = new Array();
+
 			if((music != null) && music.exists && music.active)
+			{
+				_globalPausedMusic = true;
 				music.pause();
+			}
 			var i:uint = 0;
 			var sound:FlxSound;
 			var l:uint = sounds.length;
@@ -656,7 +678,10 @@ package org.flixel
 			{
 				sound = sounds.members[i++] as FlxSound;
 				if((sound != null) && sound.exists && sound.active)
+				{
+					_globalPausedSounds.push(sound);
 					sound.pause();
+				}
 			}
 		}
 		
@@ -665,17 +690,21 @@ package org.flixel
 		 */
 		static public function resumeSounds():void
 		{
-			if((music != null) && music.exists)
-				music.play();
+			if(!_globalSoundPauseActive)
+				return;
+
+			if(_globalPausedMusic && music != null && music.exists)
+				music.resume();
+
 			var i:uint = 0;
 			var sound:FlxSound;
-			var l:uint = sounds.length;
-			while(i < l)
+			while(i < _globalPausedSounds.length)
 			{
-				sound = sounds.members[i++] as FlxSound;
-				if((sound != null) && sound.exists)
+				sound = _globalPausedSounds[i++] as FlxSound;
+				if(sound != null && sound.exists)
 					sound.resume();
 			}
+			clearGlobalSoundPauseLedger();
 		}
 		
 		/**
@@ -1161,6 +1190,9 @@ package org.flixel
 			FlxG.mute = false;
 			FlxG._volume = 0.5;
 			FlxG.sounds = new FlxGroup();
+			_globalSoundPauseActive = false;
+			_globalPausedMusic = false;
+			_globalPausedSounds = new Array();
 			FlxG.volumeHandler = null;
 			
 			FlxG.clearBitmapCache();

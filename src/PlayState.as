@@ -207,6 +207,7 @@ package
 		
 		
 		private var creationStage:int;
+		protected var pauseFrameConsumed:Boolean = false;
 		
 		
 		public function loadCharacter(item:XML, toLoad:String):void {
@@ -1212,9 +1213,11 @@ package
 		
 		override public function update():void
 		{
+			pauseFrameConsumed = false;
 			
 			//FlxG.log(totalTimePassed + " Total Time");
-			totalTimePassed += FlxG.elapsed;
+			if (!FlxG.paused)
+				totalTimePassed += FlxG.elapsed;
 			
 			if (hasCreatedLevel==false)
 				super.update();
@@ -1280,18 +1283,6 @@ package
 			 */
 			
 			
-			if (FlxG.debug==true) {
-				if (FlxG.ouyaController.lt.pressed) 
-				{
-					
-					hasCollectedCap = true;
-					hasTalkedToAndre = true;
-					hasTalkedToEnemy = true;
-					
-					player1.reset(exits.members[0].x - 0, exits.members[0].y);
-					player2.reset(exits.members[0].x - 0, exits.members[0].y);
-				}
-			}
 			
 				
 			
@@ -1302,20 +1293,29 @@ package
 				FlxG.paused = !FlxG.paused;
 				
 				if (FlxG.paused) {
-					FlxG.music.pause();
+					FlxG.pauseSounds();
 					pauseInstructions.visible = true;
 					menuBtn.visible = true;
 					restartBtn.visible = true;
 					gameOverDarken.visible = true;
 				}
 				else {
-					FlxG.music.play();
+					FlxG.resumeSounds();
 					pauseInstructions.visible = false;
 					menuBtn.visible = false;
 					restartBtn.visible = false;
 					gameOverDarken.visible = false;
 				}
 				
+			}
+
+			if (FlxG.paused) {
+				pauseFrameConsumed = true;
+				updatePauseMenu();
+				FlxG.ouyaController.y.reset();
+				FlxG.ouyaController.a.reset();
+				FlxG.ouyaController.rightStick.reset();
+				return;
 			}
 			
 			
@@ -1372,15 +1372,7 @@ package
 					FlxG.play(Registry.SndPing, 0.5);
 					
 					if (currentButton == 0) {
-						if (!Registry.oldSchoolMode)
-							this.resetLevel();
-						else {
-							Registry.levelNumber = 1;
-							
-							Registry.level = XML(new Registry.Level1);
-							
-							FlxG.switchState(new PCPlayState());
-						}
+						this.resetLevel();
 					}
 					else if (currentButton == 1) {
 						this.goToMenu(false);
@@ -1574,80 +1566,8 @@ package
 					}
 				}
 			}
-			if (!FlxG.paused)
-				super.update();
-			else {
-				
-				// While paused.
-				
-				if (FlxG.keys.justPressed(Registry.p1Left) || FlxG.keys.justPressed(Registry.p1Right) || FlxG.joystick.j1Stick1LeftJustPressed  || FlxG.joystick.j1Stick1RightJustPressed) {
-					
-					FlxG.play(Registry.SndBlip, 0.6);
-					
-					if (restartBtn.status == FlxButton.HIGHLIGHT) {
-						menuBtn.status = FlxButton.HIGHLIGHT;
-						restartBtn.status = FlxButton.NORMAL;
-					}
-					else {
-						restartBtn.status = FlxButton.HIGHLIGHT;
-						menuBtn.status = FlxButton.NORMAL;
-					}
-					
-					menuBtn.draw();
-					restartBtn.draw();					
-					
-					menuBtn.update();
-					restartBtn.update();
-				}
-				if (FlxG.keys.justPressed(Registry.p1Action) ||  
-				FlxG.keys.justPressed(Registry.p1Switch) || 
-				FlxG.keys.justPressed(Registry.p1Jump) || 
-				FlxG.joystick.j1ButtonAJustPressed ||  FlxG.ouyaController.o.pressed ) {
-					if (restartBtn.status == FlxButton.HIGHLIGHT) {
-						FlxG.play(Registry.SndPing, Registry.pingVolume);
-						this.resetLevel();
-						FlxG.paused = false;
-						
-						menuBtn.visible = false;
-						restartBtn.visible = false;
-						pauseInstructions.visible = false;
-						Registry.canJump = false;
-						
-					}
-					else {
-						FlxG.play(Registry.SndPing, Registry.pingVolume);
-						
-						this.goToMenu(false);
-					}
-				}
-			}
+			super.update();
 			
-			
-			/**
-			 * TO BE REMOVED - ABSOLUTELY REMOVED - 
-			 */
-			var vel:Number = 30;
-			
-			if (FlxG.joystick.j1Stick2LeftPressed) {
-				if (player1._currentlyControlled) player1.velocity.x -= vel;
-				//if (player2._currentlyControlled) player2.velocity.x -= vel;
-			}
-			
-			if (FlxG.joystick.j1Stick2RightPressed)
-				if (player1._currentlyControlled) player1.velocity.x += vel;				
-				//if (player2._currentlyControlled) player2.velocity.x += vel;				
-			
-			if (FlxG.joystick.j1Stick2UpPressed) {
-				if (player1._currentlyControlled) player1.velocity.y -= vel;	
-				//if (player2._currentlyControlled) player2.velocity.y -= vel;	
-				
-			}
-			
-			if (FlxG.joystick.j1Stick2DownPressed)
-				player1.velocity.y += vel;	
-				
-				
-				
 			
 			if (FlxG.keys.justPressed(Registry.homeKey) || FlxG.joystick.j1ButtonBackJustPressed ) {
 				if (!Registry.oldSchoolMode)
@@ -1719,6 +1639,55 @@ package
 
 		
 		
+
+		private function updatePauseMenu():void
+		{
+
+				// While paused.
+
+				if (FlxG.keys.justPressed(Registry.p1Left) || FlxG.keys.justPressed(Registry.p1Right) || FlxG.joystick.j1Stick1LeftJustPressed  || FlxG.joystick.j1Stick1RightJustPressed) {
+
+					FlxG.play(Registry.SndBlip, 0.6);
+
+					if (restartBtn.status == FlxButton.HIGHLIGHT) {
+						menuBtn.status = FlxButton.HIGHLIGHT;
+						restartBtn.status = FlxButton.NORMAL;
+					}
+					else {
+						restartBtn.status = FlxButton.HIGHLIGHT;
+						menuBtn.status = FlxButton.NORMAL;
+					}
+
+					menuBtn.draw();
+					restartBtn.draw();
+
+					menuBtn.update();
+					restartBtn.update();
+				}
+				if (FlxG.keys.justPressed(Registry.p1Action) ||
+				FlxG.keys.justPressed(Registry.p1Switch) ||
+				FlxG.keys.justPressed(Registry.p1Jump) ||
+				FlxG.joystick.j1ButtonAJustPressed ||  FlxG.ouyaController.o.pressed ) {
+					if (restartBtn.status == FlxButton.HIGHLIGHT) {
+						FlxG.play(Registry.SndPing, Registry.pingVolume);
+						FlxG.paused = false;
+						FlxG.resumeSounds();
+						this.resetLevel();
+
+						menuBtn.visible = false;
+						restartBtn.visible = false;
+						pauseInstructions.visible = false;
+						Registry.canJump = false;
+
+					}
+					else {
+						FlxG.play(Registry.SndPing, Registry.pingVolume);
+						FlxG.paused = false;
+						this.goToMenu(false);
+					}
+				}
+					}
+
 		protected function setNextLevel(Sprite1:FlxSprite, Sprite2:FlxSprite):void {
 			Registry.winniNextLevel = (Sprite2 as Exit)._nextLevel;
 			
@@ -1964,29 +1933,11 @@ package
 		private function onQuit():void
 		{
 			FlxG.paused = false;
-			// Go back to the MenuState
-			if (Registry.isWinnitron) {
-				FlxG.switchState(new WinniMenuState);
-			}
-			else if (Registry.isPCVersion) {
-				
-				FlxG.playMusic(Registry.SndEcho, 1.0);
-				
-				if (!Registry.oldSchoolMode) {
-					if (Registry.isPlayingCustomLevel==true)
-						FlxG.switchState(new PCCustomLevelState);
-					else if (Registry.isPlayingCustomLevel==false)
-						FlxG.switchState(new PCLevelSelectState);
-				}
-				else {
-					FlxG.switchState(new PCMenuState);
-				}
-				
-				
-			}
-			else {
-				FlxG.switchState(new MenuState);
-			}
+			FlxG.playMusic(Registry.SndEcho, 1.0);
+			if (!Registry.oldSchoolMode)
+				FlxG.switchState(new PCLevelSelectState);
+			else
+				FlxG.switchState(new PCMenuState);
 		}
 		
 		public function switchCharacters(withSound:Boolean=true, withFlicker:Number=1.5, withBubbles:Boolean=true):void
@@ -2067,12 +2018,15 @@ package
 						return;					
 					}				
 					else {
-						FlxG.switchState(new MenuState);*/
+*/
 						
 					//}
 				}
 				else if (!Registry.isPlayingDemo) {
-					FlxG.switchState(new MenuState);
+					// Defensive base-state fallback for the Android publication line.
+					// PCPlayState overrides levelOver(), so normal shipping completion
+					// does not execute this branch.
+					FlxG.switchState(new PCMenuState);
 				}
 			}
 		}
@@ -2198,7 +2152,6 @@ package
 			}
 			
 			if (!deathSound.active ) {
-				//FlxG.switchState(new MenuState);
 				
 			}
 		}		

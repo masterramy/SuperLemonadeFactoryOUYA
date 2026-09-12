@@ -113,15 +113,6 @@ package
 		
 		
 			
-			// Winnitron Levels
-			
-			[Embed(source = '../data/SLF_levelEditor/w_level1.oel', mimeType = 'application/octet-stream')] public static var wLevel1:Class;
-			[Embed(source = '../data/SLF_levelEditor/w_level2.oel', mimeType = 'application/octet-stream')] public static var wLevel2:Class;
-			[Embed(source = '../data/SLF_levelEditor/w_level3.oel', mimeType = 'application/octet-stream')] public static var wLevel3:Class;
-			[Embed(source = '../data/SLF_levelEditor/w_level4.oel', mimeType = 'application/octet-stream')] public static var wLevel4:Class;
-			[Embed(source = '../data/SLF_levelEditor/w_level5.oel', mimeType = 'application/octet-stream')] public static var wLevel5:Class;
-			[Embed(source = '../data/SLF_levelEditor/w_level6.oel', mimeType = 'application/octet-stream')] public static var wLevel6:Class;
-			
 			//regular levels;
 			
 			[Embed(source = '../data/SLF_levelEditor/PC/level1.oel', mimeType = 'application/octet-stream')] public static var Level1:Class;
@@ -353,14 +344,7 @@ package
 			
 			public static var isPCVersion:Boolean = true;	
 			
-			/**
-			 * Set to true if playing a custom loaded level.
-			 * Helps go back to the right menu.
-			 */
-			
-			public static var isPlayingCustomLevel:Boolean = false;
-			
-			/**
+/**
 			* Level number if playing Winnitron.
 			*/
 			
@@ -509,6 +493,62 @@ package
 			}
 
 			
+
+            public static function normaliseProgressArray(value:Object, label:String,
+                                                           unlockFirstTwo:Boolean):Array
+            {
+                var result:Array = new Array();
+                result[0] = label;
+                var i:int;
+                for (i = 1; i < 13; i++)
+                    result[i] = (unlockFirstTwo && i <= 2) ? "1" : "0";
+
+                var source:Array = value as Array;
+                if (source == null)
+                    return result;
+
+                for (i = 1; i < 13 && i < source.length; i++)
+                {
+                    var stored:String = String(source[i]);
+                    if (stored == "1") result[i] = "1";
+                    else if (stored == "0") result[i] = "0";
+                    // Any other/corrupt value keeps the fail-closed default.
+                }
+                return result;
+            }
+
+            public static function normaliseProgressSave(save:FlxSave):void
+            {
+                if (save == null || save.data == null) return;
+
+                save.data.warehouseLevelsComplete = normaliseProgressArray(save.data.warehouseLevelsComplete, "wh   ", true);
+                save.data.factoryLevelsComplete = normaliseProgressArray(save.data.factoryLevelsComplete, "fc   ", true);
+                save.data.mgmtLevelsComplete = normaliseProgressArray(save.data.mgmtLevelsComplete, "mgmt ", true);
+                save.data.hcwarehouseLevelsComplete = normaliseProgressArray(save.data.hcwarehouseLevelsComplete, "xwh  ", true);
+                save.data.hcfactoryLevelsComplete = normaliseProgressArray(save.data.hcfactoryLevelsComplete, "xfc  ", true);
+                save.data.hcmgmtLevelsComplete = normaliseProgressArray(save.data.hcmgmtLevelsComplete, "xmgmt", true);
+
+                save.data.warehouseLevelsTalk = normaliseProgressArray(save.data.warehouseLevelsTalk, "wh-talk   ", false);
+                save.data.factoryLevelsTalk = normaliseProgressArray(save.data.factoryLevelsTalk, "fc-talk   ", false);
+                save.data.mgmtLevelsTalk = normaliseProgressArray(save.data.mgmtLevelsTalk, "mgmt-talk ", false);
+                save.data.hcwarehouseLevelsTalk = normaliseProgressArray(save.data.hcwarehouseLevelsTalk, "xwh-talk  ", false);
+                save.data.hcfactoryLevelsTalk = normaliseProgressArray(save.data.hcfactoryLevelsTalk, "xfc-talk  ", false);
+                save.data.hcmgmtLevelsTalk = normaliseProgressArray(save.data.hcmgmtLevelsTalk, "xmgmt-talk", false);
+
+                save.data.warehouseLevelsTalkAndre = normaliseProgressArray(save.data.warehouseLevelsTalkAndre, "wh-talk-andre   ", false);
+                save.data.factoryLevelsTalkAndre = normaliseProgressArray(save.data.factoryLevelsTalkAndre, "fc-talk-andre   ", false);
+                save.data.mgmtLevelsTalkAndre = normaliseProgressArray(save.data.mgmtLevelsTalkAndre, "mgmt-talk-andre ", false);
+                save.data.hcwarehouseLevelsTalkAndre = normaliseProgressArray(save.data.hcwarehouseLevelsTalkAndre, "xwh-talk-andre  ", false);
+                save.data.hcfactoryLevelsTalkAndre = normaliseProgressArray(save.data.hcfactoryLevelsTalkAndre, "xfc-talk-andre  ", false);
+                save.data.hcmgmtLevelsTalkAndre = normaliseProgressArray(save.data.hcmgmtLevelsTalkAndre, "xmgmt-talk-andre", false);
+
+                save.data.warehouseCap = normaliseProgressArray(save.data.warehouseCap, "whcap   ", false);
+                save.data.factoryCap = normaliseProgressArray(save.data.factoryCap, "fccap   ", false);
+                save.data.mgmtCap = normaliseProgressArray(save.data.mgmtCap, "mgmtcap ", false);
+                save.data.hcwarehouseCap = normaliseProgressArray(save.data.hcwarehouseCap, "xwhcap  ", false);
+                save.data.hcfactoryCap = normaliseProgressArray(save.data.hcfactoryCap, "xfccap  ", false);
+                save.data.hcmgmtCap = normaliseProgressArray(save.data.hcmgmtCap, "xmgmtcap", false);
+            }
 
                 public function Registry()
                 {

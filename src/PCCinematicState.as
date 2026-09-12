@@ -460,7 +460,7 @@ package
 				nextText.text = "Press A to continue";
 			}
 			else {
-				nextText.text = "Press O to continue";
+				nextText.text = "Press " + Registry.p1Action + " to continue";
 			}
 			
 			_counter = 0;
@@ -930,30 +930,30 @@ package
 					}
 					else if (_counter == interval * 2) {
 						congrats.visible = false;
-						speechText.text = world3CompleteTexts[0];
+						speechText.text = world3CompleteTextshc[0];
 						this.pause();
 					}
 					else if (_counter == interval * 3) {
-						speechText.text = world3CompleteTexts[1];
+						speechText.text = world3CompleteTextshc[1];
 						this.pause();
 					}					
 					else if (_counter == interval * 4) {
 						congrats.visible = false;
-						speechText.text = world3CompleteTexts[2];
+						speechText.text = world3CompleteTextshc[2];
 						this.pause();
 					}
 					else if (_counter == interval * 5) {
-						speechText.text = world3CompleteTexts[3];
+						speechText.text = world3CompleteTextshc[3];
 						this.pause();
 					}					
 					else if (_counter == interval * 6) {
 						congrats.visible = false;
-						speechText.text = world3CompleteTexts[4];
+						speechText.text = world3CompleteTextshc[4];
 						this.pause();
 					}					
 					else if (_counter == interval * 7) {
 						congrats.visible = false;
-						speechText.text = world3CompleteTexts[5];
+						speechText.text = world3CompleteTextshc[5];
 						this.pause();
 					}					
 					else if (_counter == interval*8) {
@@ -988,7 +988,9 @@ package
 			
 			//FlxG.joystick.j1ButtonStartJustPressed || FlxG.keys.justPressed("ENTER") || FlxG.keys.justPressed(Registry.homeKey) ||
 			
-			if (  FlxG.ouyaController.y.pressed) {
+			if (FlxG.joystick.j1ButtonStartJustPressed ||
+				FlxG.keys.justPressed("Y") ||
+				FlxG.ouyaController.y.pressed) {
 				FlxG.fade(0xff000000, 1, fadeComplete);
 				currentVoiceOver.stop();
 				//FlxG.log("Y pressed");

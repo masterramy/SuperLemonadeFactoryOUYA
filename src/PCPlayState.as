@@ -75,15 +75,12 @@ package
 		{
 			super.update();
 			
-			if (FlxG.paused) {
-				deathSound.active = false;
-			}
-			
+			if (pauseFrameConsumed || FlxG.paused)
+				return;
 
-			
-			if (levelFinished) {
-				levelOverCount += FlxG.elapsed;
-			}
+    if (levelFinished) {
+        levelOverCount += FlxG.elapsed;
+    }
 			
 			if (__levelOver) {
 				if (FlxG.keys.justPressed(Registry.p1Left) || FlxG.keys.justPressed(Registry.p1Right) || FlxG.joystick.j1Stick1LeftJustPressed  || FlxG.joystick.j1Stick1RightJustPressed) {
@@ -162,10 +159,13 @@ package
 				over.y = FlxG.height / 2 - over.width / 2;
 				
 				if (!Registry.oldSchoolMode) {
-					var save:FlxSave = new FlxSave();
-					if(save.bind("SLF"))
-					{
-						var c:Array = new Array;
+                    var save:FlxSave = new FlxSave();
+                    if(save.bind("SLF"))
+                    {
+                        // Protect completion writes if a legacy/corrupt save exists or
+                        // storage recovered after an earlier bind failure this session.
+                        Registry.normaliseProgressSave(save);
+                        var c:Array = new Array;
 						var c1:Array = new Array;
 						var c2:Array = new Array;
 						var c3:Array = new Array;
@@ -188,7 +188,8 @@ package
 							}
 						
 							c = save.data.warehouseLevelsComplete;
-							c[Registry.levelNumber+1] = "1";
+							if (Registry.levelNumber < 12)
+								c[Registry.levelNumber+1] = "1";
 							save.data.warehouseLevelsComplete = c;
 							
 							if (hasCollectedCap) {
@@ -212,7 +213,8 @@ package
 						}
 						else if (Registry.levelType==1 && Registry.hardCore) {
 							c = save.data.hcwarehouseLevelsComplete;
-							c[Registry.levelNumber+1] = "1";
+							if (Registry.levelNumber < 12)
+								c[Registry.levelNumber+1] = "1";
 							save.data.hcwarehouseLevelsComplete = c;		
 							
 							if (hasCollectedCap) {
@@ -248,7 +250,8 @@ package
 							}
 							
 							c = save.data.factoryLevelsComplete;
-							c[Registry.levelNumber+1] = "1";
+							if (Registry.levelNumber < 12)
+								c[Registry.levelNumber+1] = "1";
 							save.data.factoryLevelsComplete = c;
 							
 							if (hasCollectedCap) {
@@ -272,7 +275,8 @@ package
 						
 						else if (Registry.levelType == 2 && Registry.hardCore){
 							c = save.data.hcfactoryLevelsComplete;	
-							c[Registry.levelNumber+1] = "1";
+							if (Registry.levelNumber < 12)
+								c[Registry.levelNumber+1] = "1";
 							save.data.hcfactoryLevelsComplete = c;		
 							
 							
@@ -308,7 +312,8 @@ package
 							}
 							
 							c = save.data.mgmtLevelsComplete;
-							c[Registry.levelNumber+1] = "1";
+							if (Registry.levelNumber < 12)
+								c[Registry.levelNumber+1] = "1";
 							save.data.mgmtLevelsComplete = c;		
 							
 							
@@ -333,7 +338,8 @@ package
 						}
 						else if (Registry.levelType==3 && Registry.hardCore){
 							c = save.data.hcmgmtLevelsComplete;	
-							c[Registry.levelNumber+1] = "1";
+							if (Registry.levelNumber < 12)
+								c[Registry.levelNumber+1] = "1";
 							save.data.hcmgmtLevelsComplete = c;	
 							
 							if (hasCollectedCap) {
@@ -411,29 +417,23 @@ package
 					return;
 					
 				}
-				if (Registry.isPlayingCustomLevel == true) {
-					FlxG.switchState(new PCCustomLevelState);
-					return;
-				}
-				else if (Registry.isPlayingCustomLevel == false) {
-					if (Registry.levelNumber!=12) {
+				if (Registry.levelNumber!=12) {
 						//Registry.levelNumber++;
 						
 						//FlxG.switchState(new PCLevelSelectState);
 						
 						return;
-					}
-					else if (Registry.levelNumber == 12) {
+				}
+				else if (Registry.levelNumber == 12) {
 						if (Registry.levelType==1)
 							Registry.level = XML(new Registry.LevelEndScene1);
 						else if (Registry.levelType==2)
 							Registry.level = XML(new Registry.LevelEndScene2);
 						else if (Registry.levelType==3)
-							Registry.level = XML(new Registry.LevelEndScene3);	
+							Registry.level = XML(new Registry.LevelEndScene3);
 							
 						FlxG.switchState(new PCCinematicState);
 						return;
-					}
 				}
 
 				
@@ -488,7 +488,13 @@ package
 			var _plays:int;
 		
 			var save:FlxSave = new FlxSave();
-			if(save.bind("SLF"))
+			if(!save.bind("SLF"))
+			{
+				FlxG.log("Progress backup skipped: could not bind SLF save.");
+				return;
+			}
+
+			Registry.normaliseProgressSave(save);
 			{
 				_wh = save.data.warehouseLevelsComplete ;
 				_ftry = save.data.factoryLevelsComplete ;
@@ -525,16 +531,25 @@ package
 			
 			var export:String = (_wh + ".\n" + _ftry + ".\n" + _mgmt + ".\n" + _hcwh + ".\n" + _hcftry + ".\n" + _hcmgmt + ".\n" + _whtalk + ".\n" + _ftrytalk + ".\n" + _mgmttalk + ".\n" + _hcwhtalk + ".\n" + _hcftrytalk + ".\n" + _hcmgmttalk + ".\n" + _whtalkandre + ".\n" + _ftrytalkandre + ".\n" + _mgmttalkandre + ".\n" + _hcwhtalkandre + ".\n" + _hcftrytalkandre + ".\n" + _hcmgmttalkandre + ".\n" + _whcap + ".\n" + _ftrycap + ".\n" + _mgmtcap + ".\n" + _hcwhcap + ".\n" + _hcftrycap + ".\n" + _hcmgmtcap + ".\n" + "number of plays: " + _plays + ".\n  This file was going to be encoded with a hash and salted.\n    It wasn't. ");
 			
-			var file:File = File.applicationStorageDirectory; 
-			file=file.resolvePath("SUPERLEMONADEFACTORY/progress_backup.slf");  
-			var fileStream:FileStream = new FileStream();  
-			fileStream.open(file, FileMode.WRITE);  
-			
-			fileStream.writeUTFBytes(export);  
-			
-			fileStream.addEventListener(Event.CLOSE, fileClosed);  
-			fileStream.close();
-			
+			var file:File = File.applicationStorageDirectory;
+			file = file.resolvePath("SUPERLEMONADEFACTORY/progress_backup.slf");
+			var tempFile:File = File.applicationStorageDirectory;
+			tempFile = tempFile.resolvePath("SUPERLEMONADEFACTORY/progress_backup.slf.tmp");
+			var fileStream:FileStream = new FileStream();
+			try
+			{
+				fileStream.open(tempFile, FileMode.WRITE);
+				fileStream.writeUTFBytes(export);
+				fileStream.close();
+				tempFile.moveTo(file, true);
+			}
+			catch (backupError:Error)
+			{
+				try { fileStream.close(); } catch (closeError:Error) {}
+				try { if (tempFile.exists) tempFile.deleteFile(); } catch (cleanupError:Error) {}
+				FlxG.log("Progress backup write failed: " + backupError.message);
+			}
+
 		}
 		
 		public function fileClosed(event:Event):void {  

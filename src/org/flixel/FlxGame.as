@@ -447,33 +447,29 @@ package org.flixel
 		 * 
 		 * @param	FlashEvent	Flash event.
 		 */
-		protected function onFocus(FlashEvent:Event=null):void
-		{
-			if(!_debuggerUp && !useSystemCursor)
-				flash.ui.Mouse.hide();
-			FlxG.resetInput();
-			_lostFocus = _focus.visible = false;
-			stage.frameRate = _flashFramerate;
-			FlxG.resumeSounds();
-		}
+        protected function onFocus(FlashEvent:Event=null):void
+        {
+            if(!_debuggerUp && !useSystemCursor)
+                flash.ui.Mouse.hide();
+            FlxG.resetInput();
+            _lostFocus = _focus.visible = false;
+            stage.frameRate = _flashFramerate;
+            if(!FlxG.paused)
+                FlxG.resumeSounds();
+        }
 		
 		/**
 		 * Internal event handler for input and focus.
 		 * 
 		 * @param	FlashEvent	Flash event.
 		 */
-		protected function onFocusLost(FlashEvent:Event=null):void
-		{
-			if((x != 0) || (y != 0))
-			{
-				x = 0;
-				y = 0;
-			}
-			//flash.ui.Mouse.show();
-			//_lostFocus = _focus.visible = true;
-			stage.frameRate = 30;
-			FlxG.pauseSounds();
-		}
+        protected function onFocusLost(FlashEvent:Event=null):void
+        {
+            //flash.ui.Mouse.show();
+            _lostFocus = true;
+            stage.frameRate = 30;
+            FlxG.pauseSounds();
+        }
 		
 		/**
 		 * Handles the onEnterFrame call and figures out how many updates and draw calls to do.

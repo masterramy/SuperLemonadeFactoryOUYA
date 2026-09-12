@@ -2,24 +2,8 @@ package
 {
 	import org.flixel.*;
 	import org.flixel.plugin.photonstorm.*;
-	import flash.net.FileReference;
 	import flash.desktop.NativeApplication;
-	import flash.events.Event;
-	import flash.events.IOErrorEvent;
-	import flash.events.ProgressEvent;
-	import flash.net.URLLoader;
-	import flash.net.URLRequest;
-	
-	import flash.net.URLLoaderDataFormat;    
-	import flash.utils.ByteArray;
-	import flash.utils.Endian;
-	
-	import com.gaslightgames.nativeExtensions.AIROUYAIAPANE.AIROUYAIAPANE;
-	import com.gaslightgames.nativeExtensions.AIROUYAIAPANE.AIROUYAIAPANEEvent;
-	import com.gaslightgames.nativeExtensions.AIROUYAIAPANE.Gamer;
-	import com.gaslightgames.nativeExtensions.AIROUYAIAPANE.Product;
-	import com.gaslightgames.nativeExtensions.AIROUYAIAPANE.Purchase;
-	import com.gaslightgames.nativeExtensions.AIROUYAIAPANE.Receipt;
+
 		
 
 	
@@ -43,7 +27,6 @@ package
 		
 		[Embed(source = '../data/SLF_levelEditor/level1.oel', mimeType = 'application/octet-stream')] private var Level1:Class;
 		
-		private var loader:URLLoader;
 		
 		
 		//	Test specific variables
@@ -60,7 +43,6 @@ package
 		public var optionsBtn:FlxButton ;
 		public var helpBtn:FlxButton ;
 		public var creditsBtn:FlxButton ;
-		public var customBtn:FlxButton ;
 		public var oldSchoolBtn:FlxButton ;
 		
 		public var txtLevel:FlxText;
@@ -80,18 +62,13 @@ package
 		
 		private var buttonEmitter:FlxEmitter;
 		
-		private var ouyaIap:AIROUYAIAPANE;
 		
-		private var buytimer:Number;
 		
 		private var headingTxt:FlxText;
 		
-		private var canProceed:Boolean;
 		
 		override public function create():void
 		{
-			canProceed = false;
-			buytimer = 10.0;
 			
 			Registry.oldSchoolMode = false;
 			
@@ -180,13 +157,6 @@ package
 			creditsBtn.label.color = 0xffffff;
 			buttonsGroup.add(creditsBtn);
 			creditsBtn.highlightedText = "Ingredients";
-			
-			
-			customBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 + 100, "BUY GAME", this.buy);
-			customBtn.soundOver = ping;
-			customBtn.soundDown = ping2;
-			customBtn.color = 0xC082FF;
-			customBtn.label.color = 0xffffff;
 			
 			
 			//oldSchoolBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 + 130, "old school", this.onOldSchool);
@@ -296,15 +266,19 @@ package
 				if(save.data.hcmgmtCap == null) 
 					save.data.hcmgmtCap = car6 as Array;
 					
-				if(save.data.plays == null) 
-					save.data.plays = 0 as Number;
-					
-				else
-					save.data.plays++;
-					
-				//FlxG.log("Number of plays:       " + save.data.plays );
-				//save.erase();
-				save.close();
+                if(save.data.plays == null)
+                    save.data.plays = 0 as Number;
+
+                else
+                    save.data.plays++;
+
+                //FlxG.log("Number of plays:       " + save.data.plays );
+                //save.erase();
+                // Canonicalize malformed/short legacy progress arrays before any
+                // customer navigation state or completion writer consumes them.
+                Registry.normaliseProgressSave(save);
+
+                save.close();
 			}
 			
 			headingTxt = new FlxText(FlxG.width/2 - 40 , FlxG.height-50, FlxG.width/2, "", true);
@@ -313,23 +287,9 @@ package
 			headingTxt.alignment = "left";
 			add(headingTxt);
 			
-			if (Registry.DEMO) {
-				headingTxt.text = "--DEMO MODE--\n" + headingTxt.text;
-				
-				buttonsGroup.add(customBtn);
-			}
-			else
-			{
-				headingTxt.text = "--FULL GAME UNLOCKED--\n" + headingTxt.text;
-				
-			}
+			headingTxt.text = "--FULL GAME UNLOCKED--\n" + headingTxt.text;
 			
-/*			loader = new URLLoader;
-			loader.load( new URLRequest( "http://superlemonadefactory.initialsgames.com/log.xml" ) );
-			loader.addEventListener( Event.COMPLETE, onLoaded );
-			loader.addEventListener( IOErrorEvent.IO_ERROR, loadError );*/
-			
-			//Get the version number
+//Get the version number
 			var xml : XML = NativeApplication.nativeApplication.applicationDescriptor;
 			var ns : Namespace = xml.namespace();
 			var version : String = xml.ns::versionNumber;
@@ -363,18 +323,7 @@ package
 			buttonEmitter.gravity = 0;
 			buttonEmitter.makeParticles(ImgLeaves,12,8,true,0);
 			add(buttonEmitter);
-			buttonEmitter.start(false, 0.25, 0.02);	
-			
-			if (Registry.DEMO)
-				check();
-			
-			
-			
-			
-			
-			
-			
-			
+			buttonEmitter.start(false, 0.25, 0.02);
 			// TURN OFF
 			
 			
@@ -388,7 +337,6 @@ package
 			
 			
 			
-			buytimer += FlxG.elapsed;
 			
 			if (!fading && !FlxG.mouse.visible )
 				this.handleButtons();
@@ -417,30 +365,8 @@ package
 			
 			if (FlxG.keys.justPressed(Registry.p1Action) || (FlxG.ouyaController != null && FlxG.ouyaController.o.pressed) || FlxG.keys.justPressed(Registry.p1Switch) || FlxG.keys.justPressed(Registry.p1Jump) || FlxG.joystick.j1ButtonAJustPressed  ) {
 				FlxG.play(Registry.SndPing, Registry.pingVolume);
-				if (currentButton<4)
-					this.beginFade();
-				else if (currentButton == 4)
-				{
-					//FlxG.switchState(new OuyaBuy());
-					
-					//this.beginFade();
-					
-					if (buytimer>2.0) {
-						this.buy();
-					}
-						
-				}
-				else if (currentButton == 5 && Registry.DEMO == true)
-				{
-					headingTxt.text = "PURCHASE GAME TO PLAY OLD SCHOOL MODE";
-				}
-				else if (currentButton == 5 && Registry.DEMO == false)
-				{
-					this.beginFade();
-				}
-					
+				this.beginFade();
 			}
-			
 			if (currentButton < 0) {
 				currentButton = buttonsGroup.length-1;
 			}
@@ -468,14 +394,6 @@ package
 		{
 			fading = true;
 			FlxG.fade(0xff000000, 0.4, completeFade);
-			
-			if (this.ouyaIap != null)
-			{
-				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PRODUCT, onProduct );
-				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PURCHASE, onPurchase );
-				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.RECEIPT, onReceipt );
-				this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.GAMER, onGamer );
-			}
 		}
 		
 		protected function completeFade():void
@@ -493,13 +411,7 @@ package
 					break;
 				case 3:
 					FlxG.switchState(new PCCreditsState());
-					break;	
-				case 4:
-					//FlxG.switchState(new OuyaBuy());
-					
-					this.buy();
-					
-					break;			
+					break;
 				case 5:
 					if (Registry.DEMO == true)
 					{
@@ -549,12 +461,7 @@ package
 			currentButton = 3;
 		}		
 		
-		public function onCustom():void 
-		{
-			//FlxG.switchState(new PCCustomLevelState());
-			FlxG.fade(0xff000000, 0.4, completeFade);
-			currentButton = 4;
-		}		
+
 		
 		public function onOldSchool():void 
 		{
@@ -570,98 +477,6 @@ package
 		
 		
 		
-		private function check():void
-		{
-			//FlxG.log("-------------checking--------------? : "  + buytimer);
-			//if (buytimer < 0.25) return;
-			
-			buytimer = 0;
-			  
-			var urlRequest:URLRequest = new URLRequest( "key.der" );        // Needs to be in your bin directory!
-			var urlLoader:URLLoader = new URLLoader();
-			urlLoader.addEventListener( Event.COMPLETE, onKeyLoadx );
-			urlLoader.dataFormat = URLLoaderDataFormat.BINARY;
-			urlLoader.load( urlRequest );
-			
-		}
-		private function onKeyLoadx( event:Event ):void
-		{
-			//currentButton = 0;
-			
-			//FlxG.log(" ON KEY LOADx ");
-			
-			( event.target as URLLoader ).removeEventListener( Event.COMPLETE, onKeyLoad );
-			
-			// Get the Key data - as a ByteArray so we can pass it to the ANE
-			var key:ByteArray = ( event.target as URLLoader ).data as ByteArray;
-			key.endian = Endian.LITTLE_ENDIAN;
-			
-			// Simple way to read the values and make sure your key matches.
-			this.checkKey( key );
-			
-			this.ouyaIap = AIROUYAIAPANE.getInstance( "1524df9e-c5bf-426d-86e9-2194298858c6", key, true );
-
-			this.ouyaIap.addEventListener( AIROUYAIAPANEEvent.RECEIPT, onReceiptx );
-
-			this.ouyaIap.getProductInfo( "SLF" );						// You will need a product on OUYAs server! Not yet updated to new ODK
-			this.ouyaIap.getGamerUUID();
-			
-			this.ouyaIap.getProductReceipts();
-		}
-		private function onReceiptx( iapEvent:AIROUYAIAPANEEvent ):void
-		{
-			canProceed = true;
-			//trace( "Receipt Received: " + iapEvent.status );
-			
-			//FlxG.log(" receipt xxx") ;
-			
-			var receipt:Receipt = iapEvent.data as Receipt;
-			if( null != receipt )
-			{
-				//FlxG.log( "Receipt Received: " + receipt.identifier + ", " + receipt.price + ", " + receipt.generatedDate + ", " + receipt.purchasedDate );
-				Registry.DEMO = false;
-				
-				headingTxt.text = "--FULL GAME UNLOCKED--";
-				
-				customBtn.kill();
-				
-				var save:FlxSave = new FlxSave();
-				if(save.bind("SLF"))
-				{
-					save.data.buy = "1"; 
-					
-					var c:Array = new Array;
-					var c1:Array = new Array;
-					var c2:Array = new Array;
-					//var c3:Array = new Array;
-					
-					for (var i2:int = 3; i2 < 13; i2++) 
-					{
-						c = save.data.warehouseLevelsComplete;
-						c[i2] = "1";
-						save.data.warehouseLevelsComplete = c;
-						
-						c1 = save.data.mgmtLevelsComplete;
-						c1[i2] = "1";
-						save.data.mgmtLevelsComplete = c1;
-						
-						c2 = save.data.factoryLevelsComplete;
-						c2[i2] = "1";
-						save.data.factoryLevelsComplete = c2;
-					}
-					
-					save.close();
-				}
-				
-				FlxG.switchState(new PCMenuState());
-				
-				
-			}
-			else
-			{
-				//FlxG.log( "---no buys--- " );
-			}
-		}
 		
 		
 		
@@ -670,140 +485,13 @@ package
 		
 		
 		
-		private function buy():void
-		{
-			//FlxG.log("-------------BUYING-------------- buyTimer? : "  + buytimer);
-			//if (buytimer < 0.25) return;
-			
-			buytimer = 0;
-			  
-			var urlRequest:URLRequest = new URLRequest( "key.der" );        // Needs to be in your bin directory!
-			var urlLoader:URLLoader = new URLLoader();
-			urlLoader.addEventListener( Event.COMPLETE, onKeyLoad );
-			urlLoader.dataFormat = URLLoaderDataFormat.BINARY;
-			urlLoader.load( urlRequest );
-			
-		}
 		
-		private function onKeyLoad( event:Event ):void
-		{
-			//currentButton = 0;
-			
-			//FlxG.log(" ON KEY LOAD ");
-			
-			( event.target as URLLoader ).removeEventListener( Event.COMPLETE, onKeyLoad );
-			
-			// Get the Key data - as a ByteArray so we can pass it to the ANE
-			var key:ByteArray = ( event.target as URLLoader ).data as ByteArray;
-			key.endian = Endian.LITTLE_ENDIAN;
-			
-			// Simple way to read the values and make sure your key matches.
-			this.checkKey( key );
-			
-			this.ouyaIap = AIROUYAIAPANE.getInstance( "1524df9e-c5bf-426d-86e9-2194298858c6", key, true );
-			this.ouyaIap.addEventListener( AIROUYAIAPANEEvent.PRODUCT, onProduct );
-			this.ouyaIap.addEventListener( AIROUYAIAPANEEvent.PURCHASE, onPurchase );
-			this.ouyaIap.addEventListener( AIROUYAIAPANEEvent.RECEIPT, onReceipt );
-			this.ouyaIap.addEventListener( AIROUYAIAPANEEvent.GAMER, onGamer );
-			this.ouyaIap.addEventListener( AIROUYAIAPANEEvent.CANCEL, onCancel );
-			this.ouyaIap.getProductInfo( "SLF" );						// You will need a product on OUYAs server! Not yet updated to new ODK
-			this.ouyaIap.getGamerUUID();
-		}
 		
-		private function onCancel( iapEvent:AIROUYAIAPANEEvent):void
-		{
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PRODUCT, onProduct );
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.PURCHASE, onPurchase );
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.RECEIPT, onReceipt );
-			this.ouyaIap.removeEventListener( AIROUYAIAPANEEvent.GAMER, onGamer );
-		}
 		
-		private function onProduct( iapEvent:AIROUYAIAPANEEvent ):void
-		{
-			var product:Product = iapEvent.data as Product;
-			if( null != product )
-			{
-				//FlxG.log( "Product Received: " + product.identifier + ", " + product.name + ", " + product.price );
-				
-				this.ouyaIap.makeProductPurchase( product );
-			}
-		}
 		
-		private function onPurchase( iapEvent:AIROUYAIAPANEEvent ):void
-		{
-			var purchase:Purchase = iapEvent.data as Purchase;
-			if( null != purchase )
-			{
-				//FlxG.log( "Purchase Made: " + purchase.identifier + ", " + purchase.name + ", " + purchase.price );
-				
-				this.ouyaIap.getProductReceipts();									// This call only works on ENTITLEMENTS!  Make sure you've bought one first to see a receipt.
-			}
-		}
 		
-		private function onReceipt( iapEvent:AIROUYAIAPANEEvent ):void
-		{
-			//trace( "Receipt Received: " + iapEvent.status );
-			
-			var receipt:Receipt = iapEvent.data as Receipt;
-			if( null != receipt )
-			{
-				//FlxG.log( "Receipt Received: " + receipt.identifier + ", " + receipt.price + ", " + receipt.generatedDate + ", " + receipt.purchasedDate );
-				Registry.DEMO = false;
-				
-				headingTxt.text = "--FULL GAME UNLOCKED--";
-				
-				var save:FlxSave = new FlxSave();
-				if(save.bind("SLF"))
-				{
-					save.data.buy = "1"; 
-					
-					var c:Array = new Array;
-					var c1:Array = new Array;
-					var c2:Array = new Array;
-					//var c3:Array = new Array;
-					
-					for (var i2:int = 3; i2 < 13; i2++) 
-					{
-						c = save.data.warehouseLevelsComplete;
-						c[i2] = "1";
-						save.data.warehouseLevelsComplete = c;
-						
-						c1 = save.data.mgmtLevelsComplete;
-						c1[i2] = "1";
-						save.data.mgmtLevelsComplete = c1;
-						
-						c2 = save.data.factoryLevelsComplete;
-						c2[i2] = "1";
-						save.data.factoryLevelsComplete = c2;
-					}
-					
-					save.close();
-				}
-				
-			}
-		}
 		
-		private function onGamer( iapEvent:AIROUYAIAPANEEvent ):void
-		{
-			var gamer:Gamer = iapEvent.data as Gamer;
-			if( null != gamer )
-			{
-				//FlxG.log( "Gamer UUID Received: " + gamer.udid );
-				
-			}
-		}
 		
-		private function checkKey( key:ByteArray ):void
-		{
-			key.position = 0;
-			var keyStr:String = "";
-			while( key.bytesAvailable )
-			{
-				var byte:uint = key.readUnsignedByte();
-				keyStr += byte.toString(16).substr(-2);
-			}
-			////FlxG.log( "Key: " + keyStr );
-		}
 		
 
 
