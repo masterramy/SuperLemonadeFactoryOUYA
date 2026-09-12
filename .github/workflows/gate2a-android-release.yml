@@ -52,7 +52,7 @@ jobs:
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: "17.0.20.1+1"
+          java-version: "17.0.20+8"
 
       - name: Set up AIR SDK
         uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1 # signed v2 target
