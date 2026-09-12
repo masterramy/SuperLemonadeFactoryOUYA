@@ -68,7 +68,13 @@ package
 			root.stage.addEventListener(TouchEvent.TOUCH_BEGIN, onTouchBegin, false, 1000, true);
 			root.stage.addEventListener(TouchEvent.TOUCH_MOVE, onTouchMove, false, 1000, true);
 			root.stage.addEventListener(TouchEvent.TOUCH_END, onTouchEnd, false, 1000, true);
+			root.stage.addEventListener(Event.DEACTIVATE, onDeactivate, false, 1000, true);
 			root.addEventListener(Event.ENTER_FRAME, onFrame, false, 0, true);
+		}
+
+		private function onDeactivate(e:Event):void
+		{
+			releaseAll();
 		}
 
 		private function suppressSynthesizedMouse(e:TouchEvent):void
@@ -86,8 +92,25 @@ package
 			if (FlxG.state == null) return "none";
 			if (FlxG.state is PCIntroState) return "intro";
 			if (FlxG.state is PCCinematicState) return "cinematic";
-			if (FlxG.state is PCHelpState || FlxG.state is PCCreditsState || FlxG.state is PrizeState) return "back";
+			if (FlxG.state is PCHelpState || FlxG.state is PCPrivacyState ||
+				FlxG.state is PCCreditsState || FlxG.state is PrizeState) return "back";
 			return "menu";
+		}
+
+		private function isHelpPrivacyTarget(stageX:Number, stageY:Number):Boolean
+		{
+			var help:PCHelpState = FlxG.state as PCHelpState;
+			if (help == null || help.privacyBtn == null) return false;
+			var bounds:Rectangle = gameBounds();
+			if (!bounds.contains(stageX, stageY) || bounds.width <= 0 || bounds.height <= 0)
+				return false;
+
+			var gameX:Number = (stageX - bounds.x) / bounds.width * FlxG.width;
+			var gameY:Number = (stageY - bounds.y) / bounds.height * FlxG.height;
+			return gameX >= help.privacyBtn.x &&
+				gameX <= help.privacyBtn.x + help.privacyBtn.width &&
+				gameY >= help.privacyBtn.y &&
+				gameY <= help.privacyBtn.y + help.privacyBtn.height;
 		}
 
 		private function gameBounds():Rectangle
@@ -177,7 +200,11 @@ package
 				if (state != null && e.stageY >= bounds.y + bounds.height * 0.58 && e.stageY <= bounds.y + bounds.height * 0.80)
 				{
 					FlxG.paused = false;
-					if (e.stageX < bounds.x + bounds.width * 0.5) state.resetLevel();
+					if (e.stageX < bounds.x + bounds.width * 0.5)
+					{
+						FlxG.resumeSounds();
+						state.resetLevel();
+					}
 					else state.goToMenu(false);
 				}
 				return;
@@ -232,7 +259,12 @@ package
 				var threshold:Number = Math.min(bounds.width, bounds.height) * 0.08;
 				if (Math.max(ax, ay) < threshold)
 				{
-					if (FlxG.state is PCIntroState)
+					if (FlxG.state is PCHelpState && isHelpPrivacyTarget(e.stageX, e.stageY))
+					{
+						// Reuse Help's existing DOWN route to Privacy/About.
+						pulseKey(KEY_DOWN);
+					}
+					else if (FlxG.state is PCIntroState)
 					{
 						pulseKey(KEY_X);
 						setTimeout(function():void { if (FlxG.state is PCIntroState) pulseKey(KEY_X); }, 180);
