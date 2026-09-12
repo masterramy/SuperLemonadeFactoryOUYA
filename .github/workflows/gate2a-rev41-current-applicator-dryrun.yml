@@ -22,8 +22,8 @@ jobs:
       - name: Fetch and verify current authenticated Drive applicator
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-570c-81fd-9ec0-fd5ba7555d41/raw?se=2026-09-12T21%3A27%3A28Z&sp=r&sv=2026-02-06&sr=b&scid=f41cea43-ccc4-5fca-9ec1-a16aabddd99a&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A14%3A02Z&ske=2026-09-13T01%3A14%3A02Z&sks=b&skv=2026-02-06&sig=2/OlWGETlJFeAk4IJKDxsMOucNQj9zZtbcg%2BDAvsAfs%3D' -o /tmp/app.py
-          echo 'fab29694a65d368d59d0aedba98fa41309e5e5441d9068133a792e8cacf1caff  /tmp/app.py' | sha256sum --check --strict
+          curl --fail --location --silent --show-error 'https://sdmntprwestus.oaiusercontent.com/files/00000000-0a14-8230-87cb-0bbec58e9691/raw?se=2026-09-12T21%3A31%3A04Z&sp=r&sv=2026-02-06&sr=b&scid=ba42c663-a8e2-5db4-a98d-369986ab8fcf&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A16%3A33Z&ske=2026-09-13T01%3A16%3A33Z&sks=b&skv=2026-02-06&sig=7d9NjRQkp2Qj9IcSnmZw4FRERY%2BuZMwe3cpCFdM8/yg%3D' -o /tmp/app.py
+          echo '5e9f9539588a50c0447b2d07d9cb2e2fee6f5bd38f29442b769477f7f1f7ca7d  /tmp/app.py' | sha256sum --check --strict
           python -m py_compile /tmp/app.py
       - name: Full fail-closed dry-run
         run: |
