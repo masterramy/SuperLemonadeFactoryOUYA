@@ -1,4 +1,4 @@
-name: Gate2A rev41 controlled notice write
+name: Gate2A rev41 exact-license blob repair
 on:
   push:
     branches:
@@ -6,10 +6,10 @@ on:
 permissions:
   contents: write
 jobs:
-  notice-write:
+  exact-license-repair:
     runs-on: ubuntu-24.04
     steps:
-      - name: Clone and verify post-source exact-final
+      - name: Clone and verify notice commit preimage
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -17,50 +17,48 @@ jobs:
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
           cd repo
           git checkout gate2a-rev41-exact-final
-          test "$(git rev-parse HEAD)" = "0f93e1c68d9f02505e908f9aa30a93cc1da4f7b3"
-          test "$(git rev-parse HEAD^{tree})" = "aff31b45da9a45771073aa594b953c9c29d6750a"
+          test "$(git rev-parse HEAD)" = "d15bccaf9c09dad65ab431fbf2601f9a335f4de5"
+          test "$(git rev-parse HEAD^{tree})" = "a4868f1cd4ecb57da12e1d1d877405d97b0d51f5"
+          test "$(git rev-parse HEAD:third_party/licenses/as3-controller-input-MIT.txt)" = "9cede535fda51085173331cb202face1bd2a883c"
           test -z "$(git status --porcelain)"
-      - name: Fetch and verify sealed notice kit
+      - name: Fetch and verify sealed notice payload
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-7c30-81fd-bc57-dcfde22c3156/raw?se=2026-09-12T21%3A36%3A04Z&sp=r&sv=2026-02-06&sr=b&scid=8a7421ea-798b-5749-b592-a288b3e15f68&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T03%3A22%3A52Z&ske=2026-09-13T03%3A22%3A52Z&sks=b&skv=2026-02-06&sig=0C79Wy8gAoLYACmKO8b7qsKjG97nJK5miyD5r54bOeM%3D' -o /tmp/notice_installer.py
           curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-ccc0-81fd-8245-c0c01d94cdd7/raw?se=2026-09-12T21%3A36%3A09Z&sp=r&sv=2026-02-06&sr=b&scid=58b1b841-9e73-5945-9a8d-7f01c1b3da9a&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A06%3A45Z&ske=2026-09-13T01%3A06%3A45Z&sks=b&skv=2026-02-06&sig=oqOCELK3usBxrNq/4hhW6yZP6Md9rkkDJnFkag7mZSE%3D' -o /tmp/gate2a_rev41_notice_payload.zip
-          echo '04825c050ae6786f1607035b2794744d8cb6f3286582a36c0bb7c1e62634a48c  /tmp/notice_installer.py' | sha256sum --check --strict
           echo 'cddf2779327b89946c4781883a8d1fd71a9c9e47c28001ec654caf69f2280738  /tmp/gate2a_rev41_notice_payload.zip' | sha256sum --check --strict
-          python -m py_compile /tmp/notice_installer.py
-      - name: Reconfirm dry-run then write exact notice paths
+      - name: Preserve exact upstream controller-license bytes
         run: |
           set -euo pipefail
           cd repo
-          python /tmp/notice_installer.py /tmp/gate2a_rev41_notice_payload.zip
-          test -z "$(git status --porcelain)"
-          python /tmp/notice_installer.py /tmp/gate2a_rev41_notice_payload.zip --write
-          git diff --check
-          actual="$(git ls-files --others --exclude-standard | LC_ALL=C sort)"
-          expected="$(cat <<'EOF'
-          THIRD_PARTY_NOTICES.md
-          third_party/licenses/as3-controller-input-MIT.txt
-          third_party/licenses/flixel-2.55-MIT.txt
-          third_party/licenses/flixel-power-tools-Simplified-BSD.txt
-          EOF
-          )"
-          expected="$(printf '%s\n' "$expected" | sed 's/^[[:space:]]*//' | LC_ALL=C sort)"
-          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
+          test "$(cat .gitattributes)" = $'# Auto detect text files and perform LF normalization\n* text=auto'
+          printf '\nthird_party/licenses/as3-controller-input-MIT.txt -text\n' >> .gitattributes
+          python - <<'PY'
+          import zipfile, pathlib, hashlib
+          z=zipfile.ZipFile('/tmp/gate2a_rev41_notice_payload.zip')
+          b=z.read('third_party/licenses/as3-controller-input-MIT.txt')
+          assert hashlib.sha256(b).hexdigest()=='b99b3b30b265cd7aee751b99506ff1266829095dd581c1391df32090f5249780'
+          pathlib.Path('third_party/licenses/as3-controller-input-MIT.txt').write_bytes(b)
+          PY
+          test "$(git check-attr text -- third_party/licenses/as3-controller-input-MIT.txt)" = 'third_party/licenses/as3-controller-input-MIT.txt: text: unset'
+          test "$(git hash-object --no-filters third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
+          git add -- .gitattributes third_party/licenses/as3-controller-input-MIT.txt
+          git diff --cached --check
+          test "$(git rev-parse :third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
+          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' '.gitattributes' 'third_party/licenses/as3-controller-input-MIT.txt' | LC_ALL=C sort)"
           test "$actual" = "$expected"
-          test "$(git ls-files --others --exclude-standard | wc -l)" -eq 4
-      - name: Refuse remote drift then commit and push notice-only result
+      - name: Refuse remote drift then commit and push exact-blob repair
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git -C repo fetch origin gate2a-rev41-exact-final
-          test "$(git -C repo rev-parse FETCH_HEAD)" = "0f93e1c68d9f02505e908f9aa30a93cc1da4f7b3"
-          test "$(git -C repo rev-parse HEAD)" = "0f93e1c68d9f02505e908f9aa30a93cc1da4f7b3"
+          test "$(git -C repo rev-parse FETCH_HEAD)" = "d15bccaf9c09dad65ab431fbf2601f9a335f4de5"
+          test "$(git -C repo rev-parse HEAD)" = "d15bccaf9c09dad65ab431fbf2601f9a335f4de5"
           git -C repo config user.name 'Gate 2A Alfred'
           git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
-          git -C repo add -- THIRD_PARTY_NOTICES.md third_party/licenses/as3-controller-input-MIT.txt third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt
-          test "$(git -C repo diff --cached --name-only | wc -l)" -eq 4
-          git -C repo commit -m 'Gate 2A rev41: install third-party notices'
-          echo "NOTICE_COMMIT=$(git -C repo rev-parse HEAD)"
-          echo "NOTICE_TREE=$(git -C repo rev-parse HEAD^{tree})"
+          git -C repo commit -m 'Gate 2A rev41: preserve exact controller license blob'
+          echo "NOTICE_REPAIR_COMMIT=$(git -C repo rev-parse HEAD)"
+          echo "NOTICE_REPAIR_TREE=$(git -C repo rev-parse HEAD^{tree})"
+          test "$(git -C repo rev-parse HEAD:third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
           git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
