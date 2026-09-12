@@ -39,8 +39,8 @@ package
 		override public function destroy():void
 		{
 			
-			//	Important! Clear out the scrolling image from the plugin, otherwise resources will get messed right up after a while
-			//  FlxScrollZone.clear();
+			// Important! Unregister only this conveyor from the shared scrolling-image plugin.
+			FlxScrollZone.remove(this);
 			
 			super.destroy();
 		}
