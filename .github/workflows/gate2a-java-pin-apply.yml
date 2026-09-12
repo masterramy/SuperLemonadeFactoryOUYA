@@ -23,13 +23,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedHead = '0e6bc4738827a88e88b85601c556a34afb94c294'
+          $expectedHead = 'f8b64cec087051d600b5fea39cadf4a326077866'
           $actualHead = (& git rev-parse HEAD).Trim().ToLowerInvariant()
           if ($actualHead -ne $expectedHead) { throw "Exact-final moved: expected $expectedHead, got $actualHead" }
           $paths = @('.github/workflows/gate2a-android-release.yml','.github/workflows/gate2a-air-baseline.yml')
           foreach ($path in $paths) {
             $text = [IO.File]::ReadAllText($path)
-            $old = 'java-version: "17.0.20.1+1"'
+            $old = 'java-version: "17.0.20+8"'
             $new = 'java-version: "17.0.20+101"'
             $count = ([regex]::Matches($text,[regex]::Escape($old))).Count
             if ($count -ne 1) { throw "$path expected exactly one old Java pin, found $count" }
@@ -41,11 +41,11 @@ jobs:
             throw "Unexpected changed files: $($changed -join ', ')"
           }
           $diff = (& git diff --unified=0)
-          $removed = @($diff | Select-String '^\-.*java-version: "17\.0\.20\.1\+1"').Count
+          $removed = @($diff | Select-String '^\-.*java-version: "17\.0\.20\+8"').Count
           $added = @($diff | Select-String '^\+.*java-version: "17\.0\.20\+101"').Count
           if ($removed -ne 2 -or $added -ne 2) { throw "Unexpected Java-pin diff counts removed=$removed added=$added" }
           git config user.name 'Gate2A QA Worker'
           git config user.email 'actions@users.noreply.github.com'
           git add -- $paths
-          git commit -m 'Gate 2A rev41: correct exact Temurin Java pin'
+          git commit -m 'Gate 2A rev41: bind Temurin security-refresh build'
           git push origin HEAD:gate2a-rev41-exact-final
