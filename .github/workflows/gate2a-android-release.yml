@@ -133,7 +133,7 @@ jobs:
             @(
               (Get-ChildItem -Directory (Join-Path $androidSdk 'platforms') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
               (Get-ChildItem -Directory (Join-Path $androidSdk 'build-tools') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-              (if (Test-Path (Join-Path $androidSdk 'platform-tools')) { 'platform-tools' })
+              $(if (Test-Path (Join-Path $androidSdk 'platform-tools')) { 'platform-tools' })
             ) | Set-Content -Path dist/android-sdk-installed-packages.txt -Encoding utf8
           }
 
