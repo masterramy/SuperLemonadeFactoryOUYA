@@ -1,0 +1,453 @@
+name: Gate 2A Android Release Bundle
+
+on:
+  push:
+    branches:
+      - gate2a-android-modernization
+      - gate2a-release-hardening-staging
+  workflow_dispatch:
+    inputs:
+      production_signing:
+        description: "Use private production signing secrets instead of a disposable validation certificate"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  release-aab:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      PRODUCTION_SIGNING: ${{ github.event_name == 'workflow_dispatch' && inputs.production_signing }}
+
+    steps:
+      - name: Checkout triggering revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = "$env:GITHUB_SHA".Trim().ToLowerInvariant()
+          $actual = (& git rev-parse HEAD).Trim().ToLowerInvariant()
+          $sourceTree = (& git rev-parse 'HEAD^{tree}').Trim().ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Checkout/source identity mismatch. Expected $expected, got $actual."
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          @(
+            "github_sha=$expected"
+            "checkout_head=$actual"
+            "source_tree=$sourceTree"
+          ) | Set-Content -Path dist/source-provenance.txt -Encoding utf8
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1 # signed v2 target
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+
+      - name: Record exact build environment and SDK byte receipts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+          @(
+            "image_os=$env:ImageOS"
+            "image_version=$env:ImageVersion"
+            "runner_os=$env:RUNNER_OS"
+            "runner_arch=$env:RUNNER_ARCH"
+            "github_sha=$env:GITHUB_SHA"
+            "checkout_head=$((& git rev-parse HEAD).Trim())"
+            "source_tree=$((& git rev-parse 'HEAD^{tree}').Trim())"
+            "action_checkout=11d5960a326750d5838078e36cf38b85af677262"
+            "action_setup_java=cf277c60eb25467037889841efdb72551f06f6c3"
+            "action_setup_air=1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1"
+            "action_upload_artifact=ea165f8d65b6e75b540449e92b4886f43607fa02"
+            "action_download_artifact=d3f86a106a0bac45b974a628896c90dbdf5c8093"
+          ) | Set-Content -Path dist/build-environment.txt -Encoding utf8
+
+          "java_version_begin" | Add-Content dist/build-environment.txt
+          (& java -version 2>&1 | Out-String).Trim() | Add-Content dist/build-environment.txt
+          "java_version_end" | Add-Content dist/build-environment.txt
+
+          if ([string]::IsNullOrWhiteSpace($env:AIR_HOME) -or -not (Test-Path $env:AIR_HOME)) {
+            throw "AIR_HOME is unavailable after AIR SDK setup."
+          }
+          $airRoot = (Resolve-Path $env:AIR_HOME).Path
+          $airEntries = Get-ChildItem -Path $airRoot -Recurse -File |
+            ForEach-Object {
+              $relative = [IO.Path]::GetRelativePath($airRoot, $_.FullName).Replace('\','/')
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+              [PSCustomObject]@{ Path = $relative; Sha256 = $hash; Bytes = $_.Length }
+            } | Sort-Object Path
+          if (@($airEntries).Count -eq 0) { throw "Resolved AIR SDK tree contains no files." }
+          $airEntries | ForEach-Object { "$($_.Sha256)  $($_.Bytes)  $($_.Path)" } |
+            Set-Content -Path dist/air-sdk-sha256-manifest.txt -Encoding utf8
+          $airManifestSha = (Get-FileHash -Algorithm SHA256 dist/air-sdk-sha256-manifest.txt).Hash.ToLowerInvariant()
+          $airFileCount = @($airEntries).Count
+          $airByteCount = ($airEntries | Measure-Object -Property Bytes -Sum).Sum
+          "air_sdk_requested=51.3.4.3" | Add-Content dist/build-environment.txt
+          "air_sdk_root=$airRoot" | Add-Content dist/build-environment.txt
+          "air_sdk_file_count=$airFileCount" | Add-Content dist/build-environment.txt
+          "air_sdk_tree_bytes=$airByteCount" | Add-Content dist/build-environment.txt
+          "air_sdk_manifest_sha256=$airManifestSha" | Add-Content dist/build-environment.txt
+          (amxmlc -version 2>&1 | Out-String).Trim() | Add-Content dist/build-environment.txt
+          (adt -version 2>&1 | Out-String).Trim() | Add-Content dist/build-environment.txt
+
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) {
+            throw "No usable Android SDK path was found for provenance."
+          }
+          $androidSdk = (Resolve-Path $androidSdk).Path
+          "android_sdk_root=$androidSdk" | Add-Content dist/build-environment.txt
+
+          $androidJar = Join-Path $androidSdk 'platforms/android-36/android.jar'
+          if (-not (Test-Path -LiteralPath $androidJar -PathType Leaf)) {
+            throw "Android 36 android.jar is missing."
+          }
+          $androidJarSha = (Get-FileHash -Algorithm SHA256 $androidJar).Hash.ToLowerInvariant()
+          "android_36_android_jar_sha256=$androidJarSha" | Add-Content dist/build-environment.txt
+
+          $sdkManager = Get-Command sdkmanager -ErrorAction SilentlyContinue
+          if ($sdkManager) {
+            (& sdkmanager --list_installed 2>&1 | Out-String).Trim() |
+              Set-Content -Path dist/android-sdk-installed-packages.txt -Encoding utf8
+          } else {
+            @(
+              (Get-ChildItem -Directory (Join-Path $androidSdk 'platforms') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+              (Get-ChildItem -Directory (Join-Path $androidSdk 'build-tools') -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+              $(if (Test-Path (Join-Path $androidSdk 'platform-tools')) { 'platform-tools' })
+            ) | Set-Content -Path dist/android-sdk-installed-packages.txt -Encoding utf8
+          }
+
+          function Write-TreeReceipt([string]$Root, [string]$Label) {
+            if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+              throw "Required Android SDK subtree missing: $Root"
+            }
+            $resolved = (Resolve-Path $Root).Path
+            $entries = Get-ChildItem -Path $resolved -Recurse -File |
+              ForEach-Object {
+                $relative = [IO.Path]::GetRelativePath($resolved, $_.FullName).Replace('\','/')
+                $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+                [PSCustomObject]@{ Path=$relative; Sha256=$hash; Bytes=$_.Length }
+              } | Sort-Object Path
+            if (@($entries).Count -eq 0) { throw "Android SDK subtree is empty: $Root" }
+            $manifest = "dist/android-sdk-$Label-sha256-manifest.txt"
+            $entries | ForEach-Object { "$($_.Sha256)  $($_.Bytes)  $($_.Path)" } |
+              Set-Content -Path $manifest -Encoding utf8
+            $manifestSha = (Get-FileHash -Algorithm SHA256 $manifest).Hash.ToLowerInvariant()
+            $fileCount = @($entries).Count
+            $byteCount = ($entries | Measure-Object -Property Bytes -Sum).Sum
+            "android_sdk_${Label}_file_count=$fileCount" | Add-Content dist/build-environment.txt
+            "android_sdk_${Label}_tree_bytes=$byteCount" | Add-Content dist/build-environment.txt
+            "android_sdk_${Label}_manifest_sha256=$manifestSha" | Add-Content dist/build-environment.txt
+          }
+
+          Write-TreeReceipt (Join-Path $androidSdk 'platforms/android-36') 'platform-android-36'
+          $buildToolRoots = Get-ChildItem -Directory (Join-Path $androidSdk 'build-tools') -ErrorAction Stop | Sort-Object Name
+          if (@($buildToolRoots).Count -eq 0) { throw "No Android build-tools revisions are installed." }
+          foreach ($bt in $buildToolRoots) {
+            $label = ('build-tools-' + ($bt.Name -replace '[^A-Za-z0-9._-]','_'))
+            Write-TreeReceipt $bt.FullName $label
+          }
+          Write-TreeReceipt (Join-Path $androidSdk 'platform-tools') 'platform-tools'
+
+          foreach ($tool in @('adb','aapt2','apksigner','zipalign')) {
+            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
+            if ($cmd) {
+              "${tool}_path=$($cmd.Source)" | Add-Content dist/build-environment.txt
+              try { (& $tool --version 2>&1 | Out-String).Trim() | Add-Content dist/build-environment.txt } catch {}
+            }
+          }
+
+
+      - name: Verify release notice source identities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $requiredNotices = @(
+            'LICENSE',
+            'THIRD_PARTY_NOTICES.md',
+            'third_party/licenses/flixel-2.55-MIT.txt',
+            'third_party/licenses/flixel-power-tools-Simplified-BSD.txt',
+            'third_party/licenses/as3-controller-input-MIT.txt'
+          )
+          foreach ($notice in $requiredNotices) {
+            if (-not (Test-Path -LiteralPath $notice -PathType Leaf)) {
+              throw "Required release notice file missing: $notice"
+            }
+          }
+          $expectedNoticeBlobs = @{
+            'third_party/licenses/flixel-2.55-MIT.txt' = '5fcbbbdf0d8c043114dbf485b1f0fd7f776dd086'
+            'third_party/licenses/flixel-power-tools-Simplified-BSD.txt' = 'eb85c14d618e818c2bec2bba6ec4a82e5dea7b84'
+            'third_party/licenses/as3-controller-input-MIT.txt' = '21e3babda57413417549e308c61b9597bd0aa6e1'
+          }
+          foreach ($notice in $expectedNoticeBlobs.Keys) {
+            $actualBlob = ((git hash-object -- $notice) | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actualBlob -ne $expectedNoticeBlobs[$notice]) {
+              throw "Third-party notice blob mismatch for $notice. Expected $($expectedNoticeBlobs[$notice]), got $actualBlob"
+            }
+          }
+          @(
+            "flixel-2.55-MIT.txt 5fcbbbdf0d8c043114dbf485b1f0fd7f776dd086"
+            "flixel-power-tools-Simplified-BSD.txt eb85c14d618e818c2bec2bba6ec4a82e5dea7b84"
+            "as3-controller-input-MIT.txt 21e3babda57413417549e308c61b9597bd0aa6e1"
+          ) | Set-Content -Path dist/notice-source-identities.txt -Encoding utf8
+
+      - name: Compile release SWF
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Package Android App Bundle
+        env:
+          SLF_ANDROID_KEYSTORE_BASE64: ${{ secrets.SLF_ANDROID_KEYSTORE_BASE64 }}
+          SLF_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.SLF_ANDROID_KEYSTORE_PASSWORD }}
+          SLF_ANDROID_EXPECTED_CERT_SHA256: ${{ secrets.SLF_ANDROID_EXPECTED_CERT_SHA256 }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-release.aab
+          Remove-Item -Force -ErrorAction SilentlyContinue release-signing.p12
+
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) {
+            throw "No usable Android SDK path was found on the GitHub runner."
+          }
+
+          $keyPath = Join-Path $PWD 'release-signing.p12'
+          if ($env:PRODUCTION_SIGNING -eq 'true') {
+            if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_KEYSTORE_BASE64)) {
+              throw "Production signing requested, but SLF_ANDROID_KEYSTORE_BASE64 is not configured."
+            }
+            if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_KEYSTORE_PASSWORD)) {
+              throw "Production signing requested, but SLF_ANDROID_KEYSTORE_PASSWORD is not configured."
+            }
+            [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:SLF_ANDROID_KEYSTORE_BASE64))
+            $storePass = $env:SLF_ANDROID_KEYSTORE_PASSWORD
+            $signingMode = 'production-secret'
+          } else {
+            $storePass = 'gate2a-validation'
+            & adt -certificate -validityPeriod 1 -cn "Gate 2A Validation" 2048-RSA $keyPath $storePass
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create disposable validation certificate." }
+            $signingMode = 'disposable-validation'
+          }
+
+          & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $storePass dist/SLF-release.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { throw "ADT AAB packaging failed with exit code $LASTEXITCODE." }
+          if (-not (Test-Path dist/SLF-release.aab)) { throw "ADT reported success but no AAB was produced." }
+
+          $aab = Get-Item dist/SLF-release.aab
+          if ($aab.Length -le 0) { throw "Produced AAB is empty." }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $aabZip = [IO.Compression.ZipFile]::OpenRead($aab.FullName)
+          try {
+            $aabEntries = @($aabZip.Entries | ForEach-Object FullName)
+            $requiredAabNotices = @(
+              'base/assets/LICENSE',
+              'base/assets/THIRD_PARTY_NOTICES.md',
+              'base/assets/third_party/licenses/flixel-2.55-MIT.txt',
+              'base/assets/third_party/licenses/flixel-power-tools-Simplified-BSD.txt',
+              'base/assets/third_party/licenses/as3-controller-input-MIT.txt'
+            )
+            foreach ($entry in $requiredAabNotices) {
+              if ($aabEntries -notcontains $entry) { throw "Required notice missing from AAB: $entry" }
+            }
+            if ($aabEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\.(png|psd)$' }) {
+              throw "Retired OUYA publication resource found in AAB."
+            }
+            @(
+              $requiredAabNotices
+              'flixel-2.55-MIT.txt blob=5fcbbbdf0d8c043114dbf485b1f0fd7f776dd086'
+              'flixel-power-tools-Simplified-BSD.txt blob=eb85c14d618e818c2bec2bba6ec4a82e5dea7b84'
+              'as3-controller-input-MIT.txt blob=21e3babda57413417549e308c61b9597bd0aa6e1'
+            ) | Set-Content -Path dist/notice-package-evidence.txt -Encoding utf8
+          } finally {
+            $aabZip.Dispose()
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $aab.FullName).Hash.ToLowerInvariant()
+
+          @(
+            "commit=$env:GITHUB_SHA"
+            "air_sdk=51.3.4.3"
+            "android_target_sdk=36"
+            "android_min_sdk=21"
+            "signing_mode=$signingMode"
+            "aab_bytes=$($aab.Length)"
+            "aab_sha256=$hash"
+          ) | Set-Content -Path dist/release-metadata.txt -Encoding utf8
+
+          # Independently inspect the compiled App Bundle manifest with Google's
+          # bundletool. Pin both the release and SHA-256 so this verification step
+          # cannot silently drift to different bytes.
+          $bundletoolVersion = '1.18.3'
+          $bundletoolExpectedSha256 = 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'
+          $bundletoolPath = Join-Path $PWD "bundletool-all-$bundletoolVersion.jar"
+          $bundletoolUrl = "https://github.com/google/bundletool/releases/download/$bundletoolVersion/bundletool-all-$bundletoolVersion.jar"
+          Invoke-WebRequest -Uri $bundletoolUrl -OutFile $bundletoolPath
+          $bundletoolHash = (Get-FileHash -Algorithm SHA256 $bundletoolPath).Hash.ToLowerInvariant()
+          if ($bundletoolHash -ne $bundletoolExpectedSha256) {
+            throw "bundletool SHA-256 mismatch. Expected $bundletoolExpectedSha256, got $bundletoolHash."
+          }
+
+          $PSNativeCommandUseErrorActionPreference = $false
+          $targetOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/uses-sdk/@android:targetSdkVersion' 2>&1
+          $targetExit = $LASTEXITCODE
+          $targetValue = (($targetOutput | Out-String).Trim())
+          $targetOutput | Set-Content -Path dist/manifest-target-sdk.txt -Encoding utf8
+          if ($targetExit -ne 0 -or $targetValue -ne '36') {
+            throw "Compiled AAB target SDK verification failed. Expected 36, got '$targetValue' (exit $targetExit)."
+          }
+
+          $minOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/uses-sdk/@android:minSdkVersion' 2>&1
+          $minExit = $LASTEXITCODE
+          $minValue = (($minOutput | Out-String).Trim())
+          $minOutput | Set-Content -Path dist/manifest-min-sdk.txt -Encoding utf8
+          if ($minExit -ne 0 -or $minValue -ne '21') {
+            throw "Compiled AAB min SDK verification failed. Expected 21, got '$minValue' (exit $minExit)."
+          }
+
+
+          $expectedPackage = 'com.ramybaheeg.slfport'
+          $expectedVersionName = '1.9'
+          $expectedVersionCode = '1009000'
+
+          $packageOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/@package' 2>&1
+          $packageExit = $LASTEXITCODE
+          $packageValue = (($packageOutput | Out-String).Trim())
+          $packageOutput | Set-Content -Path dist/manifest-package.txt -Encoding utf8
+          if ($packageExit -ne 0 -or $packageValue -ne $expectedPackage) {
+            throw "Compiled AAB package verification failed. Expected '$expectedPackage', got '$packageValue' (exit $packageExit)."
+          }
+
+          $versionOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/@android:versionName' 2>&1
+          $versionExit = $LASTEXITCODE
+          $versionValue = (($versionOutput | Out-String).Trim())
+          $versionOutput | Set-Content -Path dist/manifest-version-name.txt -Encoding utf8
+          if ($versionExit -ne 0 -or $versionValue -ne $expectedVersionName) {
+            throw "Compiled AAB versionName verification failed. Expected '$expectedVersionName', got '$versionValue' (exit $versionExit)."
+          }
+
+          $versionCodeOutput = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" '--xpath=/manifest/@android:versionCode' 2>&1
+          $versionCodeExit = $LASTEXITCODE
+          $versionCodeValue = (($versionCodeOutput | Out-String).Trim())
+          $versionCodeOutput | Set-Content -Path dist/manifest-version-code.txt -Encoding utf8
+          if ($versionCodeExit -ne 0 -or $versionCodeValue -ne $expectedVersionCode) {
+            throw "Compiled AAB versionCode verification failed. Expected '$expectedVersionCode', got '$versionCodeValue' (exit $versionCodeExit)."
+          }
+
+          $fullManifest = & java -jar $bundletoolPath dump manifest "--bundle=$($aab.FullName)" 2>&1
+          $fullManifestExit = $LASTEXITCODE
+          $fullManifestText = ($fullManifest | Out-String)
+          $fullManifest | Set-Content -Path dist/manifest-full.txt -Encoding utf8
+          if ($fullManifestExit -ne 0) { throw "Compiled AAB full-manifest dump failed (exit $fullManifestExit)." }
+          if ($fullManifestText -match '<uses-permission(?:\s|>)') {
+            throw 'Compiled AAB unexpectedly declares one or more uses-permission elements.'
+          }
+          if ($fullManifestText -match 'android\.permission\.INTERNET') {
+            throw 'Compiled AAB unexpectedly declares android.permission.INTERNET.'
+          }
+
+          Add-Content -Path dist/release-metadata.txt -Value "manifest_package_verified=$packageValue"
+          Add-Content -Path dist/release-metadata.txt -Value "manifest_version_name_verified=$versionValue"
+          Add-Content -Path dist/release-metadata.txt -Value "manifest_version_code_verified=$versionCodeValue"
+          Add-Content -Path dist/release-metadata.txt -Value 'manifest_effective_permissions_verified=none'
+
+          $jarsignerOutput = & jarsigner -verify -strict -certs $aab.FullName 2>&1
+          $jarsignerExit = $LASTEXITCODE
+          $jarsignerOutput | Set-Content -Path dist/aab-signature-verify.txt -Encoding utf8
+          if ($jarsignerExit -ne 0) { throw "AAB JAR-signature verification failed (exit $jarsignerExit)." }
+
+          $certOutput = & keytool -printcert -jarfile $aab.FullName 2>&1
+          $certExit = $LASTEXITCODE
+          $certText = ($certOutput | Out-String)
+          $certOutput | Set-Content -Path dist/aab-signing-certificate.txt -Encoding utf8
+          if ($certExit -ne 0) { throw "AAB signing-certificate inspection failed (exit $certExit)." }
+
+          $shaMatch = [regex]::Match($certText, 'SHA256:\s*([0-9A-Fa-f:]+)')
+          if (-not $shaMatch.Success) { throw 'Could not extract the AAB signer SHA-256 fingerprint from keytool output.' }
+          $actualCertSha256 = ($shaMatch.Groups[1].Value -replace ':','').ToUpperInvariant()
+          if ($actualCertSha256.Length -ne 64) {
+            throw "Unexpected signer SHA-256 fingerprint length: $($actualCertSha256.Length)."
+          }
+
+          $productionCertVerified = 'not-applicable-disposable-validation'
+          if ($env:PRODUCTION_SIGNING -eq 'true') {
+            if ([string]::IsNullOrWhiteSpace($env:SLF_ANDROID_EXPECTED_CERT_SHA256)) {
+              throw 'Production signing requested, but SLF_ANDROID_EXPECTED_CERT_SHA256 is not configured.'
+            }
+            $expectedCertSha256 = ($env:SLF_ANDROID_EXPECTED_CERT_SHA256 -replace '[^0-9A-Fa-f]','').ToUpperInvariant()
+            if ($expectedCertSha256.Length -ne 64) {
+              throw 'Configured production signing certificate SHA-256 is malformed.'
+            }
+            if ($actualCertSha256 -ne $expectedCertSha256) {
+              throw "Production AAB signer mismatch. Expected $expectedCertSha256, got $actualCertSha256."
+            }
+            $productionCertVerified = 'true'
+          }
+          Add-Content -Path dist/release-metadata.txt -Value "aab_signer_sha256=$actualCertSha256"
+          Add-Content -Path dist/release-metadata.txt -Value "production_signing_certificate_verified=$productionCertVerified"
+
+          Add-Content -Path dist/release-metadata.txt -Value 'manifest_target_sdk_verified=36'
+          Add-Content -Path dist/release-metadata.txt -Value 'manifest_min_sdk_verified=21'
+          Add-Content -Path dist/release-metadata.txt -Value "bundletool_version=$bundletoolVersion"
+          Add-Content -Path dist/release-metadata.txt -Value "bundletool_sha256=$bundletoolHash"
+          Add-Content -Path dist/release-metadata.txt -Value "source_github_sha=$env:GITHUB_SHA"
+          Add-Content -Path dist/release-metadata.txt -Value "source_checkout_head=$((& git rev-parse HEAD).Trim())"
+          Add-Content -Path dist/release-metadata.txt -Value "source_tree=$((& git rev-parse 'HEAD^{tree}').Trim())"
+          $airManifestShaForMetadata = (Get-FileHash -Algorithm SHA256 dist/air-sdk-sha256-manifest.txt).Hash.ToLowerInvariant()
+          $androidJarForMetadata = Join-Path $androidSdk 'platforms/android-36/android.jar'
+          if (-not (Test-Path -LiteralPath $androidJarForMetadata -PathType Leaf)) { throw "Android 36 android.jar missing during release metadata finalization." }
+          $androidJarShaForMetadata = (Get-FileHash -Algorithm SHA256 $androidJarForMetadata).Hash.ToLowerInvariant()
+          Add-Content -Path dist/release-metadata.txt -Value "air_sdk_tree_manifest_sha256=$airManifestShaForMetadata"
+          Add-Content -Path dist/release-metadata.txt -Value "android_36_android_jar_sha256=$androidJarShaForMetadata"
+          $global:LASTEXITCODE = 0
+
+          Remove-Item -Force -ErrorAction SilentlyContinue $keyPath
+          Remove-Item -Force -ErrorAction SilentlyContinue $bundletoolPath
+
+      - name: Upload release bundle proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate2a-android-release-aab
+          path: |
+            dist/SLF-release.aab
+            dist/release-metadata.txt
+            dist/manifest-target-sdk.txt
+            dist/manifest-min-sdk.txt
+            dist/manifest-package.txt
+            dist/manifest-version-name.txt
+            dist/manifest-version-code.txt
+            dist/manifest-full.txt
+            dist/aab-signature-verify.txt
+            dist/aab-signing-certificate.txt
+            dist/source-provenance.txt
+            dist/build-environment.txt
+            dist/air-sdk-sha256-manifest.txt
+            dist/android-sdk-installed-packages.txt
+            dist/android-sdk-*-sha256-manifest.txt
+            dist/notice-source-identities.txt
+            dist/notice-package-evidence.txt
+          if-no-files-found: error
