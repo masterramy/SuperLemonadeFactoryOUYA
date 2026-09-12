@@ -1,5 +1,6 @@
 AIROUYAIAP-master
 /dist
+/bin
 
 # Signing material must never be committed. Production signing keys belong in
 # local secure storage or GitHub Actions secrets only.
