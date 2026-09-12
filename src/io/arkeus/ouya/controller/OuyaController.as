@@ -114,7 +114,7 @@ package io.arkeus.ouya.controller {
 			a.reset();
 			o.reset();
 			y.reset();
-			a.reset();
+			u.reset();
 			lb.reset();
 			rb.reset();
 			lt.reset();
