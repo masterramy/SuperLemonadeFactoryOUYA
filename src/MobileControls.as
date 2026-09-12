@@ -280,11 +280,8 @@ package
 		{
 			if (!(FlxG.state is PlayState)) return;
 			FlxG.paused = !FlxG.paused;
-			if (FlxG.music != null)
-			{
-				if (FlxG.paused) FlxG.music.pause();
-				else FlxG.music.play();
-			}
+			if (FlxG.paused) FlxG.pauseSounds();
+			else FlxG.resumeSounds();
 		}
 
 		private function skipCinematic():void
