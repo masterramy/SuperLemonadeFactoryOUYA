@@ -1,4 +1,4 @@
-name: Gate2A Java pin guarded apply
+name: Gate2A provenance-fix blob builder
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  build-blobs:
     runs-on: windows-2025
     timeout-minutes: 10
     steps:
@@ -19,7 +19,7 @@ jobs:
           ref: gate2a-rev41-exact-final
           fetch-depth: 0
           persist-credentials: true
-      - name: Guard and apply validated Java pin
+      - name: Build verified corrected workflow blobs outside workflow paths
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -27,25 +27,30 @@ jobs:
           $actualHead = (& git rev-parse HEAD).Trim().ToLowerInvariant()
           if ($actualHead -ne $expectedHead) { throw "Exact-final moved: expected $expectedHead, got $actualHead" }
           $paths = @('.github/workflows/gate2a-android-release.yml','.github/workflows/gate2a-air-baseline.yml')
+          $old = "(if (Test-Path (Join-Path `$androidSdk 'platform-tools')) { 'platform-tools' })"
+          $new = "`$(if (Test-Path (Join-Path `$androidSdk 'platform-tools')) { 'platform-tools' })"
+          New-Item -ItemType Directory -Force -Path ARTIFACTS/provenance-fix-blobs | Out-Null
           foreach ($path in $paths) {
             $text = [IO.File]::ReadAllText($path)
-            $old = 'java-version: "17.0.20+8"'
-            $new = 'java-version: "17.0.20+101"'
             $count = ([regex]::Matches($text,[regex]::Escape($old))).Count
-            if ($count -ne 1) { throw "$path expected exactly one old Java pin, found $count" }
-            [IO.File]::WriteAllText($path,$text.Replace($old,$new),[Text.UTF8Encoding]::new($false))
+            if ($count -ne 1) { throw "$path expected exactly one bad provenance expression, found $count" }
+            $fixed = $text.Replace($old,$new)
+            $leaf = Split-Path $path -Leaf
+            [IO.File]::WriteAllText((Join-Path 'ARTIFACTS/provenance-fix-blobs' $leaf),$fixed,[Text.UTF8Encoding]::new($false))
           }
-          $changed = @(& git diff --name-only)
-          $expectedPaths = @('.github/workflows/gate2a-air-baseline.yml','.github/workflows/gate2a-android-release.yml')
-          if (($changed.Count -ne 2) -or ((Compare-Object ($changed | Sort-Object) $expectedPaths).Count -ne 0)) {
-            throw "Unexpected changed files: $($changed -join ', ')"
+          foreach ($path in $paths) {
+            if ((git status --porcelain -- $path)) { throw "Canonical workflow unexpectedly modified in worktree: $path" }
           }
-          $diff = (& git diff --unified=0)
-          $removed = @($diff | Select-String '^\-.*java-version: "17\.0\.20\+8"').Count
-          $added = @($diff | Select-String '^\+.*java-version: "17\.0\.20\+101"').Count
-          if ($removed -ne 2 -or $added -ne 2) { throw "Unexpected Java-pin diff counts removed=$removed added=$added" }
+          $releaseBlob = (& git hash-object ARTIFACTS/provenance-fix-blobs/gate2a-android-release.yml).Trim()
+          $baselineBlob = (& git hash-object ARTIFACTS/provenance-fix-blobs/gate2a-air-baseline.yml).Trim()
+          @(
+            "parent=$expectedHead"
+            "release_blob=$releaseBlob"
+            "baseline_blob=$baselineBlob"
+            "semantic_change=replace invalid PowerShell parenthesized if expression with subexpression form"
+          ) | Set-Content ARTIFACTS/provenance-fix-blobs/RECEIPT.txt -Encoding utf8
           git config user.name 'Gate2A QA Worker'
           git config user.email 'actions@users.noreply.github.com'
-          git add -- $paths
-          git commit -m 'Gate 2A rev41: bind Temurin security-refresh build'
-          git push origin HEAD:gate2a-rev41-exact-final
+          git add ARTIFACTS/provenance-fix-blobs
+          git commit -m 'Gate 2A diagnostic: materialize provenance-fix workflow blobs'
+          git push origin HEAD:gate2a-provenance-fix-blobs
