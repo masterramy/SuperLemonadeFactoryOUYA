@@ -34,6 +34,10 @@ jobs:
           python /tmp/app.py --root repo
           test -z "$(git -C repo status --porcelain)"
           python /tmp/app.py --root repo --write
+          echo '--- PCOptions 34-48 ---'
+          nl -ba repo/src/PCOptionsState.as | sed -n '34,48p'
+          echo '--- PCOptions 222-236 ---'
+          nl -ba repo/src/PCOptionsState.as | sed -n '222,236p'
           git -C repo diff --check
           actual="$(git -C repo diff --name-only | LC_ALL=C sort)"
           expected="$(cat <<'EOF'
