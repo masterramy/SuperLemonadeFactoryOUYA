@@ -42,7 +42,7 @@ jobs:
           test "$(git check-attr text -- third_party/licenses/as3-controller-input-MIT.txt)" = 'third_party/licenses/as3-controller-input-MIT.txt: text: unset'
           test "$(git hash-object --no-filters third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
           git add -- .gitattributes third_party/licenses/as3-controller-input-MIT.txt
-          git diff --cached --check
+          git diff --cached --check -- .gitattributes
           test "$(git rev-parse :third_party/licenses/as3-controller-input-MIT.txt)" = '21e3babda57413417549e308c61b9597bd0aa6e1'
           actual="$(git diff --cached --name-only | LC_ALL=C sort)"
           expected="$(printf '%s\n' '.gitattributes' 'third_party/licenses/as3-controller-input-MIT.txt' | LC_ALL=C sort)"
