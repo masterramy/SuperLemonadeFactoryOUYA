@@ -1,0 +1,110 @@
+name: Gate 2A AAPT2 Provider Diagnostic
+
+on:
+  push:
+    branches:
+      - gate2a-aapt2-provider-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  aapt2-provider-diagnostic:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact triggering revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify candidate parent identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parent = (& git rev-parse 'HEAD^').Trim().ToLowerInvariant()
+          $expected = 'fb89f9780d43127156ec86a1d666292e11ffb7cd'
+          if ($parent -ne $expected) { throw "Diagnostic commit parent mismatch. Expected $expected, got $parent." }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          @(
+            "diagnostic_head=$((& git rev-parse HEAD).Trim())"
+            "candidate_parent=$parent"
+            "candidate_tree=$((& git rev-parse 'HEAD^^{tree}').Trim())"
+          ) | Set-Content dist/diagnostic-source.txt -Encoding utf8
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+      - name: Compile exact candidate source
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Package with Build Tools 36.1.0 AAPT2 override
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) { throw 'Android SDK root unavailable.' }
+
+          $aapt2 = Join-Path $androidSdk 'build-tools/36.1.0/aapt2.exe'
+          if (-not (Test-Path -LiteralPath $aapt2 -PathType Leaf)) { throw "Required diagnostic AAPT2 missing: $aapt2" }
+          $aapt2Hash = (Get-FileHash -Algorithm SHA256 $aapt2).Hash.ToLowerInvariant()
+          $aapt2Version = (& $aapt2 version 2>&1 | Out-String).Trim()
+          $aapt2PropPath = $aapt2.Replace('\','/')
+
+          $gradleDir = Join-Path $env:USERPROFILE '.gradle'
+          New-Item -ItemType Directory -Force -Path $gradleDir | Out-Null
+          "android.aapt2FromMavenOverride=$aapt2PropPath" | Set-Content (Join-Path $gradleDir 'gradle.properties') -Encoding ascii
+          $env:GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=$aapt2PropPath"
+
+          @(
+            "override_path=$aapt2PropPath"
+            "override_sha256=$aapt2Hash"
+            "override_version=$aapt2Version"
+            "gradle_opts=$env:GRADLE_OPTS"
+            "air_version=$((& adt -version 2>&1 | Out-String).Trim())"
+            "java_version=$((& java -version 2>&1 | Out-String).Trim())"
+          ) | Set-Content dist/aapt2-override.txt -Encoding utf8
+
+          $keyPath = Join-Path $PWD 'diagnostic-signing.p12'
+          $storePass = 'gate2a-validation'
+          & adt -certificate -validityPeriod 1 -cn 'Gate 2A AAPT2 Diagnostic' 2048-RSA $keyPath $storePass
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create disposable diagnostic certificate.' }
+
+          $adtOutput = & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $storePass dist/SLF-diagnostic.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt -platformsdk $androidSdk 2>&1
+          $adtExit = $LASTEXITCODE
+          $adtOutput | Set-Content dist/adt-package.log -Encoding utf8
+          "adt_exit=$adtExit" | Add-Content dist/aapt2-override.txt
+          if ($adtExit -ne 0) { throw "ADT diagnostic packaging failed with exit $adtExit." }
+          if (-not (Test-Path dist/SLF-diagnostic.aab)) { throw 'ADT returned success without AAB.' }
+          $aab = Get-Item dist/SLF-diagnostic.aab
+          $aabHash = (Get-FileHash -Algorithm SHA256 $aab.FullName).Hash.ToLowerInvariant()
+          "aab_bytes=$($aab.Length)" | Add-Content dist/aapt2-override.txt
+          "aab_sha256=$aabHash" | Add-Content dist/aapt2-override.txt
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-aapt2-provider-diagnostic
+          path: |
+            dist/diagnostic-source.txt
+            dist/aapt2-override.txt
+            dist/adt-package.log
+            dist/SLF-diagnostic.aab
+          if-no-files-found: warn
