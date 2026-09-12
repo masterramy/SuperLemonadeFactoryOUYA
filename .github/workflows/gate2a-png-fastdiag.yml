@@ -1,0 +1,37 @@
+name: Gate 2A PNG fast diagnostic
+on:
+  push:
+    branches: [gate2a-rev41-png-fastdiag]
+permissions:
+  contents: read
+jobs:
+  png:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fb89f9780d43127156ec86a1d666292e11ffb7cd
+          persist-credentials: false
+          fetch-depth: 1
+      - shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName System.Drawing
+          $aapt2=Get-ChildItem "$env:ANDROID_SDK_ROOT/build-tools" -Recurse -File -Filter aapt2.exe|Sort-Object FullName -Descending|Select-Object -First 1
+          if(-not $aapt2){throw 'aapt2 not found'}
+          Write-Host "AAPT2=$($aapt2.FullName)"
+          $bad=0
+          foreach($f in Get-ChildItem icons/android/icons -File -Filter '*.png'|Sort-Object Name){
+            $sha=(Get-FileHash -Algorithm SHA256 $f.FullName).Hash.ToLowerInvariant()
+            $img=[Drawing.Image]::FromFile($f.FullName)
+            Write-Host "PNG $($f.Name) bytes=$($f.Length) sha256=$sha size=$($img.Width)x$($img.Height)"
+            $img.Dispose()
+            $res=Join-Path $PWD ("r-"+[IO.Path]::GetFileNameWithoutExtension($f.Name)); New-Item -ItemType Directory -Force -Path (Join-Path $res 'drawable')|Out-Null; Copy-Item $f.FullName (Join-Path $res 'drawable/icon.png')
+            $out=Join-Path $PWD ("out-"+$f.Name+'.zip')
+            & $aapt2.FullName compile --dir $res -o $out
+            Write-Host "AAPT2_EXIT $($f.Name)=$LASTEXITCODE"
+            if($LASTEXITCODE -ne 0){$bad++}
+          }
+          if($bad -ne 0){throw "$bad checked-in PNG(s) failed direct AAPT2 compilation"}
+          Write-Host 'ALL_SOURCE_PNGS_AAPT2_PASS'
