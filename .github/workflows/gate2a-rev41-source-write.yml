@@ -1,12 +1,12 @@
-name: Gate2A rev41 controlled workflow write
+name: Gate2A rev41 workflow applicator dry-run
 on:
   push:
     branches:
       - gate2a-rev41-source-write-helper-18
 permissions:
-  contents: write
+  contents: read
 jobs:
-  workflow-write:
+  workflow-dry-run:
     runs-on: ubuntu-24.04
     steps:
       - name: Clone and verify post-notice exact-final
@@ -25,40 +25,12 @@ jobs:
       - name: Fetch and verify workflow applicator
         run: |
           set -euo pipefail
-          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-b878-81fd-9080-6393ff9cb314/raw?se=2026-09-12T21%3A44%3A26Z&sp=r&sv=2026-02-06&sr=b&scid=f8b73b60-b784-5152-b216-6cdf7d39e594&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T01%3A06%3A45Z&ske=2026-09-13T01%3A06%3A45Z&sks=b&skv=2026-02-06&sig=Fnhbb1Hwvxy8bCWoZIQ3lflOBtqWYv9sqloqnXAINyQ%3D' -o /tmp/workflow_app.py
-          echo 'eb6bddeb6ddc19b8c414740caa00b66eef12aa7ffa3e8209f1d1d2a6a7ee6b91  /tmp/workflow_app.py' | sha256sum --check --strict
+          curl --fail --location --silent --show-error 'https://sdmntprwestus3.oaiusercontent.com/files/00000000-6b18-81fd-94e2-db3162fe5a4c/raw?se=2026-09-12T21%3A46%3A14Z&sp=r&sv=2026-02-06&sr=b&scid=3f805ca3-c5a9-5539-9e89-ed178f58bc9f&skoid=5e713cdb-766b-475e-a3ca-8adb6cf99aa0&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-09-12T14%3A16%3A43Z&ske=2026-09-13T14%3A16%3A43Z&sks=b&skv=2026-02-06&sig=HyGRB36%2BuRsBJhVoq%2Blz8pfTITwhQGUwlzdZWxqfzrM%3D' -o /tmp/workflow_app.py
+          echo '34ed44b7ecadc8c18b05cb4c6ef882ac582f75ffca2c450d345f61efbbb7532b  /tmp/workflow_app.py' | sha256sum --check --strict
           python -m py_compile /tmp/workflow_app.py
-      - name: Reconfirm dry-run then write exact workflow delta
+      - name: Full fail-closed workflow dry-run
         run: |
           set -euo pipefail
           cd repo
           python /tmp/workflow_app.py
           test -z "$(git status --porcelain)"
-          python /tmp/workflow_app.py --write
-          git diff --check
-          actual="$(git diff --name-only | LC_ALL=C sort)"
-          expected="$(printf '%s\n' '.github/workflows/gate2a-air-baseline.yml' '.github/workflows/gate2a-android-release.yml' | LC_ALL=C sort)"
-          printf 'Expected paths:\n%s\nActual paths:\n%s\n' "$expected" "$actual"
-          test "$actual" = "$expected"
-          test "$(git diff --name-only | wc -l)" -eq 2
-          ! grep -Fq 'gate2a-rev41-exact-final' .github/workflows/gate2a-air-baseline.yml
-          ! grep -Fq 'gate2a-rev41-exact-final' .github/workflows/gate2a-android-release.yml
-          grep -Fq -- '- gate2a-android-modernization' .github/workflows/gate2a-air-baseline.yml
-          grep -Fq -- '- gate2a-android-modernization' .github/workflows/gate2a-android-release.yml
-          grep -Fq -- '- gate2a-release-hardening-staging' .github/workflows/gate2a-android-release.yml
-      - name: Refuse remote drift then commit and push workflow-only result
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git -C repo fetch origin gate2a-rev41-exact-final
-          test "$(git -C repo rev-parse FETCH_HEAD)" = "3d9069ccd1b84f4f216f4ca790984cd0b931b641"
-          test "$(git -C repo rev-parse HEAD)" = "3d9069ccd1b84f4f216f4ca790984cd0b931b641"
-          git -C repo config user.name 'Gate 2A Alfred'
-          git -C repo config user.email 'gate2a-alfred@users.noreply.github.com'
-          git -C repo add -- .github/workflows/gate2a-air-baseline.yml .github/workflows/gate2a-android-release.yml
-          test "$(git -C repo diff --cached --name-only | wc -l)" -eq 2
-          git -C repo commit -m 'Gate 2A rev41: harden exact-final workflows'
-          echo "WORKFLOW_COMMIT=$(git -C repo rev-parse HEAD)"
-          echo "WORKFLOW_TREE=$(git -C repo rev-parse HEAD^{tree})"
-          git -C repo push origin HEAD:refs/heads/gate2a-rev41-exact-final
