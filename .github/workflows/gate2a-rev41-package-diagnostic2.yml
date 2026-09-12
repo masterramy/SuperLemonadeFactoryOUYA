@@ -1,0 +1,65 @@
+name: Gate 2A rev41 package diagnostic v2
+
+on:
+  push:
+    branches:
+      - gate2a-rev41-package-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-package:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fb89f9780d43127156ec86a1d666292e11ffb7cd
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact source identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $actual=(& git rev-parse HEAD).Trim()
+          if ($actual -ne 'fb89f9780d43127156ec86a1d666292e11ffb7cd') { throw "Unexpected source $actual" }
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+      - name: Diagnose checked-in PNG assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName System.Drawing
+          $files=Get-ChildItem icons/android/icons -File -Filter '*.png'|Sort-Object Name
+          foreach($f in $files){$bytes=[IO.File]::ReadAllBytes($f.FullName);$sig=($bytes[0..7]|%{$_.ToString('x2')})-join'';$sha=(Get-FileHash -Algorithm SHA256 $f.FullName).Hash.ToLowerInvariant();try{$img=[Drawing.Image]::FromFile($f.FullName);Write-Host "SOURCE_PNG name=$($f.Name) bytes=$($f.Length) sha256=$sha sig=$sig width=$($img.Width) height=$($img.Height)";$img.Dispose()}catch{Write-Host "SOURCE_PNG_DECODE_FAIL name=$($f.Name) bytes=$($f.Length) sha256=$sha sig=$sig error=$($_.Exception.Message)"}}
+          $aapt2=Get-ChildItem "$env:ANDROID_SDK_ROOT/build-tools" -Recurse -File -Filter aapt2.exe|Sort-Object FullName -Descending|Select-Object -First 1
+          if(-not $aapt2){throw 'aapt2.exe not found'}
+          Write-Host "AAPT2_PATH=$($aapt2.FullName)"
+          foreach($f in $files){$resDir=Join-Path $PWD ("diag-res-"+[IO.Path]::GetFileNameWithoutExtension($f.Name));New-Item -ItemType Directory -Force -Path (Join-Path $resDir 'drawable')|Out-Null;Copy-Item $f.FullName (Join-Path $resDir 'drawable/icon.png');$out=Join-Path $PWD ("aapt2-"+$f.Name+'.zip');& $aapt2.FullName compile --dir $resDir -o $out 2>&1|%{Write-Host "AAPT2_SOURCE $($f.Name): $_"};Write-Host "AAPT2_SOURCE_EXIT name=$($f.Name) exit=$LASTEXITCODE"}
+      - name: Compile SWF
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Reproduce ADT packaging and inspect generated resources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue';Add-Type -AssemblyName System.Drawing
+          $diagTemp=Join-Path $PWD 'diag-temp';New-Item -ItemType Directory -Force -Path $diagTemp|Out-Null;$env:TEMP=$diagTemp;$env:TMP=$diagTemp
+          $key=Join-Path $PWD 'diag-validation.p12';$pass='gate2a-validation';& adt -certificate -validityPeriod 1 -cn "Gate 2A Validation" 2048-RSA $key $pass;if($LASTEXITCODE -ne 0){throw 'diagnostic certificate failed'}
+          $sdk=$env:ANDROID_SDK_ROOT;if([string]::IsNullOrWhiteSpace($sdk)){$sdk=$env:ANDROID_HOME}
+          & adt -package -target aab -storetype pkcs12 -keystore $key -storepass $pass diag-output.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt -platformsdk $sdk 2>&1|%{Write-Host "ADT: $_"};$adtExit=$LASTEXITCODE;Write-Host "ADT_EXIT=$adtExit"
+          Get-ChildItem $diagTemp -Recurse -File -ErrorAction SilentlyContinue|?{$_.Name -match 'ouya'}|%{Write-Host "OUYA_FILE $($_.FullName) bytes=$($_.Length)"}
+          Get-ChildItem $diagTemp -Recurse -File -Filter '*.png' -ErrorAction SilentlyContinue|%{$f=$_;$sha=(Get-FileHash -Algorithm SHA256 $f.FullName).Hash.ToLowerInvariant();$bytes=[IO.File]::ReadAllBytes($f.FullName);$sig=if($bytes.Length-ge 8){($bytes[0..7]|%{$_.ToString('x2')})-join''}else{'short'};try{$img=[Drawing.Image]::FromFile($f.FullName);Write-Host "GENERATED_PNG path=$($f.FullName) bytes=$($f.Length) sha256=$sha sig=$sig width=$($img.Width) height=$($img.Height)";$img.Dispose()}catch{Write-Host "GENERATED_PNG_DECODE_FAIL path=$($f.FullName) bytes=$($f.Length) sha256=$sha sig=$sig error=$($_.Exception.Message)"}}
+          Get-ChildItem $diagTemp -Recurse -File -ErrorAction SilentlyContinue|?{$_.Length-lt 2000000 -and $_.Extension-match '\.(xml|txt|json|properties)$'}|%{Select-String -LiteralPath $_.FullName -Pattern 'ouya' -SimpleMatch -ErrorAction SilentlyContinue|%{Write-Host "OUYA_TEXT $($_.Path):$($_.LineNumber):$($_.Line)"}}
+          Write-Host 'DIAGNOSTIC_COMPLETE'
