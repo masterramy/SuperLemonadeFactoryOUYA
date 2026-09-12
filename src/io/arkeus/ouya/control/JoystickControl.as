@@ -51,5 +51,15 @@ package io.arkeus.ouya.control {
 		public function get distance():Number {
 			return Math.min(1, Math.sqrt(x * x + y * y));
 		}
+
+		override public function reset():void {
+			super.reset();
+			xAxis.reset();
+			yAxis.reset();
+			left.reset();
+			right.reset();
+			up.reset();
+			down.reset();
+		}
 	}
 }
