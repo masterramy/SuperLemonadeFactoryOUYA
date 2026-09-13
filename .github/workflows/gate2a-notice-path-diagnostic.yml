@@ -23,6 +23,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
+          # Path-preservation behavior was proven by diagnostic run 34733017762.
           $expected='509d3db8cd40125c93a8d2b2c7ae0a72cfc0d3e3'
           if ((git rev-parse HEAD).Trim() -ne $expected) { throw 'repair branch basis drifted' }
           if (git status --porcelain) { throw 'repair branch checkout is not clean' }
