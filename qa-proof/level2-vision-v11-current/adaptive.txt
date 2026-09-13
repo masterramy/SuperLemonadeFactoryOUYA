@@ -1,0 +1,11 @@
+adapt=1 ax=538 ay=518 lx=1429 ly=585 dx=-891 dy=-67
+adapt=2 ax=664 ay=518 lx=1429 ly=585 dx=-765 dy=-67
+adapt=3 ax=945 ay=549 lx=1429 ly=585 dx=-484 dy=-36
+adapt=4 ax=1348 ay=518 lx=1429 ly=585 dx=-81 dy=-67
+adapt=5 ax=1290 ay=506 lx=1637 ly=893 dx=-347 dy=-387
+adapt=6 ax=874 ay=530 lx=1469 ly=757 dx=-595 dy=-227
+adapt=7 ax=797 ay=679 lx=1429 ly=752 dx=-632 dy=-73
+adapt=8 ax=994 ay=705 lx=1429 ly=752 dx=-435 dy=-47
+adapt=9 detector_unresolved_stop
+rendezvous_guard=false
+piggy_input_sent=false
