@@ -1,0 +1,12 @@
+climb=1 ax=588 ay=526 lx=1441 ly=757 dx=-853 dy=-231
+climb=2 ax=1308 ay=526 lx=1429 ly=593 dx=-121 dy=-67
+same_vertical_plane=2
+climb=3 ax=1316 ay=506 lx=1653 ly=893 dx=-337 dy=-387
+climb=4 ax=934 ay=526 lx=1466 ly=765 dx=-532 dy=-239
+climb=5 ax=848 ay=725 lx=1426 ly=765 dx=-578 dy=-40
+same_vertical_plane=5
+climb=6 ax=1028 ay=698 lx=1429 ly=765 dx=-401 dy=-67
+same_vertical_plane=6
+climb=7 detector_unresolved_stop
+rendezvous_guard=false
+piggy_input_sent=false
