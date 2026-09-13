@@ -30,6 +30,9 @@ jobs:
           test -f "$APK"
           test "$(wc -c < "$APK" | tr -d ' ')" = "35875555"
           test "$(sha256sum "$APK" | awk '{print $1}')" = "c33340f6370e30ab6742c75d79fb7d8b3312fb492c3f3198a709e5f46569b4f7"
+      - name: Install screenshot guard dependency
+        shell: bash
+        run: python3 -m pip install --break-system-packages --disable-pip-version-check pillow==11.3.0
       - name: Write completion-state-aware ordinary-input Level 2 harness
         shell: bash
         run: |
@@ -55,8 +58,6 @@ jobs:
           import sys
           im=Image.open(sys.argv[1]).convert('RGB')
           w,h=im.size
-          # Top-right shipping PAUSE-control region. A large visual change here is a safe
-          # stop signal for blind traversal input; it never mutates or inspects game state.
           box=im.crop((int(w*.76),int(h*.015),int(w*.97),int(h*.16))).resize((64,32))
           vals=[]
           for p in box.getdata(): vals.extend(p)
@@ -83,9 +84,6 @@ jobs:
           capture 01-level2-start; pid0=$(adb shell pidof "$PACKAGE"|tr -d '\r')
           gameplay_signature level2-proof/01-level2-start.png > level2-proof/sig-baseline.txt
 
-          # Traverse in single bounded ordinary-input bursts. After every burst, render and
-          # compare only the visible PAUSE-control region. Once the rendered state changes
-          # materially, stop movement immediately; never continue blind RIGHT+C across it.
           transitioned=0
           for i in $(seq -w 1 28); do
             move_once
@@ -106,18 +104,12 @@ jobs:
           done
           test "$pid0" = "$(adb shell pidof "$PACKAGE"|tr -d '\r')"
           printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\n' > level2-proof/method.txt
-
-          # Preserve the transition before any further input. Then use only the default
-          # highlighted action. On genuine LEVEL COMPLETE this means Next Level; on a death
-          # it means Retry. No LEFT/RIGHT is emitted here, so Menu cannot be selected blindly.
           sleep 5; capture 03-transition-settled
           if [ "$transitioned" = 1 ]; then
             adb shell input keyevent KEYCODE_X; sleep 12; capture 04-default-action-result
             adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 2; capture 05-post-action-benign-movement
           fi
 
-          # Cold persistence probe. Force-stop/relaunch is lifecycle control only; no save or
-          # game-state file is edited. Navigate ordinarily to Level Select and attempt Level 3.
           adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; sleep 2
           adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > level2-proof/cold-relaunch-command.txt 2>&1; sleep 4
           for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done; sleep 8
