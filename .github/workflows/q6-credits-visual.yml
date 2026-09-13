@@ -18,7 +18,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          fetch-depth: 1
+          fetch-depth: 2
 
       - name: Verify exact source and repair parent
         shell: pwsh
