@@ -93,6 +93,34 @@ jobs:
           '@ | Set-Content -Encoding UTF8 javap_adt.py
           python javap_adt.py | Tee-Object -FilePath javap.txt
 
+      - name: Decode exact ADT icon strings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $adtJar = Join-Path (Resolve-Path $env:AIR_HOME).Path 'lib/adt.jar'
+          @'
+          import java.lang.reflect.Method;
+          public class DecodeAdt {
+            public static void main(String[] args) throws Exception {
+              Class<?> k = Class.forName("com.adobe.air.apk.AABOutputStream");
+              Method c = k.getDeclaredMethod("c", int.class, int.class);
+              c.setAccessible(true);
+              int[][] pairs = {
+                {-32493,-13531},
+                {-32537,21452},
+                {-32401,17347},
+                {-32764,-17018}
+              };
+              for (int[] p : pairs) {
+                Object s = c.invoke(null, p[0], p[1]);
+                System.out.println(p[0] + "," + p[1] + " => " + s);
+              }
+            }
+          }
+          '@ | Set-Content -Encoding UTF8 DecodeAdt.java
+          javac -cp $adtJar DecodeAdt.java
+          java -cp ".;$adtJar" DecodeAdt | Tee-Object -FilePath decoded.txt
+
       - name: Publish exact trace artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -101,5 +129,6 @@ jobs:
           path: |
             trace.txt
             javap.txt
+            decoded.txt
           if-no-files-found: error
           retention-days: 1
