@@ -1,0 +1,94 @@
+name: Gate 2A ADT OUYA Trace Diagnostic R22
+
+on:
+  push:
+    branches:
+      - gate2a-adt-ouya-trace-diagnostic-r22
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact diagnostic revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+      - name: Prove ADT identity and locate OUYA literals
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $adtJar = Join-Path (Resolve-Path $env:AIR_HOME).Path 'lib/adt.jar'
+          $expected = '68386e96a40a8fd86ceea8e20ec425b6703501be0e71e2a4abf084b048f7700c'
+          $actual = (Get-FileHash -Algorithm SHA256 $adtJar).Hash.ToLowerInvariant()
+          Write-Host "ADT_JAR=$adtJar"
+          Write-Host "ADT_SHA256=$actual"
+          if ($actual -ne $expected) { throw "ADT identity changed" }
+          $env:ADT_JAR = $adtJar
+          @'
+          import os, zipfile, re
+          jar=os.environ['ADT_JAR']
+          needles=[b'ouya_icon',b'mipmap',b'icon_192',b'192x192',b'ouya']
+          with zipfile.ZipFile(jar) as z:
+              hits=[]
+              for n in z.namelist():
+                  data=z.read(n)
+                  found=[x.decode() for x in needles if x.lower() in data.lower()]
+                  if found:
+                      print(f'HIT entry={n} bytes={len(data)} needles={found}')
+                      hits.append(n)
+                      if n.endswith('.class'):
+                          for needle in needles:
+                              pos=data.lower().find(needle.lower())
+                              if pos>=0:
+                                  lo=max(0,pos-180); hi=min(len(data),pos+320)
+                                  chunk=data[lo:hi]
+                                  printable=''.join(chr(b) if 32<=b<127 else '.' for b in chunk)
+                                  print(f'CONTEXT entry={n} needle={needle.decode()} pos={pos} text={printable}')
+              print('CLASS_HITS=' + ';'.join(n for n in hits if n.endswith('.class')))
+          '@ | Set-Content -Encoding UTF8 trace_adt.py
+          python trace_adt.py
+
+      - name: Disassemble classes containing OUYA or mipmap literals
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $adtJar = Join-Path (Resolve-Path $env:AIR_HOME).Path 'lib/adt.jar'
+          $env:ADT_JAR = $adtJar
+          @'
+          import os, zipfile, subprocess
+          jar=os.environ['ADT_JAR']
+          needles=(b'ouya_icon',b'mipmap',b'icon_192',b'ouya')
+          with zipfile.ZipFile(jar) as z:
+              classes=[]
+              for n in z.namelist():
+                  if not n.endswith('.class'): continue
+                  data=z.read(n).lower()
+                  if any(x in data for x in needles):
+                      classes.append(n[:-6].replace('/','.'))
+          print('DISASSEMBLY_CLASS_COUNT',len(classes))
+          for cls in classes:
+              print('\n===== JAVAP',cls,'=====')
+              p=subprocess.run(['javap','-classpath',jar,'-c','-p','-constants',cls],text=True,capture_output=True)
+              print(p.stdout)
+              if p.stderr: print('JAVAP_STDERR',p.stderr)
+          '@ | Set-Content -Encoding UTF8 javap_adt.py
+          python javap_adt.py
