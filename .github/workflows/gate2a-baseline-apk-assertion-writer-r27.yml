@@ -1,0 +1,81 @@
+name: Gate 2A Baseline APK Assertion Writer R27
+
+on:
+  push:
+    branches:
+      - gate2a-baseline-apk-assertion-writer-r27
+
+permissions:
+  contents: write
+
+jobs:
+  seed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact staging basis
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-release-hardening-staging
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify basis and create one-file harness repair commit object
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "9dda58d5f3086bf5908a90ab429e3020ce69f9f2"
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/gate2a-air-baseline.yml')
+          s=p.read_text(encoding='utf-8')
+
+          replacements={
+            "$allowedOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')":"$allowedOuyaNamed = @('assets/SLFforOuya.swf')",
+            "$allowedEmuOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')":"$allowedEmuOuyaNamed = @('assets/SLFforOuya.swf')",
+          }
+          for old,new in replacements.items():
+              if s.count(old)!=1: raise SystemExit(f'expected once: {old!r}; found {s.count(old)}')
+              s=s.replace(old,new,1)
+
+          remove=[
+            "            $compatAlias = $zip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')\n",
+            "            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw \"ADT 412 compatibility alias identity drifted in device APK.\" }\n",
+            "            if ($entries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in device APK.' }\n",
+            "            $emuCompatAlias = $emuZip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')\n",
+            "            if ($null -eq $emuCompatAlias -or $emuCompatAlias.Length -ne 49049) { throw \"ADT 412 compatibility alias identity drifted in emulator APK.\" }\n",
+            "            if ($emuEntries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in emulator APK.' }\n",
+          ]
+          for old in remove:
+              if s.count(old)!=1: raise SystemExit(f'expected removable line once; found {s.count(old)}: {old!r}')
+              s=s.replace(old,'',1)
+
+          # The allowlist itself now fail-closes all OUYA-named APK image resources.
+          if "@('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')" in s:
+              raise SystemExit('stale APK alias requirement remains')
+          if s.count("@('assets/SLFforOuya.swf')") != 2:
+              raise SystemExit('expected device+emulator single-entry OUYA allowlists')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          PY
+          git diff --check
+          test "$(git diff --name-only)" = '.github/workflows/gate2a-air-baseline.yml'
+          git diff -- .github/workflows/gate2a-air-baseline.yml
+          sha256sum .github/workflows/gate2a-air-baseline.yml
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- .github/workflows/gate2a-air-baseline.yml
+          git commit -m 'Gate 2A rev41: scope OUYA alias assertion by Android package format'
+          commit="$(git rev-parse HEAD)"
+          parent="$(git rev-parse HEAD^)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "COMMIT=$commit"
+          echo "PARENT=$parent"
+          echo "TREE=$tree"
+          set +e
+          git push origin HEAD:gate2a-release-hardening-staging
+          rc=$?
+          set -e
+          echo "PUSH_EXIT=$rc"
+          # Expected: GitHub App cannot update a workflow ref. Commit object is retained server-side.
+          exit 0
