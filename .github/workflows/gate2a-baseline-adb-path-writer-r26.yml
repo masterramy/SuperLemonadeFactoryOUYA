@@ -1,0 +1,100 @@
+name: Gate 2A r26 baseline adb path writer
+
+on:
+  push:
+    branches:
+      - gate2a-baseline-adb-path-writer-r26
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch exact baseline workflow on modernization branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_BRANCH: gate2a-android-modernization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, os, urllib.request
+
+          repo = os.environ['REPO']
+          branch = os.environ['TARGET_BRANCH']
+          token = os.environ['GH_TOKEN']
+          path = '.github/workflows/gate2a-air-baseline.yml'
+          api = f'https://api.github.com/repos/{repo}/contents/{path}?ref={branch}'
+          req = urllib.request.Request(api, headers={
+              'Authorization': f'Bearer {token}',
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+          })
+          with urllib.request.urlopen(req) as r:
+              obj = json.load(r)
+          text = base64.b64decode(obj['content']).decode('utf-8')
+          old = '''          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK_ROOT" ] || [ ! -d "$SDK_ROOT/platform-tools" ]; then
+            echo "Android platform-tools unavailable on runtime-smoke runner" >&2
+            exit 1
+          fi
+          find "$SDK_ROOT/platform-tools" -type f -print0 | sort -z | while IFS= read -r -d '' f; do
+            rel="${f#"$SDK_ROOT/platform-tools/"}"
+            bytes=$(wc -c < "$f" | tr -d ' ')
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            printf '%s  %s  %s\\n' "$sha" "$bytes" "$rel"
+          done > smoke-provenance/platform-tools-sha256-manifest.txt
+          sha256sum smoke-provenance/platform-tools-sha256-manifest.txt > smoke-provenance/platform-tools-manifest.sha256
+          adb version > smoke-provenance/adb-version.txt 2>&1
+          sha256sum "$(command -v adb)" > smoke-provenance/adb-binary.sha256
+'''
+          new = '''          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK_ROOT" ] || [ ! -d "$SDK_ROOT/platform-tools" ]; then
+            echo "Android platform-tools unavailable on runtime-smoke runner" >&2
+            exit 1
+          fi
+          ADB="$SDK_ROOT/platform-tools/adb"
+          if [ ! -x "$ADB" ]; then
+            echo "Android adb binary unavailable at expected SDK path: $ADB" >&2
+            exit 1
+          fi
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          find "$SDK_ROOT/platform-tools" -type f -print0 | sort -z | while IFS= read -r -d '' f; do
+            rel="${f#"$SDK_ROOT/platform-tools/"}"
+            bytes=$(wc -c < "$f" | tr -d ' ')
+            sha=$(sha256sum "$f" | awk '{print $1}')
+            printf '%s  %s  %s\\n' "$sha" "$bytes" "$rel"
+          done > smoke-provenance/platform-tools-sha256-manifest.txt
+          sha256sum smoke-provenance/platform-tools-sha256-manifest.txt > smoke-provenance/platform-tools-manifest.sha256
+          "$ADB" version > smoke-provenance/adb-version.txt 2>&1
+          sha256sum "$ADB" > smoke-provenance/adb-binary.sha256
+'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'exact patch fence mismatch: expected 1 occurrence, found {count}')
+          text2 = text.replace(old, new, 1)
+          payload = json.dumps({
+              'message': 'Gate 2A r26: resolve runtime-smoke adb from exact SDK path',
+              'content': base64.b64encode(text2.encode()).decode(),
+              'sha': obj['sha'],
+              'branch': branch,
+          }).encode()
+          req2 = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/contents/{path}',
+              data=payload,
+              method='PUT',
+              headers={
+                  'Authorization': f'Bearer {token}',
+                  'Accept': 'application/vnd.github+json',
+                  'Content-Type': 'application/json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+              },
+          )
+          with urllib.request.urlopen(req2) as r:
+              result = json.load(r)
+          print('commit=' + result['commit']['sha'])
+          print('blob=' + result['content']['sha'])
+          PY
