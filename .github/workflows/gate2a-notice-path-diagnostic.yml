@@ -37,7 +37,7 @@ jobs:
           foreach($path in $targets.Keys){
             $text=[IO.File]::ReadAllText((Resolve-Path $path))
             $count=([regex]::Matches($text,[regex]::Escape($old))).Count
-            if($count -ne $targets[$path]){ throw "unexpected old notice packaging occurrence count in $path: $count" }
+            if($count -ne $targets[$path]){ throw "unexpected old notice packaging occurrence count in ${path}: $count" }
             $updated=$text.Replace($old,$new)
             [IO.File]::WriteAllText((Resolve-Path $path),$updated,(New-Object Text.UTF8Encoding($false)))
             $oldLeft=([regex]::Matches($updated,[regex]::Escape($old))).Count
