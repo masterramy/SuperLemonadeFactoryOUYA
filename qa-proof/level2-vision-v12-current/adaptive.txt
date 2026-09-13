@@ -1,0 +1,10 @@
+adapt=1 ax=1205 ay=537 lx=1433 ly=733 dx=-228 dy=-196
+adapt=2 ax=1206 ay=602 lx=1426 ly=625 dx=-220 dy=-23
+adapt=3 ax=941 ay=633 lx=1429 ly=669 dx=-488 dy=-36
+adapt=4 ax=708 ay=629 lx=1429 ly=669 dx=-721 dy=-40
+adapt=5 ax=804 ay=602 lx=1429 ly=669 dx=-625 dy=-67
+adapt=6 ax=1100 ay=602 lx=1429 ly=669 dx=-329 dy=-67
+adapt=7 ax=1511 ay=629 lx=1447 ly=708 dx=64 dy=-79
+rendered_rendezvous_step=7
+rendezvous_guard=true
+piggy_input_sent=true

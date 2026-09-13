@@ -1,0 +1,3 @@
+tag=01-pair
+pid=2224
+focus=  mCurrentFocus=Window{aa724b4 u0 com.ramybaheeg.slfport/com.ramybaheeg.slfport.AIRAppEntry}
