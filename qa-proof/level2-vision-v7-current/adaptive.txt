@@ -1,0 +1,3 @@
+step=1 detector_unresolved_stop_without_piggy
+rendezvous_guard=false
+piggy_input_sent=false

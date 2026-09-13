@@ -1,0 +1,10 @@
+ordinary_shipping_inputs_only=true
+adaptive_state_signal=screenshot_pixels_only
+passive_sprite_guard=true
+save_or_game_state_read=false
+save_or_game_state_edit=false
+teleport=false
+forced_completion=false
+completion_confirmation_input=false
+unknown_terminal_states_are_not_confirmed=true
+launcher_anr_is_external_harness_noise=true

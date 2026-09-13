@@ -1,0 +1,3 @@
+tag=09-adapt-1
+pid=2204
+focus=  mCurrentFocus=Window{6e7ee2f u0 com.ramybaheeg.slfport/com.ramybaheeg.slfport.AIRAppEntry}
