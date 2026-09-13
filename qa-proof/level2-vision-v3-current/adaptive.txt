@@ -1,0 +1,20 @@
+step=1 ax=331 ay=507 lx=1695 ly=835 dx=-1364 dy=-328
+step=2 andre_offscreen_or_unresolved; rendered_action=double_left_reacquire
+step=3 ax=597 ay=507 lx=1423 ly=675 dx=-826 dy=-168
+step=4 ax=917 ay=507 lx=1427 ly=675 dx=-510 dy=-168
+step=5 ax=1212 ay=507 lx=1427 ly=675 dx=-215 dy=-168
+step=6 ax=1113 ay=507 lx=1427 ly=675 dx=-314 dy=-168
+step=7 ax=825 ay=507 lx=1427 ly=675 dx=-602 dy=-168
+step=8 ax=507 ay=507 lx=1427 ly=675 dx=-920 dy=-168
+step=9 ax=587 ay=507 lx=1427 ly=675 dx=-840 dy=-168
+step=10 ax=860 ay=507 lx=1427 ly=675 dx=-567 dy=-168
+step=11 ax=1148 ay=507 lx=1427 ly=675 dx=-279 dy=-168
+step=12 ax=1107 ay=507 lx=1427 ly=675 dx=-320 dy=-168
+step=13 ax=819 ay=507 lx=1427 ly=675 dx=-608 dy=-168
+step=14 ax=563 ay=507 lx=1427 ly=675 dx=-864 dy=-168
+step=15 ax=548 ay=507 lx=1427 ly=675 dx=-879 dy=-168
+step=16 ax=827 ay=507 lx=1427 ly=675 dx=-600 dy=-168
+step=17 ax=1115 ay=507 lx=1427 ly=675 dx=-312 dy=-168
+step=18 ax=1215 ay=507 lx=1427 ly=675 dx=-212 dy=-168
+rendezvous_guard=false
+piggy_input_sent=false

@@ -1,0 +1,7 @@
+ordinary_shipping_inputs_only=true
+adaptive_state_signal=screenshot_pixels_only
+save_or_game_state_read=false
+save_or_game_state_edit=false
+teleport=false
+forced_completion=false
+unknown_terminal_states_are_not_confirmed=true
