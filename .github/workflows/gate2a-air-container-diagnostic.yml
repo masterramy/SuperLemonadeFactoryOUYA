@@ -46,15 +46,16 @@ jobs:
           $candidateArchives = @($candidateArchives | Sort-Object -Unique)
           "archive_count=$($candidateArchives.Count)" | Set-Content dist/container-summary.txt -Encoding utf8
 
-          $matches = @()
+          $findings = @()
           $errors = @()
           foreach ($archive in $candidateArchives) {
             try {
               $zip = [IO.Compression.ZipFile]::OpenRead($archive)
               try {
                 foreach ($entry in $zip.Entries) {
-                  if ($entry.FullName -match '(?i)ouya|app_entry/res/.+(icon|banner)') {
-                    $matches += "ENTRY`t$archive`t$($entry.FullName)`t$($entry.Length)"
+                  $name = $entry.FullName.ToLowerInvariant()
+                  if ($name.Contains('ouya') -or ($name.Contains('app_entry/res/') -and ($name.Contains('icon') -or $name.Contains('banner')))) {
+                    $findings += "ENTRY`t$archive`t$($entry.FullName)`t$($entry.Length)"
                   }
                 }
               } finally { $zip.Dispose() }
@@ -71,22 +72,21 @@ jobs:
           $literalTargets = @($literalTargets | Sort-Object -Unique)
           foreach ($file in $literalTargets) {
             try {
-              $bytes = [IO.File]::ReadAllBytes($file)
-              $ascii = [Text.Encoding]::ASCII.GetString($bytes)
-              if ($ascii -match '(?i)ouya_icon|ouya_icon\.png|drawable-xhdpi[/\\]ouya_icon') {
-                $matches += "LITERAL`t$file`tOUYA_LITERAL_PRESENT"
+              $ascii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($file)).ToLowerInvariant()
+              if ($ascii.Contains('ouya_icon') -or $ascii.Contains('drawable-xhdpi/ouya_icon') -or $ascii.Contains('drawable-xhdpi\ouya_icon')) {
+                $findings += "LITERAL`t$file`tOUYA_LITERAL_PRESENT"
               }
             } catch {}
           }
 
-          $matches = @($matches | Sort-Object -Unique)
+          $findings = @($findings | Sort-Object -Unique)
           $errors = @($errors | Sort-Object -Unique)
-          $matches | Set-Content dist/ouya-container-matches.txt -Encoding utf8
+          $findings | Set-Content dist/ouya-container-findings.txt -Encoding utf8
           $errors | Set-Content dist/archive-open-errors.txt -Encoding utf8
           Get-FileHash -Algorithm SHA256 (Join-Path $env:AIR_HOME 'lib/adt.jar'),(Join-Path $env:AIR_HOME 'lib/android/lib/resources/android-res.jar') |
             ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path)" } | Set-Content dist/core-container-hashes.txt -Encoding utf8
-          Write-Host "OUYA container/literal matches: $($matches.Count)"
-          $matches | ForEach-Object { Write-Host $_ }
+          Write-Host "OUYA container/literal findings: $($findings.Count)"
+          $findings | ForEach-Object { Write-Host $_ }
           Write-Host "Unreadable archives: $($errors.Count)"
 
       - name: Upload container diagnostic
