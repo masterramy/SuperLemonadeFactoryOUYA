@@ -31,6 +31,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $roots = @((Resolve-Path $env:AIR_HOME).Path)
           if (Test-Path 'C:\AIR_SDK') { $roots += (Resolve-Path 'C:\AIR_SDK').Path }
@@ -46,22 +47,19 @@ jobs:
           "archive_count=$($candidateArchives.Count)" | Set-Content dist/container-summary.txt -Encoding utf8
 
           $matches = @()
+          $errors = @()
           foreach ($archive in $candidateArchives) {
-            $oldPreference = $ErrorActionPreference
             try {
-              $ErrorActionPreference = 'Continue'
-              $list = @(& jar tf $archive 2>$null)
-              $jarExit = $LASTEXITCODE
-              $ErrorActionPreference = $oldPreference
-              if ($jarExit -ne 0) {
-                $matches += "JAR_TF_ERROR`t$archive`texit=$jarExit"
-                continue
-              }
-              $hits = @($list | Where-Object { $_ -match '(?i)ouya|app_entry/res/.+(icon|banner)' })
-              foreach ($hit in $hits) { $matches += "ENTRY`t$archive`t$hit" }
+              $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+              try {
+                foreach ($entry in $zip.Entries) {
+                  if ($entry.FullName -match '(?i)ouya|app_entry/res/.+(icon|banner)') {
+                    $matches += "ENTRY`t$archive`t$($entry.FullName)`t$($entry.Length)"
+                  }
+                }
+              } finally { $zip.Dispose() }
             } catch {
-              $ErrorActionPreference = $oldPreference
-              $matches += "JAR_TF_ERROR`t$archive`t$($_.Exception.Message)"
+              $errors += "ZIP_OPEN_ERROR`t$archive"
             }
           }
 
@@ -82,11 +80,14 @@ jobs:
           }
 
           $matches = @($matches | Sort-Object -Unique)
+          $errors = @($errors | Sort-Object -Unique)
           $matches | Set-Content dist/ouya-container-matches.txt -Encoding utf8
+          $errors | Set-Content dist/archive-open-errors.txt -Encoding utf8
           Get-FileHash -Algorithm SHA256 (Join-Path $env:AIR_HOME 'lib/adt.jar'),(Join-Path $env:AIR_HOME 'lib/android/lib/resources/android-res.jar') |
             ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path)" } | Set-Content dist/core-container-hashes.txt -Encoding utf8
           Write-Host "OUYA container/literal matches: $($matches.Count)"
           $matches | ForEach-Object { Write-Host $_ }
+          Write-Host "Unreadable archives: $($errors.Count)"
 
       - name: Upload container diagnostic
         if: always()
