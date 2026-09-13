@@ -1,0 +1,44 @@
+name: Gate 2A Icon Source Audit
+
+on:
+  push:
+    branches:
+      - gate2a-icon-audit-r20
+
+permissions:
+  contents: read
+
+jobs:
+  icon-audit:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact icon audit revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Preserve exact icon family and hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path icon-audit/icons | Out-Null
+          Copy-Item -LiteralPath icons/android/icons/*.png -Destination icon-audit/icons -Force
+          $items = Get-ChildItem icon-audit/icons -File -Filter *.png | Sort-Object Name
+          $items | ForEach-Object {
+            "$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())  $($_.Length)  $($_.Name)"
+          } | Set-Content icon-audit/icon-sha256-manifest.txt -Encoding utf8
+          @(
+            "audit_sha=$env:GITHUB_SHA"
+            "audit_tree=$((& git rev-parse 'HEAD^{tree}').Trim().ToLowerInvariant())"
+            "customer_source_basis=fb89f9780d43127156ec86a1d666292e11ffb7cd"
+          ) | Set-Content icon-audit/identity.txt -Encoding utf8
+
+      - name: Upload exact icon family
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate2a-icon-source-audit
+          path: icon-audit
+          if-no-files-found: error
