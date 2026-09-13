@@ -1,0 +1,60 @@
+name: Gate 2A Baseline Notice Path Writer
+
+on:
+  push:
+    branches:
+      - gate2a-baseline-notice-writer-r20
+
+permissions:
+  contents: write
+
+jobs:
+  write-repair:
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Checkout release-hardening staging
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-release-hardening-staging
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify exact staging basis
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = '973c31bbb788f96ed3a5bafc2d99eea434d58197'
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "Staging moved unexpectedly: $actual" }
+          if (git status --porcelain) { throw 'Staging is not clean before baseline notice-path repair.' }
+
+      - name: Repair both APK notice package paths fail-closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = '.github/workflows/gate2a-air-baseline.yml'
+          $resolved = (Resolve-Path $path).Path
+          $old = '-C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt'
+          $new = '-C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt'
+          $text = [IO.File]::ReadAllText($resolved)
+          $count = [regex]::Matches($text, [regex]::Escape($old)).Count
+          if ($count -ne 2) { throw "Expected exactly two stale APK notice commands, found $count" }
+          $updated = $text.Replace($old, $new)
+          if ([regex]::Matches($updated, [regex]::Escape($new)).Count -ne 2 -or $updated.Contains($old)) { throw 'Baseline notice-path replacement verification failed.' }
+          [IO.File]::WriteAllText($resolved, $updated, [Text.UTF8Encoding]::new($false))
+          git diff --check
+          $changed = @(& git diff --name-only)
+          if ($changed.Count -ne 1 -or $changed[0] -ne $path) { throw "Unexpected delta: $($changed -join ', ')" }
+
+      - name: Commit bounded baseline packaging repair
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- .github/workflows/gate2a-air-baseline.yml
+          $staged = @(& git diff --cached --name-only)
+          if ($staged.Count -ne 1 -or $staged[0] -ne '.github/workflows/gate2a-air-baseline.yml') { throw "Unexpected staged paths: $($staged -join ', ')" }
+          git commit -m 'Gate 2A rev41: preserve nested third-party notice paths in APKs'
+          git push origin HEAD:gate2a-release-hardening-staging
