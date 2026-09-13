@@ -37,7 +37,7 @@ jobs:
         with:
           air-version: '51.3.4.3'
           accept-license: true
-      - name: Audit PNG chunks and compressed stream
+      - name: Audit PNG chunks and exact corrupt boundary
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -45,22 +45,42 @@ jobs:
           import binascii, struct, zlib
           from pathlib import Path
           def audit(path):
-              b=Path(path).read_bytes(); assert b[:8] == b'\x89PNG\r\n\x1a\n'
-              pos=8; chunks=[]; idat=b''; bad=[]
+              b=Path(path).read_bytes()
+              print('BEGIN',path,'bytes=',len(b),'signature=',b[:8].hex())
+              if b[:8] != b'\x89PNG\r\n\x1a\n':
+                  print('BAD_SIGNATURE'); return False
+              pos=8; idat=b''; okall=True; idx=0
               while pos < len(b):
-                  if pos+12 > len(b): raise SystemExit(f'{path}: truncated chunk header at {pos}/{len(b)}')
-                  n=struct.unpack('>I',b[pos:pos+4])[0]; typ=b[pos+4:pos+8]; data=b[pos+8:pos+8+n]
-                  crc_stored=struct.unpack('>I',b[pos+8+n:pos+12+n])[0]; crc_calc=binascii.crc32(typ+data)&0xffffffff
-                  ok=crc_stored==crc_calc; chunks.append((typ.decode('latin1'),n,ok))
-                  if not ok: bad.append((typ.decode('latin1'),pos,crc_stored,crc_calc))
-                  if typ==b'IDAT': idat += data
-                  pos += 12+n
-                  if typ==b'IEND': break
-              print(path,'bytes=',len(b),'chunks=',chunks,'bad_crc=',bad,'end=',pos,'trailing=',len(b)-pos)
-              raw=zlib.decompress(idat); print(path,'IDAT_ZLIB_OK raw_bytes=',len(raw))
-              if bad or pos != len(b): raise SystemExit(f'{path}: invalid PNG structure')
-          for p in ['icons/android/icons/icon_96.png','icons/android/icons/icon_144.png','icons/android/icons/icon_192.png']:
-              audit(p)
+                  if pos+8 > len(b):
+                      print('TRUNCATED_HEADER','offset=',pos,'remaining=',len(b)-pos); return False
+                  n=struct.unpack('>I',b[pos:pos+4])[0]; typb=b[pos+4:pos+8]; typ=typb.decode('latin1')
+                  need=12+n
+                  print('CHUNK',idx,'offset=',pos,'type=',repr(typ),'declared_len=',n,'need_through=',pos+need,'file_len=',len(b))
+                  if pos+need > len(b):
+                      print('TRUNCATED_CHUNK','type=',repr(typ),'offset=',pos,'declared_len=',n,'available_data_crc_bytes=',len(b)-(pos+8),'short_by=',pos+need-len(b))
+                      print('TAIL_HEX',b[max(0,pos-16):].hex())
+                      return False
+                  data=b[pos+8:pos+8+n]
+                  stored=struct.unpack('>I',b[pos+8+n:pos+12+n])[0]; calc=binascii.crc32(typb+data)&0xffffffff
+                  crcok=(stored==calc); print('CRC','stored=',hex(stored),'calc=',hex(calc),'ok=',crcok)
+                  okall &= crcok
+                  if typb==b'IDAT': idat += data
+                  pos += need; idx += 1
+                  if typb==b'IEND': break
+              print('ENDPOS',pos,'TRAILING',len(b)-pos,'CRC_ALL',okall)
+              try:
+                  raw=zlib.decompress(idat); print('IDAT_ZLIB_OK raw_bytes=',len(raw))
+              except Exception as e:
+                  print('IDAT_ZLIB_FAIL',repr(e)); okall=False
+              return okall and pos==len(b)
+          results={p:audit(p) for p in ['icons/android/icons/icon_96.png','icons/android/icons/icon_144.png','icons/android/icons/icon_192.png']}
+          print('AUDIT_RESULTS',results)
+          if not results['icons/android/icons/icon_96.png'] or not results['icons/android/icons/icon_144.png']:
+              raise SystemExit('Control PNG unexpectedly invalid')
+          if results['icons/android/icons/icon_192.png']:
+              print('ICON_192_STRICT_VALID=True')
+          else:
+              print('ICON_192_STRICT_VALID=False')
           '@ | Set-Content -NoNewline png_audit.py
           python png_audit.py
       - name: Re-encode icon_192 and prove decoded-pixel identity
@@ -83,6 +103,28 @@ jobs:
           $after=PixelHash 'icon_192_reencoded.png'; $oldHash=(Get-FileHash -Algorithm SHA256 $src).Hash.ToLowerInvariant(); $newHash=(Get-FileHash -Algorithm SHA256 'icon_192_reencoded.png').Hash.ToLowerInvariant(); $newBytes=(Get-Item 'icon_192_reencoded.png').Length
           "SOURCE_FILE_SHA256=$oldHash"; "REENCODED_FILE_SHA256=$newHash BYTES=$newBytes"; "SOURCE_PIXEL_SHA256=$before"; "REENCODED_PIXEL_SHA256=$after"
           if($before -ne $after){ throw 'Re-encoding changed decoded pixels.' }
+      - name: Strict-audit re-encoded PNG
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import binascii,struct,zlib
+          from pathlib import Path
+          b=Path('icon_192_reencoded.png').read_bytes(); assert b[:8]==b'\x89PNG\r\n\x1a\n'; pos=8; idat=b''; chunks=[]
+          while pos<len(b):
+              if pos+12>len(b): raise SystemExit('reencoded truncated header')
+              n=struct.unpack('>I',b[pos:pos+4])[0]; typ=b[pos+4:pos+8]
+              if pos+12+n>len(b): raise SystemExit(f'reencoded truncated chunk {typ!r}')
+              data=b[pos+8:pos+8+n]; stored=struct.unpack('>I',b[pos+8+n:pos+12+n])[0]; calc=binascii.crc32(typ+data)&0xffffffff
+              if stored!=calc: raise SystemExit(f'reencoded CRC fail {typ!r}')
+              chunks.append((typ.decode('latin1'),n));
+              if typ==b'IDAT': idat+=data
+              pos+=12+n
+              if typ==b'IEND': break
+          raw=zlib.decompress(idat); print('REENCODED_STRICT_VALID','bytes=',len(b),'chunks=',chunks,'end=',pos,'trailing=',len(b)-pos,'raw_bytes=',len(raw))
+          if pos!=len(b): raise SystemExit('reencoded trailing bytes')
+          '@ | Set-Content -NoNewline audit_reencoded.py
+          python audit_reencoded.py
       - name: Compile exact source SWF
         shell: cmd
         run: |
