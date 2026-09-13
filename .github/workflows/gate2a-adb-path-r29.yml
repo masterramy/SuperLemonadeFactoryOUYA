@@ -1,0 +1,84 @@
+name: Gate 2A ADB Path Writer R29
+
+on:
+  push:
+    branches:
+      - gate2a-adb-path-r29
+
+permissions:
+  contents: write
+
+jobs:
+  seed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact modernization basis
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-android-modernization
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify basis and create one-file harness repair commit object
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "e3416be361af071d34ef552a4c93dd1f848a5498"
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/gate2a-air-baseline.yml')
+          lines = p.read_text(encoding='utf-8').splitlines()
+
+          sdk = '          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"'
+          adbver = '          adb version > smoke-provenance/adb-version.txt 2>&1'
+          adbsha = '          sha256sum "$(command -v adb)" > smoke-provenance/adb-binary.sha256'
+
+          if lines.count(sdk) != 1:
+              raise SystemExit(f'expected SDK_ROOT line once; found {lines.count(sdk)}')
+          if lines.count(adbver) != 1:
+              raise SystemExit(f'expected bare adb version line once; found {lines.count(adbver)}')
+          if lines.count(adbsha) != 1:
+              raise SystemExit(f'expected command-v adb line once; found {lines.count(adbsha)}')
+
+          i = lines.index(sdk)
+          try:
+              fi = lines.index('          fi', i + 1)
+          except ValueError:
+              raise SystemExit('runtime-smoke platform-tools guard terminator not found')
+
+          insert = [
+              '          ADB="$SDK_ROOT/platform-tools/adb"',
+              '          if [ ! -x "$ADB" ]; then',
+              '            echo "Resolved adb is missing or not executable: $ADB" >&2',
+              '            exit 1',
+              '          fi',
+              '          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"',
+          ]
+          lines[fi + 1:fi + 1] = insert
+          lines[lines.index(adbver)] = '          "$ADB" version > smoke-provenance/adb-version.txt 2>&1'
+          lines[lines.index(adbsha)] = '          sha256sum "$ADB" > smoke-provenance/adb-binary.sha256'
+
+          p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          test "$(git diff --name-only)" = '.github/workflows/gate2a-air-baseline.yml'
+          git diff -- .github/workflows/gate2a-air-baseline.yml
+          sha256sum .github/workflows/gate2a-air-baseline.yml
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- .github/workflows/gate2a-air-baseline.yml
+          git commit -m 'Gate 2A rev41: resolve runtime-smoke adb from exact SDK path'
+          commit="$(git rev-parse HEAD)"
+          parent="$(git rev-parse HEAD^)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          echo "COMMIT=$commit"
+          echo "PARENT=$parent"
+          echo "TREE=$tree"
+          set +e
+          git push origin HEAD:gate2a-android-modernization
+          rc=$?
+          set -e
+          echo "PUSH_EXIT=$rc"
+          exit 0
