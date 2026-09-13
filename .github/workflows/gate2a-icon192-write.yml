@@ -1,0 +1,72 @@
+name: Gate 2A Icon 192 Binary Repair Writer
+
+on:
+  push:
+    branches:
+      - gate2a-icon192-write-harness-r20
+
+permissions:
+  contents: write
+
+jobs:
+  write-repair:
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - name: Checkout isolated repair branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-icon192-repair-r20
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify repair branch basis
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = 'fb89f9780d43127156ec86a1d666292e11ffb7cd'
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "Repair branch moved unexpectedly: $actual" }
+          if (git status --porcelain) { throw 'Repair branch is not clean before binary repair.' }
+
+      - name: Derive and validate 192px launcher icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          $srcPath = (Resolve-Path 'icons/android/icons/icon_144.png').Path
+          $dstPath = Join-Path $PWD 'icons/android/icons/icon_192.png'
+          $src = [System.Drawing.Image]::FromFile($srcPath)
+          try {
+            if ($src.Width -ne 144 -or $src.Height -ne 144) { throw 'Canonical launcher source is not 144x144.' }
+            $bmp = New-Object System.Drawing.Bitmap 192,192
+            try {
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              try {
+                $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+                $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                $g.DrawImage($src,0,0,192,192)
+              } finally { $g.Dispose() }
+              $bmp.Save($dstPath,[System.Drawing.Imaging.ImageFormat]::Png)
+            } finally { $bmp.Dispose() }
+          } finally { $src.Dispose() }
+          $check = [System.Drawing.Image]::FromFile($dstPath)
+          try { if ($check.Width -ne 192 -or $check.Height -ne 192) { throw 'Derived icon dimensions invalid.' } } finally { $check.Dispose() }
+          $changed = @(& git status --porcelain)
+          if ($changed.Count -ne 1 -or $changed[0] -notmatch 'icons/android/icons/icon_192\.png$') { throw "Unexpected repair delta: $($changed -join '; ')" }
+          Write-Host "icon192_sha256=$((Get-FileHash -Algorithm SHA256 $dstPath).Hash.ToLowerInvariant())"
+          Write-Host "icon192_bytes=$((Get-Item $dstPath).Length)"
+
+      - name: Commit one-file repair to isolated branch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- icons/android/icons/icon_192.png
+          $staged = @(& git diff --cached --name-only)
+          if ($staged.Count -ne 1 -or $staged[0] -ne 'icons/android/icons/icon_192.png') { throw "Unexpected staged paths: $($staged -join ', ')" }
+          git commit -m 'Gate 2A rev41: repair truncated 192px launcher icon'
+          git push origin HEAD:gate2a-icon192-repair-r20
