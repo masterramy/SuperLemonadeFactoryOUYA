@@ -6,7 +6,7 @@ on:
       - gate2a-baseline-notice-writer-r20
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   write-repair:
@@ -18,7 +18,7 @@ jobs:
         with:
           ref: gate2a-release-hardening-staging
           fetch-depth: 2
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Verify exact staging basis
         shell: pwsh
@@ -46,15 +46,19 @@ jobs:
           git diff --check
           $changed = @(& git diff --name-only)
           if ($changed.Count -ne 1 -or $changed[0] -ne $path) { throw "Unexpected delta: $($changed -join ', ')" }
+          New-Item -ItemType Directory -Force -Path export | Out-Null
+          Copy-Item -LiteralPath $resolved -Destination export/gate2a-air-baseline.yml
+          @(
+            "base_sha=$expected"
+            "changed_path=$path"
+            "old_occurrences=$count"
+            "new_occurrences=$([regex]::Matches($updated, [regex]::Escape($new)).Count)"
+            "file_sha256=$((Get-FileHash -Algorithm SHA256 export/gate2a-air-baseline.yml).Hash.ToLowerInvariant())"
+          ) | Set-Content export/receipt.txt -Encoding utf8
 
-      - name: Commit bounded baseline packaging repair
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          git config user.name 'Gate2A QA Worker'
-          git config user.email 'actions@users.noreply.github.com'
-          git add -- .github/workflows/gate2a-air-baseline.yml
-          $staged = @(& git diff --cached --name-only)
-          if ($staged.Count -ne 1 -or $staged[0] -ne '.github/workflows/gate2a-air-baseline.yml') { throw "Unexpected staged paths: $($staged -join ', ')" }
-          git commit -m 'Gate 2A rev41: preserve nested third-party notice paths in APKs'
-          git push origin HEAD:gate2a-release-hardening-staging
+      - name: Upload exact repaired baseline workflow
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-baseline-notice-path-repair
+          path: export/
+          if-no-files-found: error
