@@ -404,8 +404,31 @@ jobs:
 
           $jarsignerOutput = & jarsigner -verify -strict -certs $aab.FullName 2>&1
           $jarsignerExit = $LASTEXITCODE
+          $jarsignerText = ($jarsignerOutput | Out-String)
           $jarsignerOutput | Set-Content -Path dist/aab-signature-verify.txt -Encoding utf8
-          if ($jarsignerExit -ne 0) { throw "AAB JAR-signature verification failed (exit $jarsignerExit)." }
+          if ($jarsignerText -notmatch '(?i)jar verified') {
+            throw "AAB strict JAR verification did not report a verified archive (exit $jarsignerExit)."
+          }
+          if ($env:PRODUCTION_SIGNING -eq 'true') {
+            if ($jarsignerExit -ne 0) { throw "Production AAB strict JAR-signature verification failed (exit $jarsignerExit)." }
+          } else {
+            $ordinaryJarsignerOutput = & jarsigner -verify -certs $aab.FullName 2>&1
+            $ordinaryJarsignerExit = $LASTEXITCODE
+            $ordinaryJarsignerText = ($ordinaryJarsignerOutput | Out-String)
+            $ordinaryJarsignerOutput | Set-Content -Path dist/aab-signature-verify-disposable.txt -Encoding utf8
+            if ($ordinaryJarsignerExit -ne 0 -or $ordinaryJarsignerText -notmatch '(?i)jar verified') {
+              throw "Disposable-validation AAB cryptographic JAR-signature verification failed (exit $ordinaryJarsignerExit)."
+            }
+            if ($jarsignerExit -notin @(0,4)) {
+              throw "Disposable-validation strict JAR verification returned an unexpected exit code $jarsignerExit."
+            }
+            if ($jarsignerExit -eq 4) {
+              if ($jarsignerText -notmatch '(?i)certificate chain is invalid' -or $jarsignerText -notmatch '(?i)signer certificate is self-signed') {
+                throw "Disposable-validation strict JAR verification returned exit 4 for an unrecognized signer error."
+              }
+            }
+            Add-Content -Path dist/release-metadata.txt -Value "aab_disposable_strict_exit=$jarsignerExit"
+          }
 
           $certOutput = & keytool -printcert -jarfile $aab.FullName 2>&1
           $certExit = $LASTEXITCODE
@@ -469,6 +492,7 @@ jobs:
             dist/manifest-version-code.txt
             dist/manifest-full.txt
             dist/aab-signature-verify.txt
+            dist/aab-signature-verify-disposable.txt
             dist/aab-signing-certificate.txt
             dist/source-provenance.txt
             dist/build-environment.txt

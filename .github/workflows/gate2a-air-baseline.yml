@@ -323,12 +323,11 @@ jobs:
               if ($entries -notcontains $entry) { throw "Required notice missing from device APK: $entry" }
             }
             $ouyaNamed = @($entries | Where-Object { $_ -match '(?i)ouya' })
-            $allowedOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')
+            $allowedOuyaNamed = @('assets/SLFforOuya.swf')
             $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })
             if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named device APK entries: $($unexpectedOuya -join ', ')" }
-            foreach ($entry in $allowedOuyaNamed) { if ($entries -notcontains $entry) { throw "Expected compatibility entry missing from device APK: $entry" } }
-            $compatAlias = $zip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')
-            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in device APK." }
+            foreach ($entry in $allowedOuyaNamed) { if ($entries -notcontains $entry) { throw "Expected historical build-name entry missing from device APK: $entry" } }
+            if ($entries -contains 'res/mipmap-xhdpi-v4/ouya_icon.png') { throw 'AAB-only ADT 412 compatibility alias unexpectedly appeared in device APK.' }
             if ($entries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in device APK.' }
             $required | Set-Content -Path dist/device-apk-notice-evidence.txt -Encoding utf8
           } finally { $zip.Dispose() }
@@ -357,12 +356,11 @@ jobs:
               if ($emuEntries -notcontains $entry) { throw "Required notice missing from emulator APK: $entry" }
             }
             $emuOuyaNamed = @($emuEntries | Where-Object { $_ -match '(?i)ouya' })
-            $allowedEmuOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')
+            $allowedEmuOuyaNamed = @('assets/SLFforOuya.swf')
             $unexpectedEmuOuya = @($emuOuyaNamed | Where-Object { $_ -notin $allowedEmuOuyaNamed })
             if ($unexpectedEmuOuya.Count -ne 0) { throw "Unexpected OUYA-named emulator APK entries: $($unexpectedEmuOuya -join ', ')" }
-            foreach ($entry in $allowedEmuOuyaNamed) { if ($emuEntries -notcontains $entry) { throw "Expected compatibility entry missing from emulator APK: $entry" } }
-            $emuCompatAlias = $emuZip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')
-            if ($null -eq $emuCompatAlias -or $emuCompatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in emulator APK." }
+            foreach ($entry in $allowedEmuOuyaNamed) { if ($emuEntries -notcontains $entry) { throw "Expected historical build-name entry missing from emulator APK: $entry" } }
+            if ($emuEntries -contains 'res/mipmap-xhdpi-v4/ouya_icon.png') { throw 'AAB-only ADT 412 compatibility alias unexpectedly appeared in emulator APK.' }
             if ($emuEntries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in emulator APK.' }
             $requiredEmuNotices | Set-Content -Path dist/emulator-apk-notice-evidence.txt -Encoding utf8
           } finally { $emuZip.Dispose() }
