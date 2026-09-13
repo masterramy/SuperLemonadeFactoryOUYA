@@ -1,0 +1,90 @@
+name: Gate 2A AAB Jarsigner Adjudication R26
+
+on:
+  push:
+    branches:
+      - gate2a-aab-manifest-ouya-adjudication-r23
+
+permissions:
+  contents: read
+
+jobs:
+  adjudicate:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact diagnostic revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+      - name: Build exact validation AAB and capture jarsigner semantics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path bin,dist | Out-Null
+          $legacyOuya = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+          $expectedSha = '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253'
+          if (-not (Test-Path -LiteralPath $legacyOuya -PathType Leaf)) { throw 'Pinned AIR legacy drawable missing.' }
+          $actualSha = (Get-FileHash -Algorithm SHA256 $legacyOuya).Hash.ToLowerInvariant()
+          if ((Get-Item -LiteralPath $legacyOuya).Length -ne 1525 -or $actualSha -ne $expectedSha) { throw "Pinned AIR legacy drawable identity drifted: $actualSha" }
+          Remove-Item -LiteralPath $legacyOuya -Force
+
+          & amxmlc '-load-config+=obj/SLF_for_OuyaConfig.xml' '-output=bin/SLFforOuya.swf'
+          if ($LASTEXITCODE -ne 0) { throw "SWF compile failed: $LASTEXITCODE" }
+          & adt -certificate -validityPeriod 1 -cn 'Gate 2A R26 Validation' 2048-RSA diagnostic-signing.p12 gate2a
+          if ($LASTEXITCODE -ne 0) { throw "Certificate failed: $LASTEXITCODE" }
+          $sdk = $env:ANDROID_SDK_ROOT; if ([string]::IsNullOrWhiteSpace($sdk)) { $sdk = $env:ANDROID_HOME }
+          & adt -package -target aab -storetype pkcs12 -keystore diagnostic-signing.p12 -storepass gate2a dist/SLF-r26.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $sdk
+          if ($LASTEXITCODE -ne 0) { throw "AAB package failed: $LASTEXITCODE" }
+
+          $PSNativeCommandUseErrorActionPreference = $false
+          $normal = & jarsigner -verify -certs dist/SLF-r26.aab 2>&1
+          $normalExit = $LASTEXITCODE
+          $normal | Set-Content dist/jarsigner-normal.txt -Encoding utf8
+          $strict = & jarsigner -verify -strict -certs dist/SLF-r26.aab 2>&1
+          $strictExit = $LASTEXITCODE
+          $strict | Set-Content dist/jarsigner-strict.txt -Encoding utf8
+          $verbose = & jarsigner -verify -verbose -certs dist/SLF-r26.aab 2>&1
+          $verboseExit = $LASTEXITCODE
+          $verbose | Set-Content dist/jarsigner-verbose.txt -Encoding utf8
+          $cert = & keytool -printcert -jarfile dist/SLF-r26.aab 2>&1
+          $certExit = $LASTEXITCODE
+          $cert | Set-Content dist/keytool-cert.txt -Encoding utf8
+          @(
+            "normal_exit=$normalExit"
+            "strict_exit=$strictExit"
+            "verbose_exit=$verboseExit"
+            "keytool_exit=$certExit"
+            "aab_bytes=$((Get-Item dist/SLF-r26.aab).Length)"
+            "aab_sha256=$((Get-FileHash -Algorithm SHA256 dist/SLF-r26.aab).Hash.ToLowerInvariant())"
+          ) | Set-Content dist/summary.txt -Encoding utf8
+          Write-Host '===SUMMARY==='; Get-Content dist/summary.txt
+          Write-Host '===NORMAL==='; $normal | ForEach-Object { Write-Host $_ }
+          Write-Host '===STRICT==='; $strict | ForEach-Object { Write-Host $_ }
+          Write-Host '===VERBOSE_TAIL==='; $verbose | Select-Object -Last 80 | ForEach-Object { Write-Host $_ }
+          Write-Host '===KEYTOOL==='; $cert | ForEach-Object { Write-Host $_ }
+          if ($normalExit -ne 0) { throw "Non-strict jarsigner verification failed: $normalExit" }
+          if ($verboseExit -ne 0) { throw "Verbose non-strict jarsigner verification failed: $verboseExit" }
+          if ($certExit -ne 0) { throw "keytool certificate extraction failed: $certExit" }
+
+      - name: Upload adjudication evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-aab-jarsigner-r26
+          path: dist/
+          if-no-files-found: error
