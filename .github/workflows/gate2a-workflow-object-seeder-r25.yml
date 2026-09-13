@@ -1,0 +1,78 @@
+name: Gate 2A Workflow Object Seeder R25
+
+on:
+  push:
+    branches:
+      - gate2a-workflow-object-seeder-r25
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  seed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact staging basis with write credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-release-hardening-staging
+          persist-credentials: true
+          fetch-depth: 2
+
+      - name: Verify exact staging basis
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "973c31bbb788f96ed3a5bafc2d99eea434d58197"
+          test -z "$(git status --porcelain)"
+
+      - name: Download cold-verified R25 workflow artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-provider-sanitize-workflow-repair-r25
+          path: repair
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 34739765556
+
+      - name: Verify and create exact two-workflow commit object
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum repair/.github/workflows/gate2a-air-baseline.yml | awk '{print $1}')" = "0aa892c0323443fa154e0cdde1c25995b5ef17653b88cedcd675dce634fb0c39"
+          test "$(sha256sum repair/.github/workflows/gate2a-android-release.yml | awk '{print $1}')" = "03b3b630b51e22f4398dce9319ec940005d97ad4ceb1b49aef1d8eb020e5468b"
+          cp repair/.github/workflows/gate2a-air-baseline.yml .github/workflows/gate2a-air-baseline.yml
+          cp repair/.github/workflows/gate2a-android-release.yml .github/workflows/gate2a-android-release.yml
+          git diff --check
+          test "$(git diff --name-only)" = $'.github/workflows/gate2a-air-baseline.yml\n.github/workflows/gate2a-android-release.yml'
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- .github/workflows/gate2a-air-baseline.yml .github/workflows/gate2a-android-release.yml
+          git commit -m 'Gate 2A rev41: sanitize AIR legacy drawable and preserve package notices'
+          commit="$(git rev-parse HEAD)"
+          parent="$(git rev-parse HEAD^)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          mkdir -p receipt
+          printf 'commit=%s\nparent=%s\ntree=%s\n' "$commit" "$parent" "$tree" | tee receipt/object.txt
+          git show --stat --oneline HEAD | tee receipt/stat.txt
+          sha256sum .github/workflows/gate2a-air-baseline.yml .github/workflows/gate2a-android-release.yml | tee receipt/workflow-sha256.txt
+
+          set +e
+          git push origin HEAD:gate2a-release-hardening-staging >receipt/push.txt 2>&1
+          rc=$?
+          set -e
+          printf 'push_exit=%s\n' "$rc" | tee -a receipt/object.txt
+          cat receipt/push.txt
+          # Either expected workflow-permission rejection or an unexpected successful fast-forward is acceptable;
+          # the next authority reconciliation decides the branch state. The commit object must exist server-side.
+
+      - name: Upload object receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gate2a-workflow-object-seeder-r25
+          path: receipt/
+          if-no-files-found: error
+          retention-days: 7
