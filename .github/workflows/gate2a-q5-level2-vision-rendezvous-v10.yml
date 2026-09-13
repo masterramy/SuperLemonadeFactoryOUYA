@@ -1,0 +1,144 @@
+name: Gate 2A Q5 Level 2 Vision Rendezvous V10
+
+on:
+  push:
+    branches: [gate2a-android-modernization]
+    paths: [.github/workflows/gate2a-q5-level2-vision-rendezvous-v10.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  level2-vision-v10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with: {fetch-depth: 64}
+      - name: Verify exact product ancestor and QA-only delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRODUCT='9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c'
+          git merge-base --is-ancestor "$PRODUCT" HEAD
+          if git diff --name-only "$PRODUCT" HEAD | grep -Ev '^(\.github/workflows/gate2a-q5-.*\.yml|qa-proof/level2-.*-current/.*)$' | grep -q .; then echo 'Non-QA delta above exact-final' >&2; exit 1; fi
+      - name: Download exact repaired emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          run-id: 34777986347
+      - name: Verify APK identity
+        shell: bash
+        run: |
+          APK='runtime-apk/SLF-emulator-x64.apk'; test "$(wc -c < "$APK"|tr -d ' ')" = '35875619'; test "$(sha256sum "$APK"|awk '{print $1}')" = '53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2'
+      - name: Install Pillow and write rendered guard
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check pillow
+          cat > vision.py <<'PY'
+          from PIL import Image
+          import sys
+          im=Image.open(sys.argv[1]).convert('RGB'); w,h=im.size; p=im.load()
+          A={(225,145,172),(225,142,170),(247,172,209),(225,149,175),(225,151,177),(238,200,207),(234,155,35),(236,167,35)}
+          L={(178,207,91),(170,200,87),(97,191,31),(216,214,51),(254,233,103),(182,210,93),(174,203,89),(218,49,72),(169,50,46),(160,43,42)}
+          def locate(colors):
+            pts=[(x,y) for y in range(280,int(h*.82)) for x in range(120,w-120) if p[x,y] in colors]
+            if not pts:return None
+            buckets={}
+            for x,y in pts:
+              k=(x//96,y//96); buckets[k]=buckets.get(k,0)+1
+            best=max(buckets,key=buckets.get); bx,by=best
+            local=[(x,y) for x,y in pts if abs(x//96-bx)<=1 and abs(y//96-by)<=1]
+            if len(local)<64:return None
+            return (sum(x for x,y in local)//len(local),sum(y for x,y in local)//len(local),len(local))
+          a=locate(A); l=locate(L); print('A',*(a or ('NA','NA',0))); print('L',*(l or ('NA','NA',0)))
+          if a and l: print('DX',a[0]-l[0]); print('DY',a[1]-l[1])
+          PY
+          cat > probe.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK='runtime-apk/SLF-emulator-x64.apk'; PACKAGE='com.ramybaheeg.slfport'; OUT='level2-vision-v10'; mkdir -p "$OUT"
+          dismiss(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1||return 0; adb pull /sdcard/window.xml "$OUT/ui.xml" >/dev/null 2>&1||return 0; python3 - "$1" <<'PY' >/tmp/c
+          import re,sys,xml.etree.ElementTree as ET
+          try:r=ET.parse('level2-vision-v10/ui.xml').getroot()
+          except:raise SystemExit
+          for n in r.iter('node'):
+            if n.attrib.get('text')==sys.argv[1]:
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2);break
+          PY
+          read x y </tmp/c||true; [ -z "${x:-}" ]||{ adb shell input tap "$x" "$y"; sleep 1; }; }
+          stabilize(){ for n in 1 2 3 4 5 6; do focus=$(adb shell dumpsys window 2>/dev/null|grep -m1 'mCurrentFocus='||true); echo "$focus"|grep -q "$PACKAGE" && return 0; dismiss 'Wait'; dismiss 'Got it'; adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >> "$OUT/refocus.txt" 2>&1||true; sleep 2; done; return 1; }
+          capture(){ tag="$1"; stabilize; adb shell dumpsys window > "$OUT/window-${tag}.txt" 2>&1; adb exec-out screencap -p > "$OUT/${tag}.png"; adb logcat -d > "$OUT/logcat-${tag}.txt" 2>&1; pid=$(adb shell pidof "$PACKAGE"|tr -d '\r'); focus=$(grep -m1 'mCurrentFocus=' "$OUT/window-${tag}.txt"||true); printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "$OUT/state-${tag}.txt"; test -n "$pid"; echo "$focus"|grep -q "$PACKAGE"; ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-${tag}.txt" > "$OUT/fatal-${tag}.txt"; python3 vision.py "$OUT/${tag}.png" > "$OUT/vision-${tag}.txt"||true; }
+          jr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT & p=$!; sleep .05; adb shell input keyevent KEYCODE_C; wait "$p"||true; sleep .30; }
+          dbr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT & p=$!; sleep .05; adb shell input keyevent KEYCODE_C; sleep .16; adb shell input keyevent KEYCODE_C; wait "$p"||true; sleep .45; }
+          dbl(){ adb shell input keyevent --longpress KEYCODE_DPAD_LEFT & p=$!; sleep .05; adb shell input keyevent KEYCODE_C; sleep .16; adb shell input keyevent KEYCODE_C; wait "$p"||true; sleep .45; }
+          sl(){ adb shell input touchscreen swipe 500 1280 500 1280 120; sleep .35; }
+          sr(){ adb shell input touchscreen swipe 920 1280 920 1280 120; sleep .35; }
+          parse(){ f="$1"; ax=$(awk '$1=="A"{print $2}' "$f"|tail -1); ay=$(awk '$1=="A"{print $3}' "$f"|tail -1); lx=$(awk '$1=="L"{print $2}' "$f"|tail -1); ly=$(awk '$1=="L"{print $3}' "$f"|tail -1); }
+          numeric(){ [[ "$1" =~ ^[0-9]+$ ]]; }
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1; adb shell settings put secure immersive_mode_confirmations confirmed||true; adb shell settings put system accelerometer_rotation 0||true; adb shell settings put system user_rotation 1||true; adb shell wm user-rotation lock 1||true; adb shell input keyevent KEYCODE_WAKEUP||true; adb shell wm dismiss-keyguard||true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1||true; adb logcat -c; adb shell am force-stop "$PACKAGE"||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt"; sleep 5; for _ in 1 2 3 4; do dismiss 'Got it'; dismiss 'Wait'; done; stabilize; sleep 2; dismiss 'Wait'; stabilize
+          adb shell input keyevent KEYCODE_X; sleep 2; stabilize; adb shell input keyevent KEYCODE_X; sleep 8; dismiss 'Wait'; stabilize; adb shell input keyevent KEYCODE_X; sleep 4; stabilize; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; dismiss 'Wait'; stabilize; adb shell input keyevent KEYCODE_X; sleep 12; dismiss 'Wait'; stabilize
+          for _ in $(seq 1 7); do jr; done; adb shell input keyevent KEYCODE_V; sleep 2; for _ in $(seq 1 3); do dbr; done; for _ in 1 2 3; do sl; done; dbl; capture 01-pair
+          rendezvous=false
+          for i in $(seq 1 10); do
+            capture "02-climb-${i}"; parse "$OUT/vision-02-climb-${i}.txt"
+            if ! numeric "$ax" || ! numeric "$ay" || ! numeric "$lx" || ! numeric "$ly"; then echo "climb=$i detector_unresolved_stop" >> "$OUT/adaptive.txt"; break; fi
+            dx=$((ax-lx)); adx=${dx#-}; dy=$((ay-ly)); ady=${dy#-}; echo "climb=$i ax=$ax ay=$ay lx=$lx ly=$ly dx=$dx dy=$dy" >> "$OUT/adaptive.txt"
+            if [ "$ady" -le 120 ]; then
+              echo "same_vertical_plane=$i" >> "$OUT/adaptive.txt"
+              if [ "$adx" -le 115 ]; then rendezvous=true; echo "rendered_rendezvous_step=$i" >> "$OUT/adaptive.txt"; break; fi
+              if [ "$dx" -lt 0 ]; then sl; else sr; fi
+            else
+              dbl
+            fi
+          done
+          capture 03-rendezvous-guard; echo "rendezvous_guard=$rendezvous" >> "$OUT/adaptive.txt"
+          if [ "$rendezvous" = true ]; then
+            adb shell input keyevent KEYCODE_V; sleep .35; capture 04-after-switch-no-move
+            adb shell input keyevent KEYCODE_B; sleep 1.2; capture 05-after-piggy
+            echo piggy_input_sent=true >> "$OUT/adaptive.txt"
+          else echo piggy_input_sent=false >> "$OUT/adaptive.txt"; fi
+          capture 06-terminal-observation
+          printf '%s\n' ordinary_shipping_inputs_only=true adaptive_state_signal=screenshot_pixels_only rendered_pair_required=true vertical_climb_uses_liselot_shipping_double_jump=true rendered_colocation_required_before_piggy=true no_movement_between_colocation_switch_and_piggy=true save_or_game_state_read=false save_or_game_state_edit=false teleport=false forced_completion=false completion_confirmation_input=false unknown_terminal_states_are_not_confirmed=true > "$OUT/method.txt"
+          EOF
+          chmod +x probe.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules; sudo udevadm trigger --name-match=kvm
+      - name: Run rendered vertical rendezvous probe
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash probe.sh
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-level2-vision-rendezvous-v10
+          path: level2-vision-v10
+          if-no-files-found: error
+      - name: Retain current rendered proof
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d level2-vision-v10 || exit 0
+          rm -rf qa-proof/level2-vision-v10-current; mkdir -p qa-proof/level2-vision-v10-current
+          cp level2-vision-v10/*.png level2-vision-v10/*.txt qa-proof/level2-vision-v10-current/ 2>/dev/null || true
+          git config user.name 'Gate 2A QA Worker'; git config user.email 'actions@users.noreply.github.com'
+          git add qa-proof/level2-vision-v10-current
+          git diff --cached --quiet && exit 0
+          git commit -m 'qa-proof: retain rendered Level 2 vertical rendezvous frames'
+          git push origin HEAD:gate2a-android-modernization
