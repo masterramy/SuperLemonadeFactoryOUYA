@@ -18,7 +18,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-          fetch-depth: 4
+          fetch-depth: 5
 
       - name: Verify exact source ancestry
         shell: pwsh
