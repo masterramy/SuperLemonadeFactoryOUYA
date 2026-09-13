@@ -37,13 +37,8 @@ jobs:
             $pathMatch=$rel -match '(?i)ouya'
             $byteMatch=$false
             try {
-              $bytes=[IO.File]::ReadAllBytes($_.FullName)
-              $needle=[Text.Encoding]::ASCII.GetBytes('ouya_icon')
-              for($i=0; $i -le $bytes.Length-$needle.Length; $i++) {
-                $ok=$true
-                for($j=0; $j -lt $needle.Length; $j++) { if([byte]::ToLower($bytes[$i+$j]) -ne [byte]::ToLower($needle[$j])) { $ok=$false; break } }
-                if($ok){$byteMatch=$true;break}
-              }
+              $text=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($_.FullName))
+              $byteMatch=$text.IndexOf('ouya_icon',[StringComparison]::OrdinalIgnoreCase) -ge 0
             } catch {}
             if($pathMatch -or $byteMatch) {
               $sha=(Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
