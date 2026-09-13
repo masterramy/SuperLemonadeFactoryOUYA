@@ -1,0 +1,8 @@
+ordinary_inputs_only=true
+save_or_game_state_edit=false
+teleport=false
+forced_completion=false
+switch_input=KEYCODE_V
+piggyback_input=KEYCODE_B_once_when_rendezvous_attempted
+completion_confirmation_input=false
+unknown_terminal_states_are_not_blindly_confirmed=true
