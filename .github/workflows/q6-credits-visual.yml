@@ -1,0 +1,195 @@
+name: Q6 Credits Visual Repair QA
+
+on:
+  push:
+    branches:
+      - qa/q6-credits-visual-r1
+
+permissions:
+  contents: read
+
+jobs:
+  build-emulator-apk:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact QA revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify exact source and repair parent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (& git rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($head -ne "$env:GITHUB_SHA".ToLowerInvariant()) { throw "Checkout mismatch" }
+          $repair = (& git rev-parse HEAD^).Trim().ToLowerInvariant()
+          if ($repair -ne '4b9027134c1786a262df76df09b95ef34338ca87') { throw "Unexpected repair parent: $repair" }
+          $source = (& git show HEAD^:src/PCCreditsState.as | Out-String)
+          if ($source -notmatch 'new FlxSprite\(20, 30\)' -or $source -notmatch '0xffeeeccd') { throw 'Expected credits occlusion repair is absent.' }
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+      - name: Sanitize exact obsolete AIR OUYA drawable template
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+          if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Expected AIR provider template missing" }
+          $item = Get-Item -LiteralPath $target
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          if ($item.Length -ne 1525 -or $hash -ne '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253') { throw "AIR template identity changed" }
+          Remove-Item -Force -LiteralPath $target
+
+      - name: Compile repaired source
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Create ephemeral QA certificate
+        shell: cmd
+        run: |
+          adt -certificate -validityPeriod 1 -cn "Gate2A Q6 Credits QA" 2048-RSA q6-qa.p12 gate2a
+
+      - name: Package x64 emulator APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) { throw 'Android SDK unavailable' }
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore q6-qa.p12 -storepass gate2a dist/SLF-q6-credits-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sha = (Get-FileHash -Algorithm SHA256 dist/SLF-q6-credits-x64.apk).Hash.ToLowerInvariant()
+          @("qa_head=$env:GITHUB_SHA", "repair_commit=4b9027134c1786a262df76df09b95ef34338ca87", "apk_sha256=$sha") | Set-Content dist/q6-build-provenance.txt -Encoding utf8
+
+      - name: Upload repaired emulator APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: q6-credits-emulator-apk
+          path: |
+            dist/SLF-q6-credits-x64.apk
+            dist/q6-build-provenance.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  rendered-credits:
+    needs: build-emulator-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download repaired emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: q6-credits-emulator-apk
+          path: runtime-apk
+
+      - name: Write ordinary-input rendered harness
+        shell: bash
+        run: |
+          cat > q6-ui.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p evidence
+          APK=runtime-apk/SLF-q6-credits-x64.apk
+          PACKAGE=com.ramybaheeg.slfport
+          sha256sum "$APK" > evidence/apk-sha256.txt
+          cp runtime-apk/q6-build-provenance.txt evidence/
+          adb install -r "$APK" > evidence/install.txt 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+          dismiss_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml evidence/window-ui.xml >/dev/null 2>&1 || return 0
+            local coords
+            coords=$(python3 - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          wanted=sys.argv[1]
+          try: root=ET.parse('evidence/window-ui.xml').getroot()
+          except Exception: raise SystemExit
+          for node in root.iter('node'):
+              if node.attrib.get('text') != wanted: continue
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); break
+          PY
+            )
+            if [ -n "$coords" ]; then adb shell input tap $coords >/dev/null 2>&1 || true; sleep 1; fi
+          }
+
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >/dev/null 2>&1
+          sleep 4
+          for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done
+          sleep 6
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 8
+          # Three ordinary DOWN presses from Factory Floor to Credits, then action.
+          for _ in 1 2 3; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
+          adb shell input keyevent KEYCODE_X
+          sleep 2
+          adb exec-out screencap -p > evidence/credits-02s.png
+          sleep 6
+          adb exec-out screencap -p > evidence/credits-08s.png
+          sleep 8
+          adb exec-out screencap -p > evidence/credits-16s.png
+          adb shell dumpsys window > evidence/window.txt 2>&1
+          adb logcat -d > evidence/logcat.txt 2>&1
+          pid=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          focus=$(grep -m1 'mCurrentFocus=' evidence/window.txt || true)
+          printf 'pid=%s\nfocus=%s\nordinary_shipping_inputs_only=true\nsave_or_game_state_mutation=none\n' "$pid" "$focus" > evidence/health.txt
+          test -n "$pid"
+          echo "$focus" | grep -q "$PACKAGE"
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal|ANR in" evidence/logcat.txt > evidence/fatal-scan.txt; then exit 90; fi
+          printf 'Q6_RESULT=PASS_REQUIRES_RENDERED_ADJUDICATION\n' > evidence/result.txt
+          EOF
+          chmod +x q6-ui.sh
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and render repaired Credits
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash q6-ui.sh
+
+      - name: Upload rendered repair evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: q6-credits-visual-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 7
