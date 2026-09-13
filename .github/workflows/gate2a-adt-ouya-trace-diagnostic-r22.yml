@@ -91,13 +91,15 @@ jobs:
               print(p.stdout)
               if p.stderr: print('JAVAP_STDERR',p.stderr)
           '@ | Set-Content -Encoding UTF8 javap_adt.py
-          python javap_adt.py
+          python javap_adt.py | Tee-Object -FilePath javap.txt
 
-      - name: Publish exact literal trace to check summary
+      - name: Publish exact trace artifact
         if: always()
-        shell: pwsh
-        run: |
-          '## ADT OUYA literal trace' | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
-          '```text' | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
-          if (Test-Path trace.txt) { Get-Content trace.txt | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY }
-          '```' | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: adt-ouya-trace-r22
+          path: |
+            trace.txt
+            javap.txt
+          if-no-files-found: error
+          retention-days: 1
