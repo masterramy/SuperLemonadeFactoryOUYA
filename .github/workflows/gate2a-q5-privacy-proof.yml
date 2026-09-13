@@ -1,0 +1,189 @@
+name: Gate 2A Q5 Privacy Render Proof
+
+on:
+  push:
+    branches:
+      - gate2a-android-modernization
+    paths:
+      - .github/workflows/gate2a-q5-privacy-proof.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  privacy-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download frozen emulator APK from certified baseline run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34751262569
+
+      - name: Verify frozen APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          test -f "$APK"
+          bytes=$(wc -c < "$APK" | tr -d ' ')
+          sha=$(sha256sum "$APK" | awk '{print $1}')
+          printf 'bytes=%s\nsha256=%s\nsource_commit=%s\nsource_run=%s\n' "$bytes" "$sha" '4b9027134c1786a262df76df09b95ef34338ca87' '34751262569' | tee frozen-apk-identity.txt
+          test "$bytes" = "35875555"
+          test "$sha" = "c33340f6370e30ab6742c75d79fb7d8b3312fb492c3f3198a709e5f46569b4f7"
+
+      - name: Record platform-tools provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p privacy-proof/provenance
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDK_ROOT"
+          test -d "$SDK_ROOT/platform-tools"
+          ADB="$SDK_ROOT/platform-tools/adb"
+          test -x "$ADB"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          "$ADB" version > privacy-proof/provenance/adb-version.txt 2>&1
+          sha256sum "$ADB" > privacy-proof/provenance/adb-binary.sha256
+          cp frozen-apk-identity.txt privacy-proof/provenance/
+
+      - name: Write ordinary-input privacy proof harness
+        shell: bash
+        run: |
+          cat > privacy-proof.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p privacy-proof
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          PACKAGE="com.ramybaheeg.slfport"
+
+          capture() {
+            local tag="$1"
+            adb shell dumpsys window > "privacy-proof/window-${tag}.txt" 2>&1
+            adb exec-out screencap -p > "privacy-proof/${tag}.png"
+            adb logcat -d > "privacy-proof/logcat-${tag}.txt" 2>&1
+            local pid focus
+            pid=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            focus=$(grep -m1 'mCurrentFocus=' "privacy-proof/window-${tag}.txt" || true)
+            printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "privacy-proof/state-${tag}.txt"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "privacy-proof/logcat-${tag}.txt" > "privacy-proof/fatal-${tag}.txt"; then
+              echo "fatal runtime signature at ${tag}" >&2
+              exit 80
+            fi
+            python3 - "$tag" <<'PY'
+          import struct, sys
+          tag=sys.argv[1]
+          p=f'privacy-proof/{tag}.png'
+          with open(p,'rb') as f: d=f.read(24)
+          if len(d)<24 or d[:8] != b'\x89PNG\r\n\x1a\n': raise SystemExit(81)
+          w,h=struct.unpack('>II',d[16:24])
+          print(f'{tag}={w}x{h}')
+          if w <= h: raise SystemExit(82)
+          PY
+          }
+
+          dismiss_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml privacy-proof/window-ui.xml >/dev/null 2>&1 || return 0
+            local coords
+            coords=$(python3 - "$wanted" <<'PY'
+          import re, sys, xml.etree.ElementTree as ET
+          wanted=sys.argv[1]
+          try: root=ET.parse('privacy-proof/window-ui.xml').getroot()
+          except Exception: raise SystemExit(0)
+          for node in root.iter('node'):
+              if node.attrib.get('text') != wanted: continue
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',node.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2=map(int,m.groups()); print(f'{(x1+x2)//2} {(y1+y2)//2}'); break
+          PY
+            )
+            if [ -n "$coords" ]; then adb shell input tap $coords >/dev/null 2>&1 || true; sleep 1; fi
+          }
+
+          adb install -r "$APK" > privacy-proof/install.txt 2>&1
+          adb shell pm path "$PACKAGE" > privacy-proof/package-path.txt 2>&1
+          grep -q '^package:' privacy-proof/package-path.txt
+
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          sleep 5
+
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > privacy-proof/launch-command.txt 2>&1
+          sleep 4
+          for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done
+          sleep 8
+          capture 01-launch
+
+          # Ordinary shipping input only: advance the intro twice to reach main menu.
+          adb shell input keyevent KEYCODE_X
+          sleep 2
+          adb shell input keyevent KEYCODE_X
+          sleep 8
+          capture 02-main-menu
+
+          # Main menu starts on Play. Two DOWN presses select Help, then X activates it.
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          sleep 1
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          sleep 1
+          adb shell input keyevent KEYCODE_X
+          sleep 5
+          capture 03-help
+
+          # Help defines ordinary DOWN as the direct Privacy / About route.
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          sleep 5
+          capture 04-privacy
+
+          # Privacy defines ordinary action/back input as return to Help.
+          adb shell input keyevent KEYCODE_X
+          sleep 5
+          capture 05-help-return
+
+          printf '%s\n' \
+            'PASS-CANDIDATE: exact frozen emulator APK stayed alive/focused/landscape through main menu -> Help -> Privacy/About -> Help using only ordinary shipping key inputs. No save/game-state file was edited by the harness. Rendered screenshots require visual adjudication before closing the Q5 Privacy row.' \
+            | tee privacy-proof/result.txt
+          EOF
+          chmod +x privacy-proof.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise Privacy customer route
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash privacy-proof.sh
+
+      - name: Upload Privacy proof evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate2a-q5-privacy-render-proof
+          path: privacy-proof
+          if-no-files-found: error
