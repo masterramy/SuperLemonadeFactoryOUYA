@@ -1,0 +1,86 @@
+name: Gate 2A Provider Sanitation Workflow Writer R25
+
+on:
+  push:
+    branches:
+      - gate2a-workflow-provider-sanitize-writer-r25
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact staging authority
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-release-hardening-staging
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Verify basis and transform only shipping workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "973c31bbb788f96ed3a5bafc2d99eea434d58197"
+          test -z "$(git status --porcelain)"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          baseline=Path('.github/workflows/gate2a-air-baseline.yml')
+          release=Path('.github/workflows/gate2a-android-release.yml')
+          b=baseline.read_text(encoding='utf-8')
+          r=release.read_text(encoding='utf-8')
+
+          stale='-C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt'
+          nested='-C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt'
+          if b.count(stale) != 2: raise SystemExit(f'expected 2 stale baseline notice commands, found {b.count(stale)}')
+          b=b.replace(stale,nested)
+          if r.count(stale) != 0: raise SystemExit('release unexpectedly contains stale notice packaging form')
+          if r.count(nested) != 1: raise SystemExit(f'expected 1 nested release notice command, found {r.count(nested)}')
+
+          sanitize='''      - name: Sanitize obsolete AIR OUYA drawable template under exact provider hash guard\n        shell: pwsh\n        run: |\n          $ErrorActionPreference = 'Stop'\n          $target = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'\n          if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Expected AIR provider template is missing: $target" }\n          $item = Get-Item -LiteralPath $target\n          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()\n          $expectedHash = '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253'\n          if ($item.Length -ne 1525 -or $hash -ne $expectedHash) {\n            throw "AIR provider template identity changed; refusing sanitation. bytes=$($item.Length) sha256=$hash"\n          }\n          Remove-Item -Force -LiteralPath $target\n          if (Test-Path -LiteralPath $target) { throw 'AIR provider template sanitation did not remove the exact obsolete drawable.' }\n          @(\n            'classification=INFRA_TOOLCHAIN_PROVIDER_DEFECT'\n            'action=removed_ephemeral_provider_template_only'\n            "path=$target"\n            'original_bytes=1525'\n            "original_sha256=$expectedHash"\n          ) | Set-Content -Path dist/air-provider-template-sanitization.txt -Encoding utf8\n\n'''
+
+          bmarker='      - name: Compile runtime-safe game source\n'
+          rmarker='      - name: Compile release SWF\n'
+          if b.count(bmarker)!=1 or r.count(rmarker)!=1: raise SystemExit('compile insertion marker mismatch')
+          b=b.replace(bmarker,sanitize+bmarker,1)
+          r=r.replace(rmarker,sanitize+rmarker,1)
+
+          bold='''            if ($entries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\\.(png|psd)$' }) {\n              throw "Retired OUYA publication resource found in device APK."\n            }\n'''
+          bnew='''            $ouyaNamed = @($entries | Where-Object { $_ -match '(?i)ouya' })\n            $allowedOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')\n            $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })\n            if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named device APK entries: $($unexpectedOuya -join ', ')" }\n            foreach ($entry in $allowedOuyaNamed) { if ($entries -notcontains $entry) { throw "Expected compatibility entry missing from device APK: $entry" } }\n            $compatAlias = $zip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')\n            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in device APK." }\n            if ($entries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in device APK.' }\n'''
+          if b.count(bold)!=1: raise SystemExit(f'device OUYA assertion count {b.count(bold)}')
+          b=b.replace(bold,bnew,1)
+
+          eold='''            if ($emuEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\\.(png|psd)$' }) {\n              throw "Retired OUYA publication resource found in emulator APK."\n            }\n'''
+          enew='''            $emuOuyaNamed = @($emuEntries | Where-Object { $_ -match '(?i)ouya' })\n            $allowedEmuOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')\n            $unexpectedEmuOuya = @($emuOuyaNamed | Where-Object { $_ -notin $allowedEmuOuyaNamed })\n            if ($unexpectedEmuOuya.Count -ne 0) { throw "Unexpected OUYA-named emulator APK entries: $($unexpectedEmuOuya -join ', ')" }\n            foreach ($entry in $allowedEmuOuyaNamed) { if ($emuEntries -notcontains $entry) { throw "Expected compatibility entry missing from emulator APK: $entry" } }\n            $emuCompatAlias = $emuZip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')\n            if ($null -eq $emuCompatAlias -or $emuCompatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in emulator APK." }\n            if ($emuEntries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in emulator APK.' }\n'''
+          if b.count(eold)!=1: raise SystemExit(f'emulator OUYA assertion count {b.count(eold)}')
+          b=b.replace(eold,enew,1)
+
+          rold='''            if ($aabEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\\.(png|psd)$' }) {\n              throw "Retired OUYA publication resource found in AAB."\n            }\n'''
+          rnew='''            $ouyaNamed = @($aabEntries | Where-Object { $_ -match '(?i)ouya' })\n            $allowedOuyaNamed = @('base/assets/SLFforOuya.swf','base/res/mipmap-xhdpi-v4/ouya_icon.png')\n            $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })\n            if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named AAB entries: $($unexpectedOuya -join ', ')" }\n            foreach ($entry in $allowedOuyaNamed) { if ($aabEntries -notcontains $entry) { throw "Expected compatibility entry missing from AAB: $entry" } }\n            $compatAlias = $aabZip.GetEntry('base/res/mipmap-xhdpi-v4/ouya_icon.png')\n            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in AAB." }\n            if ($aabEntries -contains 'base/res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in AAB.' }\n'''
+          if r.count(rold)!=1: raise SystemExit(f'release OUYA assertion count {r.count(rold)}')
+          r=r.replace(rold,rnew,1)
+
+          baseline.write_text(b,encoding='utf-8',newline='\n')
+          release.write_text(r,encoding='utf-8',newline='\n')
+          PY
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = $'.github/workflows/gate2a-air-baseline.yml\n.github/workflows/gate2a-android-release.yml'
+          mkdir -p out/.github/workflows
+          cp .github/workflows/gate2a-air-baseline.yml out/.github/workflows/
+          cp .github/workflows/gate2a-android-release.yml out/.github/workflows/
+          git diff -- .github/workflows/gate2a-air-baseline.yml .github/workflows/gate2a-android-release.yml > out/workflow-repair.diff
+          sha256sum out/.github/workflows/*.yml out/workflow-repair.diff > out/SHA256SUMS.txt
+          cat out/SHA256SUMS.txt
+          git diff --stat
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gate2a-provider-sanitize-workflow-repair-r25
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
