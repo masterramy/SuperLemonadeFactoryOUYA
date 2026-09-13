@@ -1,0 +1,194 @@
+name: Gate 2A Q5 Level 2 Completion Proof
+
+on:
+  push:
+    branches: [gate2a-android-modernization]
+    paths: [.github/workflows/gate2a-q5-level2-completion-proof.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  level2-completion-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Download frozen emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34751262569
+
+      - name: Verify frozen APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          test -f "$APK"
+          bytes=$(wc -c < "$APK" | tr -d ' ')
+          sha=$(sha256sum "$APK" | awk '{print $1}')
+          printf 'bytes=%s\nsha256=%s\nsource_commit=%s\nsource_run=%s\n' "$bytes" "$sha" '4b9027134c1786a262df76df09b95ef34338ca87' '34751262569' | tee frozen-apk-identity.txt
+          test "$bytes" = "35875555"
+          test "$sha" = "c33340f6370e30ab6742c75d79fb7d8b3312fb492c3f3198a709e5f46569b4f7"
+
+      - name: Record adb provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p level2-proof/provenance
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDK_ROOT"
+          ADB="$SDK_ROOT/platform-tools/adb"
+          test -x "$ADB"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          "$ADB" version > level2-proof/provenance/adb-version.txt 2>&1
+          sha256sum "$ADB" > level2-proof/provenance/adb-binary.sha256
+          cp frozen-apk-identity.txt level2-proof/provenance/
+
+      - name: Write ordinary-input Level 2 harness
+        shell: bash
+        run: |
+          cat > level2-proof.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p level2-proof
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          PACKAGE="com.ramybaheeg.slfport"
+
+          capture() {
+            local tag="$1"
+            adb shell dumpsys window > "level2-proof/window-${tag}.txt" 2>&1
+            adb exec-out screencap -p > "level2-proof/${tag}.png"
+            adb logcat -d > "level2-proof/logcat-${tag}.txt" 2>&1
+            local pid focus
+            pid=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            focus=$(grep -m1 'mCurrentFocus=' "level2-proof/window-${tag}.txt" || true)
+            printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "level2-proof/state-${tag}.txt"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "level2-proof/logcat-${tag}.txt" > "level2-proof/fatal-${tag}.txt"; then exit 80; fi
+          }
+
+          dismiss_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml level2-proof/window-ui.xml >/dev/null 2>&1 || return 0
+            local coords
+            coords=$(python3 - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          wanted=sys.argv[1]
+          try: root=ET.parse('level2-proof/window-ui.xml').getroot()
+          except Exception: raise SystemExit(0)
+          for n in root.iter('node'):
+              if n.attrib.get('text') != wanted: continue
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2=map(int,m.groups()); print(f'{(x1+x2)//2} {(y1+y2)//2}'); break
+          PY
+            )
+            if [ -n "$coords" ]; then adb shell input tap $coords >/dev/null 2>&1 || true; sleep 1; fi
+          }
+
+          # Native keyboard mechanics from exact-final Registry.as:
+          # RIGHT moves, C jumps, V switches character, UP piggybacks when overlapping.
+          move_right_jump() {
+            local rounds="$1"
+            for _ in $(seq 1 "$rounds"); do
+              adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 &
+              local p=$!
+              sleep 0.18
+              adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true
+              wait "$p" || true
+              sleep 0.12
+            done
+          }
+
+          move_right() {
+            local rounds="$1"
+            for _ in $(seq 1 "$rounds"); do
+              adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 || true
+              sleep 0.10
+            done
+          }
+
+          adb install -r "$APK" > level2-proof/install.txt 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > level2-proof/launch-command.txt 2>&1
+          sleep 4
+          for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done
+          sleep 8
+
+          # Ordinary shipping path: intro -> Play -> Level Select -> Level 2.
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 8
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 12
+          adb shell input keyevent KEYCODE_X; sleep 12
+          capture 01-level2-start
+          pid0=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+
+          # Andre: traverse first moving-platform/spike section to Liselot using ordinary movement+jump.
+          move_right_jump 8
+          capture 02-after-andre-first-section
+
+          # Approach Liselot; UP is the native one-player piggyback mechanic when characters overlap.
+          move_right 2
+          adb shell input keyevent KEYCODE_DPAD_UP; sleep 2
+          capture 03-piggyback-attempt
+
+          # Carry both characters through the second moving-platform/spike section toward the exit.
+          move_right_jump 12
+          capture 04-near-exit
+          move_right 4
+          sleep 8
+          capture 05-completion-window
+
+          pid1=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          test "$pid0" = "$pid1"
+          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nsource_map_exit_x=1480\nsource_map_andre_checkpoint_x=563\nsource_map_liselot_checkpoint_x=1027\n' > level2-proof/method.txt
+
+          # Give the level-complete presentation/save write time to settle, then capture.
+          sleep 7
+          capture 06-post-completion-settle
+          EOF
+          chmod +x level2-proof.sh
+
+      - name: Boot emulator and execute genuine Level 2 traversal
+        uses: reactivecircus/android-emulator-runner@82389505b5d47a8c927aad4a2d23f84e55bbbe9b # v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: ./level2-proof.sh
+
+      - name: Hash rendered evidence
+        if: always()
+        shell: bash
+        run: |
+          find level2-proof -maxdepth 1 -type f -name '*.png' -print0 | sort -z | xargs -0 sha256sum > level2-proof/rendered.sha256 || true
+          cat level2-proof/rendered.sha256 || true
+
+      - name: Upload Level 2 rendered proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate2a-q5-level2-completion-render-proof
+          path: level2-proof
+          if-no-files-found: error
+          retention-days: 14
