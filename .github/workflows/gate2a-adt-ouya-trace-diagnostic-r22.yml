@@ -44,7 +44,7 @@ jobs:
           if ($actual -ne $expected) { throw "ADT identity changed" }
           $env:ADT_JAR = $adtJar
           @'
-          import os, zipfile, re
+          import os, zipfile
           jar=os.environ['ADT_JAR']
           needles=[b'ouya_icon',b'mipmap',b'icon_192',b'192x192',b'ouya']
           with zipfile.ZipFile(jar) as z:
@@ -65,7 +65,7 @@ jobs:
                                   print(f'CONTEXT entry={n} needle={needle.decode()} pos={pos} text={printable}')
               print('CLASS_HITS=' + ';'.join(n for n in hits if n.endswith('.class')))
           '@ | Set-Content -Encoding UTF8 trace_adt.py
-          python trace_adt.py
+          python trace_adt.py | Tee-Object -FilePath trace.txt
 
       - name: Disassemble classes containing OUYA or mipmap literals
         shell: pwsh
@@ -92,3 +92,12 @@ jobs:
               if p.stderr: print('JAVAP_STDERR',p.stderr)
           '@ | Set-Content -Encoding UTF8 javap_adt.py
           python javap_adt.py
+
+      - name: Publish exact literal trace to check summary
+        if: always()
+        shell: pwsh
+        run: |
+          "## ADT OUYA literal trace" | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+          "```text" | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+          if (Test-Path trace.txt) { Get-Content trace.txt | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY }
+          "```" | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
