@@ -1,0 +1,77 @@
+name: Gate 2A PNG Direct Diagnostic
+
+on:
+  push:
+    branches:
+      - gate2a-aapt2-provider-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  png-direct:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 5
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+      - name: Direct compile exact PNG inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $candidate = 'fb89f9780d43127156ec86a1d666292e11ffb7cd'
+          & git cat-file -e "$candidate`^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate commit unavailable.' }
+          $unexpected = @(& git diff --name-only $candidate HEAD | Where-Object { $_ -notlike '.github/workflows/gate2a-*-diagnostic.yml' })
+          if ($unexpected.Count -ne 0) { throw "Unexpected product delta: $($unexpected -join ', ')" }
+
+          $sdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) { $sdk = $env:ANDROID_HOME }
+          $aapt2 = Join-Path $sdk 'build-tools/36.1.0/aapt2.exe'
+          if (-not (Test-Path $aapt2)) { throw 'Build Tools 36.1.0 AAPT2 missing.' }
+
+          $source = (Resolve-Path 'icons/android/icons/icon_192.png').Path
+          $air = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+          if (-not (Test-Path $air)) { throw 'AIR template icon missing.' }
+          Copy-Item $source dist/source-icon-192.png
+          Copy-Item $air dist/air-template-ouya-icon.png
+
+          $sourceOut = & $aapt2 compile $source -o dist/source-icon-compiled.zip 2>&1
+          $sourceExit = $LASTEXITCODE
+          $sourceOut | Set-Content dist/source-icon-aapt2.log -Encoding utf8
+          $airOut = & $aapt2 compile $air -o dist/air-icon-compiled.zip 2>&1
+          $airExit = $LASTEXITCODE
+          $airOut | Set-Content dist/air-icon-aapt2.log -Encoding utf8
+
+          @(
+            "candidate_commit=$candidate"
+            "candidate_tree=$((& git rev-parse "$candidate`^{tree}").Trim())"
+            "aapt2_version=$((& $aapt2 version 2>&1 | Out-String).Trim())"
+            "aapt2_sha256=$((Get-FileHash $aapt2 -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "source_icon_sha256=$((Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "source_icon_bytes=$((Get-Item $source).Length)"
+            "source_icon_exit=$sourceExit"
+            "air_icon_sha256=$((Get-FileHash $air -Algorithm SHA256).Hash.ToLowerInvariant())"
+            "air_icon_bytes=$((Get-Item $air).Length)"
+            "air_icon_exit=$airExit"
+          ) | Set-Content dist/direct-results.txt -Encoding utf8
+
+      - name: Upload direct PNG evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-png-direct-diagnostic
+          path: dist
+          if-no-files-found: error
