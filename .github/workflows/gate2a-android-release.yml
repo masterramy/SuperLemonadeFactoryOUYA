@@ -211,6 +211,28 @@ jobs:
             "as3-controller-input-MIT.txt 21e3babda57413417549e308c61b9597bd0aa6e1"
           ) | Set-Content -Path dist/notice-source-identities.txt -Encoding utf8
 
+      - name: Sanitize obsolete AIR OUYA drawable template under exact provider hash guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+          if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Expected AIR provider template is missing: $target" }
+          $item = Get-Item -LiteralPath $target
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          $expectedHash = '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253'
+          if ($item.Length -ne 1525 -or $hash -ne $expectedHash) {
+            throw "AIR provider template identity changed; refusing sanitation. bytes=$($item.Length) sha256=$hash"
+          }
+          Remove-Item -Force -LiteralPath $target
+          if (Test-Path -LiteralPath $target) { throw 'AIR provider template sanitation did not remove the exact obsolete drawable.' }
+          @(
+            'classification=INFRA_TOOLCHAIN_PROVIDER_DEFECT'
+            'action=removed_ephemeral_provider_template_only'
+            "path=$target"
+            'original_bytes=1525'
+            "original_sha256=$expectedHash"
+          ) | Set-Content -Path dist/air-provider-template-sanitization.txt -Encoding utf8
+
       - name: Compile release SWF
         shell: cmd
         run: |
@@ -275,9 +297,14 @@ jobs:
             foreach ($entry in $requiredAabNotices) {
               if ($aabEntries -notcontains $entry) { throw "Required notice missing from AAB: $entry" }
             }
-            if ($aabEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\.(png|psd)$' }) {
-              throw "Retired OUYA publication resource found in AAB."
-            }
+            $ouyaNamed = @($aabEntries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedOuyaNamed = @('base/assets/SLFforOuya.swf','base/res/mipmap-xhdpi-v4/ouya_icon.png')
+            $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })
+            if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named AAB entries: $($unexpectedOuya -join ', ')" }
+            foreach ($entry in $allowedOuyaNamed) { if ($aabEntries -notcontains $entry) { throw "Expected compatibility entry missing from AAB: $entry" } }
+            $compatAlias = $aabZip.GetEntry('base/res/mipmap-xhdpi-v4/ouya_icon.png')
+            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in AAB." }
+            if ($aabEntries -contains 'base/res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in AAB.' }
             @(
               $requiredAabNotices
               'flixel-2.55-MIT.txt blob=5fcbbbdf0d8c043114dbf485b1f0fd7f776dd086'

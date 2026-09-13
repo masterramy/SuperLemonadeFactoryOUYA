@@ -218,6 +218,28 @@ jobs:
             "as3-controller-input-MIT.txt 21e3babda57413417549e308c61b9597bd0aa6e1"
           ) | Set-Content -Path dist/notice-source-identities.txt -Encoding utf8
 
+      - name: Sanitize obsolete AIR OUYA drawable template under exact provider hash guard
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+          if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Expected AIR provider template is missing: $target" }
+          $item = Get-Item -LiteralPath $target
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          $expectedHash = '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253'
+          if ($item.Length -ne 1525 -or $hash -ne $expectedHash) {
+            throw "AIR provider template identity changed; refusing sanitation. bytes=$($item.Length) sha256=$hash"
+          }
+          Remove-Item -Force -LiteralPath $target
+          if (Test-Path -LiteralPath $target) { throw 'AIR provider template sanitation did not remove the exact obsolete drawable.' }
+          @(
+            'classification=INFRA_TOOLCHAIN_PROVIDER_DEFECT'
+            'action=removed_ephemeral_provider_template_only'
+            "path=$target"
+            'original_bytes=1525'
+            "original_sha256=$expectedHash"
+          ) | Set-Content -Path dist/air-provider-template-sanitization.txt -Encoding utf8
+
       - name: Compile runtime-safe game source
         shell: cmd
         run: |
@@ -247,7 +269,7 @@ jobs:
 
           $PSNativeCommandUseErrorActionPreference = $false
           $ErrorActionPreference = 'Continue'
-          $output = & adt -package -target apk -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-runtime-safe.apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt -platformsdk $androidSdk 2>&1
+          $output = & adt -package -target apk -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-runtime-safe.apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $androidSdk 2>&1
           $exitCode = $LASTEXITCODE
 
           $output | ForEach-Object { Write-Host $_ }
@@ -300,9 +322,14 @@ jobs:
             foreach ($entry in $required) {
               if ($entries -notcontains $entry) { throw "Required notice missing from device APK: $entry" }
             }
-            if ($entries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\.(png|psd)$' }) {
-              throw "Retired OUYA publication resource found in device APK."
-            }
+            $ouyaNamed = @($entries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')
+            $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })
+            if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named device APK entries: $($unexpectedOuya -join ', ')" }
+            foreach ($entry in $allowedOuyaNamed) { if ($entries -notcontains $entry) { throw "Expected compatibility entry missing from device APK: $entry" } }
+            $compatAlias = $zip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')
+            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in device APK." }
+            if ($entries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in device APK.' }
             $required | Set-Content -Path dist/device-apk-notice-evidence.txt -Encoding utf8
           } finally { $zip.Dispose() }
 
@@ -312,7 +339,7 @@ jobs:
           Remove-Item -Force -ErrorAction SilentlyContinue dist/SLF-emulator-x64.apk
           $androidSdk = $env:ANDROID_SDK_ROOT
           if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
-          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-emulator-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt -platformsdk $androidSdk
+          & adt -package -target apk-emulator -arch x64 -storetype pkcs12 -keystore gate2a-benchmark.p12 -storepass gate2a dist/SLF-emulator-x64.apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $androidSdk
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -329,9 +356,14 @@ jobs:
             foreach ($entry in $requiredEmuNotices) {
               if ($emuEntries -notcontains $entry) { throw "Required notice missing from emulator APK: $entry" }
             }
-            if ($emuEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\.(png|psd)$' }) {
-              throw "Retired OUYA publication resource found in emulator APK."
-            }
+            $emuOuyaNamed = @($emuEntries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedEmuOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')
+            $unexpectedEmuOuya = @($emuOuyaNamed | Where-Object { $_ -notin $allowedEmuOuyaNamed })
+            if ($unexpectedEmuOuya.Count -ne 0) { throw "Unexpected OUYA-named emulator APK entries: $($unexpectedEmuOuya -join ', ')" }
+            foreach ($entry in $allowedEmuOuyaNamed) { if ($emuEntries -notcontains $entry) { throw "Expected compatibility entry missing from emulator APK: $entry" } }
+            $emuCompatAlias = $emuZip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')
+            if ($null -eq $emuCompatAlias -or $emuCompatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in emulator APK." }
+            if ($emuEntries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in emulator APK.' }
             $requiredEmuNotices | Set-Content -Path dist/emulator-apk-notice-evidence.txt -Encoding utf8
           } finally { $emuZip.Dispose() }
 
