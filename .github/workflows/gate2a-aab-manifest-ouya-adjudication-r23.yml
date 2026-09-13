@@ -52,34 +52,59 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:AAB = (Resolve-Path 'dist/SLF-r23.aab').Path
           @'
-          import os, zipfile, hashlib
+          import os, zipfile, hashlib, struct, re
           aab=os.environ['AAB']
           out=[]
+          def png_dims(b):
+              if len(b)>=24 and b[:8]==b'\x89PNG\r\n\x1a\n' and b[12:16]==b'IHDR':
+                  return struct.unpack('>II',b[16:24])
+              return (0,0)
+          def contexts(b, needle=b'ouya', radius=96):
+              low=b.lower(); pos=0; ans=[]
+              while True:
+                  i=low.find(needle,pos)
+                  if i<0: break
+                  lo=max(0,i-radius); hi=min(len(b),i+len(needle)+radius)
+                  raw=b[lo:hi]
+                  printable=''.join(chr(x) if 32<=x<127 else '.' for x in raw)
+                  ans.append((i,printable,raw.hex()))
+                  pos=i+1
+              return ans
           with zipfile.ZipFile(aab) as z:
               names=z.namelist()
               ouya_names=[n for n in names if 'ouya' in n.lower()]
               out.append(f'AAB_ENTRY_COUNT={len(names)}')
               out.append(f'OUYA_NAMED_ENTRY_COUNT={len(ouya_names)}')
               for n in ouya_names:
-                  b=z.read(n)
-                  out.append(f'OUYA_NAMED_ENTRY path={n} bytes={len(b)} sha256={hashlib.sha256(b).hexdigest()}')
+                  b=z.read(n); w,h=png_dims(b)
+                  out.append(f'OUYA_NAMED_ENTRY path={n} bytes={len(b)} sha256={hashlib.sha256(b).hexdigest()} png={w}x{h}')
               manifest='base/manifest/AndroidManifest.xml'
-              if manifest not in names:
-                  raise SystemExit('missing base manifest')
               mb=z.read(manifest)
-              lower=mb.lower()
               out.append(f'MANIFEST_BYTES={len(mb)}')
-              out.append(f'MANIFEST_HAS_OUYA={b"ouya" in lower}')
-              out.append(f'MANIFEST_HAS_OUYA_ICON={b"ouya_icon" in lower}')
-              # Inspect every non-resource-image entry for literal OUYA markers.
+              out.append(f'MANIFEST_HAS_OUYA={b"ouya" in mb.lower()}')
+              out.append(f'MANIFEST_HAS_OUYA_ICON={b"ouya_icon" in mb.lower()}')
+              for idx,ctx,hx in contexts(mb):
+                  out.append(f'MANIFEST_OUYA_OFFSET={idx}')
+                  out.append('MANIFEST_OUYA_ASCII_CONTEXT='+ctx)
+                  out.append('MANIFEST_OUYA_HEX_CONTEXT='+hx)
               literal=[]
               for n in names:
                   if n in ouya_names: continue
                   try: b=z.read(n)
                   except Exception: continue
-                  if b'ouya' in b.lower(): literal.append(n)
+                  c=contexts(b)
+                  if c:
+                      literal.append(n)
+                      out.append('OUYA_LITERAL_ENTRY='+n)
+                      for idx,ctx,hx in c[:8]:
+                          out.append(f'OUYA_LITERAL_CONTEXT path={n} offset={idx} ascii={ctx}')
               out.append(f'NON_OUYA_NAMED_ENTRIES_WITH_OUYA_BYTES={len(literal)}')
-              for n in literal: out.append('OUYA_LITERAL_ENTRY='+n)
+              src=z.read('base/assets/META-INF/AIR/application.xml')
+              out.append('AIR_APP_XML_SHA256='+hashlib.sha256(src).hexdigest())
+              for idx,ctx,hx in contexts(src): out.append(f'AIR_APP_XML_OUYA_CONTEXT offset={idx} ascii={ctx}')
+          for p in ['icons/android/icons/icon_192.png','icons/android/icons/icon_144.png']:
+              b=open(p,'rb').read(); w,h=png_dims(b)
+              out.append(f'SOURCE_ICON path={p} bytes={len(b)} sha256={hashlib.sha256(b).hexdigest()} png={w}x{h}')
           text='\n'.join(out)+'\n'
           print(text,end='')
           open('adjudication.txt','w',encoding='utf-8').write(text)
