@@ -97,7 +97,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          "## ADT OUYA literal trace" | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
-          "```text" | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+          '## ADT OUYA literal trace' | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+          '```text' | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
           if (Test-Path trace.txt) { Get-Content trace.txt | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY }
-          "```" | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
+          '```' | Add-Content -Encoding UTF8 $env:GITHUB_STEP_SUMMARY
