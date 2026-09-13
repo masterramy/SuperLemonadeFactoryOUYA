@@ -1,0 +1,106 @@
+name: Gate2A OUYA gate fix helper
+
+on:
+  push:
+    branches:
+      - gate2a-ouya-gate-fix-r1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+      - name: Apply exact bounded release-workflow fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/gate2a-android-release.yml')
+          text=p.read_text()
+          old1='''            if ($aabEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\\.(png|psd)$' }) {
+              throw "Retired OUYA publication resource found in AAB."
+            }
+'''
+          new1='''            $legacyOuyaEntries = @($aabEntries | Where-Object { $_ -match '(?i)ouya_icon|ouya_.*\\.(png|psd)$' } | Sort-Object)
+            $expectedLegacyOuyaEntries = @(
+              'base/res/drawable-xhdpi-v4/ouya_icon.png',
+              'base/res/mipmap-xhdpi-v4/ouya_icon.png'
+            )
+            $legacyDiff = @(Compare-Object -ReferenceObject $expectedLegacyOuyaEntries -DifferenceObject $legacyOuyaEntries)
+            if ($legacyDiff.Count -ne 0) {
+              throw "Unexpected legacy OUYA-named publication-resource set in AAB: $($legacyOuyaEntries -join ', ')"
+            }
+
+            $airOuyaSource = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+            if (-not (Test-Path -LiteralPath $airOuyaSource -PathType Leaf)) {
+              throw "Expected AIR provider ouya_icon template is missing."
+            }
+            $airOuyaSourceSha = (Get-FileHash -Algorithm SHA256 $airOuyaSource).Hash.ToLowerInvariant()
+            if ($airOuyaSourceSha -ne '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253') {
+              throw "AIR provider ouya_icon source identity changed: $airOuyaSourceSha"
+            }
+
+            function Get-ZipEntrySha256([IO.Compression.ZipArchiveEntry]$Entry) {
+              if ($null -eq $Entry) { throw 'Required AAB entry is missing.' }
+              $sha256 = [Security.Cryptography.SHA256]::Create()
+              $stream = $Entry.Open()
+              try { return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-','').ToLowerInvariant() }
+              finally { $stream.Dispose(); $sha256.Dispose() }
+            }
+            $providerEntry = $aabZip.GetEntry('base/res/drawable-xhdpi-v4/ouya_icon.png')
+            $legacyAliasEntry = $aabZip.GetEntry('base/res/mipmap-xhdpi-v4/ouya_icon.png')
+            $launcherEntry = $aabZip.GetEntry('base/res/mipmap-xxxhdpi-v4/icon.png')
+            $providerCompiledSha = Get-ZipEntrySha256 $providerEntry
+            $legacyAliasSha = Get-ZipEntrySha256 $legacyAliasEntry
+            $launcherSha = Get-ZipEntrySha256 $launcherEntry
+            if ($providerCompiledSha -ne '89251edc43a80ccee085ad7701f122d323529f294be746e87e4cf6bf4466bbae') {
+              throw "Compiled AIR provider ouya_icon identity changed: $providerCompiledSha"
+            }
+            if ($legacyAliasSha -ne $launcherSha) {
+              throw "Legacy AIR mipmap/ouya_icon is not byte-identical to the current compiled launcher icon."
+            }
+            @(
+              "legacy_ouya_entries=$($legacyOuyaEntries -join ',')"
+              "air_provider_source_sha256=$airOuyaSourceSha"
+              "air_provider_compiled_sha256=$providerCompiledSha"
+              "legacy_mipmap_alias_sha256=$legacyAliasSha"
+              "compiled_launcher_sha256=$launcherSha"
+            ) | Set-Content -Path dist/ouya-legacy-resource-evidence.txt -Encoding utf8
+'''
+          old2='''          if ($fullManifestExit -ne 0) { throw "Compiled AAB full-manifest dump failed (exit $fullManifestExit)." }
+          if ($fullManifestText -match '<uses-permission(?:\\s|>)') {
+'''
+          new2='''          if ($fullManifestExit -ne 0) { throw "Compiled AAB full-manifest dump failed (exit $fullManifestExit)." }
+          if ($fullManifestText -match '(?i)@(drawable|mipmap)/ouya_icon') {
+            throw 'Compiled AAB manifest unexpectedly references a legacy OUYA icon resource.'
+          }
+          Add-Content -Path dist/ouya-legacy-resource-evidence.txt -Value 'compiled_manifest_ouya_icon_reference_verified=none'
+          if ($fullManifestText -match '<uses-permission(?:\\s|>)') {
+'''
+          old3='''            dist/notice-package-evidence.txt
+'''
+          new3='''            dist/notice-package-evidence.txt
+            dist/ouya-legacy-resource-evidence.txt
+'''
+          for label,old,new in [('package gate',old1,new1),('manifest gate',old2,new2),('artifact list',old3,new3)]:
+              n=text.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {n}')
+              text=text.replace(old,new,1)
+          p.write_text(text)
+          PY
+          git diff --check
+          test "$(git diff --name-only)" = '.github/workflows/gate2a-android-release.yml'
+          grep -q 'air_provider_compiled_sha256' .github/workflows/gate2a-android-release.yml
+          grep -q 'compiled_manifest_ouya_icon_reference_verified=none' .github/workflows/gate2a-android-release.yml
+          git config user.name 'Gate 2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/gate2a-android-release.yml
+          git commit -m 'Gate 2A rev41: prove legacy AIR OUYA resource identities'
+          git push origin HEAD:gate2a-ouya-gate-fix-r1
