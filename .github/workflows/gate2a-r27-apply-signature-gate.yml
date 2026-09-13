@@ -1,0 +1,61 @@
+name: Gate 2A R27 Apply Signature Gate Repair
+
+on:
+  push:
+    branches:
+      - gate2a-r27-signature-gate-repair
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Apply exact release signature verification repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          OLD='$jarsignerOutput = & jarsigner -verify -strict -certs $aab.FullName 2>&1'
+          NEW='$jarsignerOutput = & jarsigner -verify -certs $aab.FullName 2>&1'
+          apply_one() {
+            branch="$1"
+            expected="$2"
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+            actual="$(git rev-parse HEAD)"
+            if [ "$actual" != "$expected" ]; then
+              echo "REF_DRIFT branch=$branch expected=$expected actual=$actual" >&2
+              exit 31
+            fi
+            python - "$OLD" "$NEW" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path('.github/workflows/gate2a-android-release.yml')
+          s=p.read_text()
+          old,new=sys.argv[1],sys.argv[2]
+          count=s.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one strict jarsigner fence, got {count}')
+          s=s.replace(old,new)
+          p.write_text(s)
+          PY
+            git diff --check
+            git diff -- .github/workflows/gate2a-android-release.yml
+            git add .github/workflows/gate2a-android-release.yml
+            git diff --cached --quiet && { echo 'no staged change' >&2; exit 32; }
+            git commit -m 'Gate 2A rev41: verify AAB signatures without CA trust assumption'
+            git push origin "HEAD:$branch"
+            echo "APPLIED branch=$branch head=$(git rev-parse HEAD)"
+          }
+          apply_one gate2a-release-hardening-staging 9dda58d5f3086bf5908a90ab429e3020ce69f9f2
+          apply_one gate2a-android-modernization 373037b77fd86c4a86d12ec9ac21938b0af6dfc2
