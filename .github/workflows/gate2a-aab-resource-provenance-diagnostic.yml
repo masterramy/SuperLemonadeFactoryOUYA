@@ -17,15 +17,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Verify exact-final ancestry and corrupt source identity
+      - name: Verify exact-final ancestry and approved icon identity
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           git merge-base --is-ancestor fb89f9780d43127156ec86a1d666292e11ffb7cd HEAD
           if($LASTEXITCODE -ne 0){ throw 'Diagnostic branch no longer descends from exact-final head.' }
           $p='icons/android/icons/icon_192.png'; $h=(Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant(); $n=(Get-Item $p).Length
-          "CORRUPT_SOURCE_SHA256=$h BYTES=$n"
-          if($h -ne 'a9aa4cafb64e0ff859207abce2ae6c1d7d303d63ed3c0a1a2f122d70b7ad1efa' -or $n -ne 8520){ throw 'Unexpected corrupt source icon identity.' }
+          "APPROVED_ICON_SHA256=$h BYTES=$n"
+          if($h -ne '3ee6ad6c0b6035f6e67ba7a2cc01f6d8e4f53f3829f6f8f386d9bee0a624b900' -or $n -ne 48849){ throw 'Approved icon bytes are not present exactly.' }
       - name: Set up Java
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
@@ -38,16 +38,6 @@ jobs:
         with:
           air-version: '51.3.4.3'
           accept-license: true
-      - name: Fetch exact approved icon from canonical Drive artifact
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          python -m pip install --disable-pip-version-check --quiet gdown==5.2.0
-          gdown --id 1MBBrg_T16NmYkrm-ZUDQgjRPHhTt5Hbk --output approved-icon192.png
-          if($LASTEXITCODE -ne 0 -or -not (Test-Path 'approved-icon192.png')){ throw 'Could not fetch approved Drive icon.' }
-          $h=(Get-FileHash -Algorithm SHA256 'approved-icon192.png').Hash.ToLowerInvariant(); $n=(Get-Item 'approved-icon192.png').Length
-          "APPROVED_ICON_SHA256=$h BYTES=$n"
-          if($h -ne '3ee6ad6c0b6035f6e67ba7a2cc01f6d8e4f53f3829f6f8f386d9bee0a624b900' -or $n -ne 48849){ throw 'Drive download does not match canonical approved icon identity.' }
       - name: Strict-audit approved PNG
         shell: pwsh
         run: |
@@ -55,7 +45,7 @@ jobs:
           @'
           import binascii,struct,zlib
           from pathlib import Path
-          b=Path('approved-icon192.png').read_bytes(); assert b[:8]==b'\x89PNG\r\n\x1a\n'; pos=8; idat=b''; chunks=[]; w=h=None
+          b=Path('icons/android/icons/icon_192.png').read_bytes(); assert b[:8]==b'\x89PNG\r\n\x1a\n'; pos=8; idat=b''; chunks=[]; w=h=None
           while pos<len(b):
               if pos+12>len(b): raise SystemExit('truncated header')
               n=struct.unpack('>I',b[pos:pos+4])[0]; typ=b[pos+4:pos+8]
@@ -77,13 +67,11 @@ jobs:
           if not exist bin mkdir bin
           if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
           amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-      - name: Package AAB with approved icon replacement only
+      - name: Package AAB with approved icon
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $androidSdk=$env:ANDROID_SDK_ROOT; if([string]::IsNullOrWhiteSpace($androidSdk)){ $androidSdk=$env:ANDROID_HOME }; if(-not (Test-Path $androidSdk)){ throw 'Android SDK missing' }
-          Copy-Item -Force 'approved-icon192.png' 'icons/android/icons/icon_192.png'
-          $h=(Get-FileHash -Algorithm SHA256 'icons/android/icons/icon_192.png').Hash.ToLowerInvariant(); if($h -ne '3ee6ad6c0b6035f6e67ba7a2cc01f6d8e4f53f3829f6f8f386d9bee0a624b900'){ throw 'Replacement drifted before ADT.' }
           $key=Join-Path $PWD 'diag-signing.p12'; $pass='gate2a-validation'
           & adt -certificate -validityPeriod 1 -cn 'Gate 2A Diagnostic' 2048-RSA $key $pass
           if($LASTEXITCODE -ne 0){ throw 'certificate creation failed' }
