@@ -1,0 +1,29 @@
+name: Gate 2A icon pixel-hash diagnostic
+on:
+  push:
+    branches: [gate2a-rev41-png-fastdiag]
+permissions:
+  contents: read
+jobs:
+  pixels:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fb89f9780d43127156ec86a1d666292e11ffb7cd
+          persist-credentials: false
+          fetch-depth: 1
+      - shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check --no-input pillow==11.3.0
+          @'
+          from PIL import Image
+          import hashlib
+          src=Image.open('icons/android/icons/icon_144.png').convert('RGBA')
+          print('SOURCE144_PIXELS', hashlib.sha256(src.tobytes()).hexdigest())
+          out=src.resize((192,192), Image.Resampling.LANCZOS)
+          print('REGEN192_PIXELS', hashlib.sha256(out.tobytes()).hexdigest())
+          '@ | Set-Content -Encoding utf8 pix.py
+          python pix.py
