@@ -254,7 +254,7 @@ jobs:
             $signingMode = 'disposable-validation'
           }
 
-          & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $storePass dist/SLF-release.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md -C third_party/licenses flixel-2.55-MIT.txt flixel-power-tools-Simplified-BSD.txt as3-controller-input-MIT.txt -platformsdk $androidSdk
+          & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass $storePass dist/SLF-release.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $androidSdk
           if ($LASTEXITCODE -ne 0) { throw "ADT AAB packaging failed with exit code $LASTEXITCODE." }
           if (-not (Test-Path dist/SLF-release.aab)) { throw "ADT reported success but no AAB was produced." }
 
