@@ -1,4 +1,4 @@
-name: Gate2A OUYA resource provenance diagnostic
+name: Gate2A OUYA SDK-template removal diagnostic
 
 on:
   push:
@@ -25,66 +25,81 @@ jobs:
         with:
           air-version: '51.3.4.3'
           accept-license: true
+      - name: Inventory and remove OUYA SDK templates for diagnostic only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force diagnostic | Out-Null
+          $airRoot=(Resolve-Path $env:AIR_HOME).Path
+          $rows=@()
+          Get-ChildItem -Path $airRoot -Recurse -File | ForEach-Object {
+            $rel=[IO.Path]::GetRelativePath($airRoot,$_.FullName).Replace('\','/')
+            $pathMatch=$rel -match '(?i)ouya'
+            $byteMatch=$false
+            try {
+              $bytes=[IO.File]::ReadAllBytes($_.FullName)
+              $needle=[Text.Encoding]::ASCII.GetBytes('ouya_icon')
+              for($i=0; $i -le $bytes.Length-$needle.Length; $i++) {
+                $ok=$true
+                for($j=0; $j -lt $needle.Length; $j++) { if([byte]::ToLower($bytes[$i+$j]) -ne [byte]::ToLower($needle[$j])) { $ok=$false; break } }
+                if($ok){$byteMatch=$true;break}
+              }
+            } catch {}
+            if($pathMatch -or $byteMatch) {
+              $sha=(Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+              $rows += "$rel`t$($_.Length)`t$sha`tpath_match=$pathMatch`tbyte_match=$byteMatch"
+            }
+          }
+          $rows | Set-Content diagnostic/air-ouya-inventory.txt -Encoding utf8
+          $remove=Get-ChildItem -Path $airRoot -Recurse -File | Where-Object { $_.Name -ieq 'ouya_icon.png' }
+          if(@($remove).Count -eq 0){throw 'No ouya_icon.png SDK template found'}
+          $remove | ForEach-Object {
+            $rel=[IO.Path]::GetRelativePath($airRoot,$_.FullName).Replace('\','/')
+            "$rel`t$($_.Length)`t$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant())" | Add-Content diagnostic/removed-sdk-files.txt
+            Remove-Item -LiteralPath $_.FullName -Force
+          }
       - name: Compile customer source
         shell: cmd
         run: |
           if not exist bin mkdir bin
           if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
           amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-      - name: Package and inventory OUYA-named resources
+      - name: Package and inventory resulting AAB
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path diagnostic | Out-Null
-          $androidSdk = $env:ANDROID_SDK_ROOT
-          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
-          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) { throw 'No Android SDK.' }
-          $keyPath = Join-Path $PWD 'diag.p12'
-          & adt -certificate -validityPeriod 1 -cn 'Gate2A OUYA Resource Diagnostic' 2048-RSA $keyPath gate2a
-          if ($LASTEXITCODE -ne 0) { throw 'certificate failed' }
+          $ErrorActionPreference='Stop'
+          $androidSdk=$env:ANDROID_SDK_ROOT
+          if([string]::IsNullOrWhiteSpace($androidSdk)){$androidSdk=$env:ANDROID_HOME}
+          $keyPath=Join-Path $PWD 'diag.p12'
+          & adt -certificate -validityPeriod 1 -cn 'Gate2A OUYA Template Removal Diagnostic' 2048-RSA $keyPath gate2a
+          if($LASTEXITCODE -ne 0){throw 'certificate failed'}
           & adt -package -target aab -storetype pkcs12 -keystore $keyPath -storepass gate2a diagnostic/SLF.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $androidSdk
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path diagnostic/SLF.aab)) { throw 'AAB packaging failed' }
+          if($LASTEXITCODE -ne 0 -or -not(Test-Path diagnostic/SLF.aab)){throw 'AAB packaging failed after SDK-template removal'}
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path diagnostic/SLF.aab))
           try {
             $rows=@()
-            foreach($e in $zip.Entries | Sort-Object FullName) {
-              if($e.FullName -match '(?i)ouya') {
-                $tmp=Join-Path $env:RUNNER_TEMP ([IO.Path]::GetRandomFileName())
-                $s=$e.Open(); $f=[IO.File]::Create($tmp); try{$s.CopyTo($f)} finally {$f.Dispose();$s.Dispose()}
-                $sha=(Get-FileHash -Algorithm SHA256 $tmp).Hash.ToLowerInvariant()
-                $rows += "$($e.FullName)`t$($e.Length)`t$sha"
-                Remove-Item $tmp -Force
-              }
-            }
-            if($rows.Count -eq 0){ $out=@('NO_OUYA_NAMED_AAB_ENTRIES') } else { $out=$rows }
-            $out | Set-Content diagnostic/ouya-aab-entries.txt -Encoding utf8
-            $zip.Entries | Sort-Object FullName | ForEach-Object FullName | Set-Content diagnostic/aab-entry-list.txt -Encoding utf8
+            foreach($e in $zip.Entries|Sort-Object FullName){if($e.FullName -match '(?i)ouya'){$rows += "$($e.FullName)`t$($e.Length)"}}
+            if($rows.Count -eq 0){$rows=@('NO_OUYA_NAMED_AAB_ENTRIES')}
+            $rows|Set-Content diagnostic/ouya-aab-entries-after-removal.txt -Encoding utf8
           } finally {$zip.Dispose()}
-          $airOuya=Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
-          @(
-            "head=$((& git rev-parse HEAD).Trim())"
-            "tree=$((& git rev-parse 'HEAD^{tree}').Trim())"
-            "repo_icon_192_sha256=$((Get-FileHash -Algorithm SHA256 icons/android/icons/icon_192.png).Hash.ToLowerInvariant())"
-            "repo_icon_192_bytes=$((Get-Item icons/android/icons/icon_192.png).Length)"
-            "air_ouya_sha256=$((Get-FileHash -Algorithm SHA256 $airOuya).Hash.ToLowerInvariant())"
-            "air_ouya_bytes=$((Get-Item $airOuya).Length)"
-            "aab_sha256=$((Get-FileHash -Algorithm SHA256 diagnostic/SLF.aab).Hash.ToLowerInvariant())"
-            "aab_bytes=$((Get-Item diagnostic/SLF.aab).Length)"
-          ) | Set-Content diagnostic/provenance.txt -Encoding utf8
-          $bundletoolVersion='1.18.3'
           $bundletool='bundletool.jar'
-          Invoke-WebRequest "https://github.com/google/bundletool/releases/download/$bundletoolVersion/bundletool-all-$bundletoolVersion.jar" -OutFile $bundletool
+          Invoke-WebRequest 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' -OutFile $bundletool
           $sha=(Get-FileHash -Algorithm SHA256 $bundletool).Hash.ToLowerInvariant()
           if($sha -ne 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'){throw "bundletool hash mismatch $sha"}
-          & java -jar $bundletool dump manifest --bundle=diagnostic/SLF.aab | Set-Content diagnostic/manifest.txt -Encoding utf8
-          if($LASTEXITCODE -ne 0){throw 'manifest dump failed'}
-          & java -jar $bundletool dump resources --bundle=diagnostic/SLF.aab | Set-Content diagnostic/resources.txt -Encoding utf8
-          if($LASTEXITCODE -ne 0){throw 'resources dump failed'}
-          Select-String -Path diagnostic/manifest.txt,diagnostic/resources.txt -Pattern '(?i)ouya' | ForEach-Object { $_.ToString() } | Set-Content diagnostic/ouya-references.txt -Encoding utf8
+          & java -jar $bundletool dump manifest --bundle=diagnostic/SLF.aab | Set-Content diagnostic/manifest-after-removal.txt -Encoding utf8
+          & java -jar $bundletool dump resources --bundle=diagnostic/SLF.aab | Set-Content diagnostic/resources-after-removal.txt -Encoding utf8
+          Select-String -Path diagnostic/manifest-after-removal.txt,diagnostic/resources-after-removal.txt -Pattern '(?i)ouya' | ForEach-Object {$_.ToString()} | Set-Content diagnostic/ouya-references-after-removal.txt -Encoding utf8
+          @(
+            "base_commit=973c31bbb788f96ed3a5bafc2d99eea434d58197"
+            "diagnostic_head=$((& git rev-parse HEAD).Trim())"
+            "repo_icon_192_sha256=$((Get-FileHash -Algorithm SHA256 icons/android/icons/icon_192.png).Hash.ToLowerInvariant())"
+            "aab_sha256=$((Get-FileHash -Algorithm SHA256 diagnostic/SLF.aab).Hash.ToLowerInvariant())"
+            "aab_bytes=$((Get-Item diagnostic/SLF.aab).Length)"
+          )|Set-Content diagnostic/provenance.txt -Encoding utf8
           Remove-Item $keyPath,$bundletool -Force -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: gate2a-ouya-resource-provenance
+          name: gate2a-ouya-template-removal-diagnostic
           path: diagnostic
           if-no-files-found: error
