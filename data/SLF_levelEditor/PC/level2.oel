@@ -14,7 +14,7 @@
     <level1_specialBlock x="520" y="480" speed="40" movementType="1" animated="0"/>
     <spike0 x="1020" y="510" width="70" height="10"/>
     <helpBox x="740" y="340" type="0" helpString="Push this crate off the ledge to the left."/>
-    <helpBox x="620" y="460" type="0" helpString="If a ledge is too high, press SWITCH (V) to play as Liselot."/>
+    <helpBox x="620" y="460" type="0" helpString="If a ledge is too high, press '_Switch' to play as Liselot."/>
     <helpBox x="1040" y="390" type="0" helpString="Sugar bags will replenish lost lives."/>
     <helpBox x="900" y="340" type="0" helpString="Collecting the bottle will earn you a bottle cap badge for this level."/>
   </extraPlatforms>
