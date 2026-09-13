@@ -56,8 +56,7 @@ jobs:
           gameplay_signature(){ python3 - "$1" <<'PY'
           from PIL import Image
           import sys
-          im=Image.open(sys.argv[1]).convert('RGB')
-          w,h=im.size
+          im=Image.open(sys.argv[1]).convert('RGB'); w,h=im.size
           box=im.crop((int(w*.76),int(h*.015),int(w*.97),int(h*.16))).resize((64,32))
           vals=[]
           for p in box.getdata(): vals.extend(p)
@@ -66,8 +65,7 @@ jobs:
           }
           signature_mad(){ python3 - "$1" "$2" <<'PY'
           import sys
-          a=list(map(int,open(sys.argv[1]).read().strip().split(',')))
-          b=list(map(int,open(sys.argv[2]).read().strip().split(',')))
+          a=list(map(int,open(sys.argv[1]).read().strip().split(','))); b=list(map(int,open(sys.argv[2]).read().strip().split(',')))
           print(sum(abs(x-y) for x,y in zip(a,b))/len(a))
           PY
           }
@@ -85,10 +83,17 @@ jobs:
           gameplay_signature level2-proof/01-level2-start.png > level2-proof/sig-baseline.txt
 
           transitioned=0
-          for i in $(seq -w 1 28); do
+          for i in $(seq -w 1 40); do
             move_once
             tag="02-step-${i}"
             capture "$tag"
+            if [ "$i" = "07" ]; then
+              # The rendered shipping tutorial at this deterministic point explicitly says
+              # "IF A LEDGE IS TOO HIGH, SWITCH TO LISELOT BY PRESSING A." Obey that customer
+              # instruction with the ordinary keyboard input; no state inspection/mutation.
+              adb shell input keyevent KEYCODE_A; sleep 2
+              capture 02-step-07-after-switch
+            fi
             gameplay_signature "level2-proof/${tag}.png" > "level2-proof/sig-${tag}.txt"
             mad=$(signature_mad level2-proof/sig-baseline.txt "level2-proof/sig-${tag}.txt")
             printf '%s %s\n' "$tag" "$mad" >> level2-proof/signature-mad.txt
@@ -103,7 +108,7 @@ jobs:
             fi
           done
           test "$pid0" = "$(adb shell pidof "$PACKAGE"|tr -d '\r')"
-          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\n' > level2-proof/method.txt
+          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\ncharacter_switch_input=KEYCODE_A_after_rendered_tutorial\n' > level2-proof/method.txt
           sleep 5; capture 03-transition-settled
           if [ "$transitioned" = 1 ]; then
             adb shell input keyevent KEYCODE_X; sleep 12; capture 04-default-action-result
@@ -115,8 +120,7 @@ jobs:
           for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done; sleep 8
           to_level_select
           capture 06-cold-level-select
-          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
-          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
           capture 07-cold-level3-selected
           adb shell input keyevent KEYCODE_X; sleep 10
           capture 08-cold-level3-action-result
