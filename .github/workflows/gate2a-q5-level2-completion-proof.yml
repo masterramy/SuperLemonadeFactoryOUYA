@@ -25,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p level2-proof
-          PRODUCT_PARENT="81e9c5b9253757d3882dccdea01e66d18b160c00"
+          PRODUCT_PARENT="9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c"
           test "$(git rev-parse HEAD^)" = "$PRODUCT_PARENT"
           git diff --name-only HEAD^ HEAD | tee level2-proof/qa-harness-delta.txt
           test "$(git diff --name-only HEAD^ HEAD | wc -l | tr -d ' ')" = "1"
@@ -33,7 +33,7 @@ jobs:
           grep -RniE 'helpString="[^"]*(press|switch|jump|action|key|button)' data/SLF_levelEditor/PC > level2-proof/control-instruction-audit.txt || true
           grep -RniE 'helpString="[^"]*switch[^"]*(pressing A|press A|by pressing A)' data/SLF_levelEditor/PC > level2-proof/stale-switch-audit.txt || true
           test ! -s level2-proof/stale-switch-audit.txt
-          grep -n 'press SWITCH (V) to play as Liselot' data/SLF_levelEditor/PC/level2.oel | tee level2-proof/repaired-level2-text.txt
+          grep -nF "press '_Switch' to play as Liselot" data/SLF_levelEditor/PC/level2.oel | tee level2-proof/repaired-level2-text.txt
 
       - name: Download repaired exact-head emulator APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -41,7 +41,7 @@ jobs:
           name: gate2a-emulator-x64-apk
           path: runtime-apk
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 34777133689
+          run-id: 34777986347
 
       - name: Verify repaired APK identity
         shell: bash
@@ -49,8 +49,8 @@ jobs:
           set -euo pipefail
           APK="runtime-apk/SLF-emulator-x64.apk"
           test -f "$APK"
-          test "$(wc -c < "$APK" | tr -d ' ')" = "35875613"
-          test "$(sha256sum "$APK" | awk '{print $1}')" = "d752db4eee59014511c6bc340a72a53c960cfc32c5579c5065dab590370d9b19"
+          test "$(wc -c < "$APK" | tr -d ' ')" = "35875619"
+          test "$(sha256sum "$APK" | awk '{print $1}')" = "53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2"
           sha256sum "$APK" | tee level2-proof/repaired-apk-sha256.txt
           wc -c "$APK" | tee level2-proof/repaired-apk-bytes.txt
 
