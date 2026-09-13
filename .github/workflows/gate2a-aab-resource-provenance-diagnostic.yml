@@ -44,14 +44,14 @@ jobs:
       - name: Directly compile exact 192 PNG with AAPT2
         shell: pwsh
         run: |
-          $ErrorActionPreference='Continue'
+          $ErrorActionPreference='Stop'
           $src='icons/android/icons/icon_192.png'
           $sha=(Get-FileHash -Algorithm SHA256 $src).Hash.ToLowerInvariant()
           "SOURCE_SHA256=$sha"
           New-Item -ItemType Directory -Force -Path 'diag-original/mipmap-xxxhdpi' | Out-Null
           Copy-Item $src 'diag-original/mipmap-xxxhdpi/icon.png'
-          & $env:AAPT2_PATH compile --dir diag-original -o diag-original.zip 2>&1 | ForEach-Object { "AAPT2_ORIGINAL $_" }
-          "AAPT2_ORIGINAL_EXIT=$LASTEXITCODE"
+          $p=Start-Process -FilePath $env:AAPT2_PATH -ArgumentList @('compile','--dir','diag-original','-o','diag-original.zip') -PassThru -Wait -NoNewWindow
+          "AAPT2_ORIGINAL_EXIT=$($p.ExitCode)"
 
       - name: Re-encode pixels losslessly and compile sanitized PNG
         shell: pwsh
@@ -73,9 +73,8 @@ jobs:
           "ORIGINAL_SHA256=$origSha"
           "SANITIZED_SHA256=$newSha"
           "SANITIZED_BYTES=$((Get-Item $dst).Length)"
-          $ErrorActionPreference='Continue'
-          & $env:AAPT2_PATH compile --dir diag-sanitized -o diag-sanitized.zip 2>&1 | ForEach-Object { "AAPT2_SANITIZED $_" }
-          "AAPT2_SANITIZED_EXIT=$LASTEXITCODE"
+          $p=Start-Process -FilePath $env:AAPT2_PATH -ArgumentList @('compile','--dir','diag-sanitized','-o','diag-sanitized.zip') -PassThru -Wait -NoNewWindow
+          "AAPT2_SANITIZED_EXIT=$($p.ExitCode)"
 
       - name: Inspect PNG chunks and CRCs
         shell: pwsh
