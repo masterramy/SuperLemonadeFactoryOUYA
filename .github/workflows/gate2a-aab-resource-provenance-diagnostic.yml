@@ -17,14 +17,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 8
-      - name: Verify exact-final ancestry
+      - name: Verify exact-final ancestry and corrupt source identity
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
+          $ErrorActionPreference='Stop'
           git merge-base --is-ancestor fb89f9780d43127156ec86a1d666292e11ffb7cd HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic branch no longer descends from exact-final head.' }
-          $sourceHash=(Get-FileHash -Algorithm SHA256 'icons/android/icons/icon_192.png').Hash.ToLowerInvariant()
-          if ($sourceHash -ne 'a9aa4cafb64e0ff859207abce2ae6c1d7d303d63ed3c0a1a2f122d70b7ad1efa') { throw "Unexpected icon_192 source hash: $sourceHash" }
+          if($LASTEXITCODE -ne 0){ throw 'Diagnostic branch no longer descends from exact-final head.' }
+          $p='icons/android/icons/icon_192.png'; $h=(Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant(); $n=(Get-Item $p).Length
+          "SOURCE_ICON_SHA256=$h BYTES=$n"
+          if($h -ne 'a9aa4cafb64e0ff859207abce2ae6c1d7d303d63ed3c0a1a2f122d70b7ad1efa' -or $n -ne 8520){ throw 'Unexpected source icon identity.' }
       - name: Set up Java
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
@@ -37,73 +38,40 @@ jobs:
         with:
           air-version: '51.3.4.3'
           accept-license: true
-      - name: Audit PNG chunks and exact corrupt boundary
+      - name: Clone decoded pixels to a fresh PNG
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          @'
-          import binascii, struct, zlib
-          from pathlib import Path
-          def audit(path):
-              b=Path(path).read_bytes()
-              print('BEGIN',path,'bytes=',len(b),'signature=',b[:8].hex())
-              if b[:8] != b'\x89PNG\r\n\x1a\n':
-                  print('BAD_SIGNATURE'); return False
-              pos=8; idat=b''; okall=True; idx=0
-              while pos < len(b):
-                  if pos+8 > len(b):
-                      print('TRUNCATED_HEADER','offset=',pos,'remaining=',len(b)-pos); return False
-                  n=struct.unpack('>I',b[pos:pos+4])[0]; typb=b[pos+4:pos+8]; typ=typb.decode('latin1')
-                  need=12+n
-                  print('CHUNK',idx,'offset=',pos,'type=',repr(typ),'declared_len=',n,'need_through=',pos+need,'file_len=',len(b))
-                  if pos+need > len(b):
-                      print('TRUNCATED_CHUNK','type=',repr(typ),'offset=',pos,'declared_len=',n,'available_data_crc_bytes=',len(b)-(pos+8),'short_by=',pos+need-len(b))
-                      print('TAIL_HEX',b[max(0,pos-16):].hex())
-                      return False
-                  data=b[pos+8:pos+8+n]
-                  stored=struct.unpack('>I',b[pos+8+n:pos+12+n])[0]; calc=binascii.crc32(typb+data)&0xffffffff
-                  crcok=(stored==calc); print('CRC','stored=',hex(stored),'calc=',hex(calc),'ok=',crcok)
-                  okall &= crcok
-                  if typb==b'IDAT': idat += data
-                  pos += need; idx += 1
-                  if typb==b'IEND': break
-              print('ENDPOS',pos,'TRAILING',len(b)-pos,'CRC_ALL',okall)
-              try:
-                  raw=zlib.decompress(idat); print('IDAT_ZLIB_OK raw_bytes=',len(raw))
-              except Exception as e:
-                  print('IDAT_ZLIB_FAIL',repr(e)); okall=False
-              return okall and pos==len(b)
-          results={p:audit(p) for p in ['icons/android/icons/icon_96.png','icons/android/icons/icon_144.png','icons/android/icons/icon_192.png']}
-          print('AUDIT_RESULTS',results)
-          if not results['icons/android/icons/icon_96.png'] or not results['icons/android/icons/icon_144.png']:
-              raise SystemExit('Control PNG unexpectedly invalid')
-          if results['icons/android/icons/icon_192.png']:
-              print('ICON_192_STRICT_VALID=True')
-          else:
-              print('ICON_192_STRICT_VALID=False')
-          '@ | Set-Content -NoNewline png_audit.py
-          python png_audit.py
-      - name: Re-encode icon_192 and prove decoded-pixel identity
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
+          $ErrorActionPreference='Stop'
           Add-Type -AssemblyName System.Drawing
-          function PixelHash([string]$Path) {
-            $bmp=[System.Drawing.Bitmap]::FromFile((Resolve-Path $Path).Path)
+          function PixelHashBitmap([System.Drawing.Bitmap]$Bmp){
+            $ms=New-Object IO.MemoryStream
             try {
-              $ms=New-Object IO.MemoryStream
-              try {
-                for($y=0;$y -lt $bmp.Height;$y++){ for($x=0;$x -lt $bmp.Width;$x++){ $bytes=[BitConverter]::GetBytes([int]$bmp.GetPixel($x,$y).ToArgb()); $ms.Write($bytes,0,$bytes.Length) } }
-                $sha=[Security.Cryptography.SHA256]::Create(); try { return ([BitConverter]::ToString($sha.ComputeHash($ms.ToArray()))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
-              } finally { $ms.Dispose() }
-            } finally { $bmp.Dispose() }
+              for($y=0;$y -lt $Bmp.Height;$y++){ for($x=0;$x -lt $Bmp.Width;$x++){ $v=[BitConverter]::GetBytes([int]$Bmp.GetPixel($x,$y).ToArgb()); $ms.Write($v,0,$v.Length) } }
+              $sha=[Security.Cryptography.SHA256]::Create(); try { return ([BitConverter]::ToString($sha.ComputeHash($ms.ToArray()))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
+            } finally { $ms.Dispose() }
           }
-          $src='icons/android/icons/icon_192.png'; $before=PixelHash $src
-          $bmp=[System.Drawing.Bitmap]::FromFile((Resolve-Path $src).Path); try { $bmp.Save((Join-Path $PWD 'icon_192_reencoded.png'),[System.Drawing.Imaging.ImageFormat]::Png) } finally { $bmp.Dispose() }
-          $after=PixelHash 'icon_192_reencoded.png'; $oldHash=(Get-FileHash -Algorithm SHA256 $src).Hash.ToLowerInvariant(); $newHash=(Get-FileHash -Algorithm SHA256 'icon_192_reencoded.png').Hash.ToLowerInvariant(); $newBytes=(Get-Item 'icon_192_reencoded.png').Length
-          "SOURCE_FILE_SHA256=$oldHash"; "REENCODED_FILE_SHA256=$newHash BYTES=$newBytes"; "SOURCE_PIXEL_SHA256=$before"; "REENCODED_PIXEL_SHA256=$after"
-          if($before -ne $after){ throw 'Re-encoding changed decoded pixels.' }
-      - name: Strict-audit re-encoded PNG
+          $srcPath=(Resolve-Path 'icons/android/icons/icon_192.png').Path
+          $src=[System.Drawing.Bitmap]::FromFile($srcPath)
+          try {
+            "DECODED_DIMENSIONS=$($src.Width)x$($src.Height) PIXELFORMAT=$($src.PixelFormat)"
+            if($src.Width -ne 192 -or $src.Height -ne 192){ throw 'Recovered source dimensions are not 192x192.' }
+            $before=PixelHashBitmap $src
+            $clone=New-Object System.Drawing.Bitmap($src.Width,$src.Height,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            try {
+              $g=[System.Drawing.Graphics]::FromImage($clone)
+              try { $g.DrawImageUnscaled($src,0,0) } finally { $g.Dispose() }
+              $cloned=PixelHashBitmap $clone
+              if($before -ne $cloned){ throw 'Clone changed decoded pixels.' }
+              $out=(Join-Path $PWD 'icon_192_reencoded.png')
+              $clone.Save($out,[System.Drawing.Imaging.ImageFormat]::Png)
+            } finally { $clone.Dispose() }
+          } finally { $src.Dispose() }
+          $re=[System.Drawing.Bitmap]::FromFile((Resolve-Path 'icon_192_reencoded.png').Path)
+          try { $after=PixelHashBitmap $re } finally { $re.Dispose() }
+          $newHash=(Get-FileHash -Algorithm SHA256 'icon_192_reencoded.png').Hash.ToLowerInvariant(); $newBytes=(Get-Item 'icon_192_reencoded.png').Length
+          "SOURCE_PIXEL_SHA256=$before"; "CLONED_PIXEL_SHA256=$cloned"; "REENCODED_PIXEL_SHA256=$after"; "REENCODED_FILE_SHA256=$newHash BYTES=$newBytes"
+          if($before -ne $after){ throw 'Re-encoded PNG changed decoded pixels.' }
+      - name: Strict-audit fresh PNG
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -112,33 +80,31 @@ jobs:
           from pathlib import Path
           b=Path('icon_192_reencoded.png').read_bytes(); assert b[:8]==b'\x89PNG\r\n\x1a\n'; pos=8; idat=b''; chunks=[]
           while pos<len(b):
-              if pos+12>len(b): raise SystemExit('reencoded truncated header')
+              if pos+12>len(b): raise SystemExit('truncated header')
               n=struct.unpack('>I',b[pos:pos+4])[0]; typ=b[pos+4:pos+8]
-              if pos+12+n>len(b): raise SystemExit(f'reencoded truncated chunk {typ!r}')
+              if pos+12+n>len(b): raise SystemExit(f'truncated chunk {typ!r}')
               data=b[pos+8:pos+8+n]; stored=struct.unpack('>I',b[pos+8+n:pos+12+n])[0]; calc=binascii.crc32(typ+data)&0xffffffff
-              if stored!=calc: raise SystemExit(f'reencoded CRC fail {typ!r}')
+              if stored!=calc: raise SystemExit(f'CRC fail {typ!r}')
               chunks.append((typ.decode('latin1'),n));
               if typ==b'IDAT': idat+=data
               pos+=12+n
               if typ==b'IEND': break
           raw=zlib.decompress(idat); print('REENCODED_STRICT_VALID','bytes=',len(b),'chunks=',chunks,'end=',pos,'trailing=',len(b)-pos,'raw_bytes=',len(raw))
-          if pos!=len(b): raise SystemExit('reencoded trailing bytes')
-          '@ | Set-Content -NoNewline audit_reencoded.py
-          python audit_reencoded.py
+          if pos!=len(b): raise SystemExit('trailing bytes')
+          '@ | Set-Content -NoNewline audit.py
+          python audit.py
       - name: Compile exact source SWF
         shell: cmd
         run: |
           if not exist bin mkdir bin
           if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
           amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-      - name: Package with pixel-identical re-encoded icon_192
+      - name: Package using only the fresh pixel-identical icon bytes
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $androidSdk=$env:ANDROID_SDK_ROOT; if([string]::IsNullOrWhiteSpace($androidSdk)){ $androidSdk=$env:ANDROID_HOME }; if(-not (Test-Path $androidSdk)){ throw 'Android SDK missing' }
           Copy-Item -Force 'icon_192_reencoded.png' 'icons/android/icons/icon_192.png'
-          $now=(Get-FileHash -Algorithm SHA256 'icons/android/icons/icon_192.png').Hash.ToLowerInvariant(); "TEST_ICON_SHA256=$now"
-          if($now -eq 'a9aa4cafb64e0ff859207abce2ae6c1d7d303d63ed3c0a1a2f122d70b7ad1efa'){ throw 'Re-encoded test did not change file bytes.' }
           $key=Join-Path $PWD 'diag-signing.p12'; $pass='gate2a-validation'; & adt -certificate -validityPeriod 1 -cn 'Gate 2A Diagnostic' 2048-RSA $key $pass; if($LASTEXITCODE -ne 0){ throw 'certificate creation failed' }
           & adt -package -target aab -storetype pkcs12 -keystore $key -storepass $pass dist-reencoded.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -platformsdk $androidSdk
           $exit=$LASTEXITCODE; "REENCODED_ADT_EXIT=$exit"
