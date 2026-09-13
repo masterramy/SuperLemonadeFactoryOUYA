@@ -1,3 +1,0 @@
-tag=11-piggyback-rendezvous-attempt
-pid=2604
-focus=  mCurrentFocus=Window{bfb95b u0 com.ramybaheeg.slfport/com.ramybaheeg.slfport.AIRAppEntry}

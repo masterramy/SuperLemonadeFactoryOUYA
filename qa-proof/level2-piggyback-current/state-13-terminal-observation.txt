@@ -1,3 +1,0 @@
-tag=13-terminal-observation
-pid=2604
-focus=  mCurrentFocus=Window{bfb95b u0 com.ramybaheeg.slfport/com.ramybaheeg.slfport.AIRAppEntry}

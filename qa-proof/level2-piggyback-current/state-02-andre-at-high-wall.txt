@@ -1,3 +1,0 @@
-tag=02-andre-at-high-wall
-pid=2604
-focus=  mCurrentFocus=Window{bfb95b u0 com.ramybaheeg.slfport/com.ramybaheeg.slfport.AIRAppEntry}
