@@ -26,42 +26,49 @@ jobs:
           mkdir -p census
           python3 - <<'PY'
           from pathlib import Path
-          import re, json, collections
+          import re, json, collections, os
 
           src=Path('src')
           files=sorted(src.glob('*.as'))
-          texts={p:p.read_text(encoding='utf-8',errors='replace') for p in files}
+          raw={p:p.read_text(encoding='utf-8',errors='replace') for p in files}
+
+          def strip_comments(text):
+              text=re.sub(r'/\*.*?\*/','',text,flags=re.S)
+              return '\n'.join(re.sub(r'//.*$','',line) for line in text.splitlines())
+
+          code={p:strip_comments(t) for p,t in raw.items()}
           classes={}
-          for p,t in texts.items():
+          path_owner={}
+          for p,t in code.items():
               m=re.search(r'\b(?:public\s+)?class\s+(\w+)\s+extends\s+(\w+)',t)
               if m:
                   classes[m.group(1)]={'path':str(p),'extends':m.group(2)}
+                  path_owner[str(p)]=m.group(1)
 
-          # State candidates are explicit *State classes plus classes directly extending FlxState.
           state_names=sorted(n for n,v in classes.items() if n.endswith('State') or v['extends']=='FlxState')
           state_set=set(state_names)
           edges=collections.defaultdict(set)
-          references=collections.defaultdict(list)
+          refs=collections.defaultdict(list)
 
-          for p,t in texts.items():
-              owner=None
-              for n,v in classes.items():
-                  if v['path']==str(p): owner=n; break
-              lines=t.splitlines()
-              for i,line in enumerate(lines,1):
+          # AS3 permits `new Type` and `new Type()`; match both. Ignore stripped comments.
+          construct_rx={n:re.compile(r'\bnew\s+'+re.escape(n)+r'\b') for n in state_names}
+          class_rx={n:re.compile(r'\bclass\s+'+re.escape(n)+r'\b') for n in state_names}
+          for p,t in code.items():
+              owner=path_owner.get(str(p))
+              for i,line in enumerate(t.splitlines(),1):
+                  if not line.strip(): continue
                   for target in state_names:
-                      if re.search(r'\bnew\s+'+re.escape(target)+r'\s*\(',line):
-                          references[target].append({'path':str(p),'line':i,'kind':'construct','text':line.strip()[:220]})
+                      if construct_rx[target].search(line):
+                          refs[target].append({'path':str(p),'line':i,'kind':'construct','text':line.strip()[:240]})
                           if owner in state_set: edges[owner].add(target)
-                      elif target in line and not re.search(r'\bclass\s+'+re.escape(target)+r'\b',line):
-                          references[target].append({'path':str(p),'line':i,'kind':'mention','text':line.strip()[:220]})
+                      elif target in line and not class_rx[target].search(line):
+                          refs[target].append({'path':str(p),'line':i,'kind':'mention','text':line.strip()[:240]})
 
-          # Entry roots: SLF/Main construction references plus known shipping PCIntroState root.
           roots={'PCIntroState'}
           for rootfile in ['src/SLF.as','src/Main.as']:
-              t=texts.get(Path(rootfile),'')
+              t=code.get(Path(rootfile),'')
               for target in state_names:
-                  if re.search(r'\bnew\s+'+re.escape(target)+r'\s*\(',t): roots.add(target)
+                  if construct_rx[target].search(t): roots.add(target)
 
           reachable=set(roots)
           q=collections.deque(roots)
@@ -71,37 +78,55 @@ jobs:
                   if b not in reachable:
                       reachable.add(b); q.append(b)
 
+          # Any ancestor class of a reachable state is executable shared runtime code.
+          inherited_runtime=set()
+          inheritance_edges=[]
+          for child in sorted(reachable):
+              seen=set(); parent=classes.get(child,{}).get('extends')
+              while parent and parent in classes and parent not in seen:
+                  seen.add(parent); inheritance_edges.append((child,parent))
+                  if parent in state_set and parent not in reachable:
+                      inherited_runtime.add(parent)
+                  parent=classes[parent].get('extends')
+
+          inactive=state_set-reachable-inherited_runtime
           report=[]
-          report.append(f'GITHUB_SHA={__import__("os").environ.get("GITHUB_SHA","")}')
+          report.append(f'GITHUB_SHA={os.environ.get("GITHUB_SHA","")}')
           report.append('ROOTS='+','.join(sorted(roots)))
           report.append(f'STATE_COUNT={len(state_names)}')
-          report.append(f'REACHABLE_COUNT={len(reachable)}')
-          report.append(f'UNREACHABLE_COUNT={len(state_set-reachable)}')
+          report.append(f'DIRECT_OR_TRANSITIVE_REACHABLE_COUNT={len(reachable)}')
+          report.append(f'INHERITED_RUNTIME_COUNT={len(inherited_runtime)}')
+          report.append(f'INACTIVE_CANDIDATE_COUNT={len(inactive)}')
           report.append('')
           report.append('STATE_CLASSES')
           for n in state_names:
               v=classes[n]
-              report.append(f'{n}\textends={v["extends"]}\tpath={v["path"]}\treachable={str(n in reachable).lower()}\treferences={len(references[n])}')
+              status='reachable' if n in reachable else ('inherited_runtime' if n in inherited_runtime else 'inactive_candidate')
+              report.append(f'{n}\tstatus={status}\textends={v["extends"]}\tpath={v["path"]}\treferences={len(refs[n])}')
           report.append('')
           report.append('CONSTRUCTION_EDGES')
           for a in sorted(edges):
               for b in sorted(edges[a]): report.append(f'{a} -> {b}')
           report.append('')
-          report.append('UNREACHABLE_STATE_CLASSES')
-          for n in sorted(state_set-reachable): report.append(n)
+          report.append('INHERITANCE_RUNTIME_EDGES')
+          for a,b in sorted(set(inheritance_edges)): report.append(f'{a} => base {b}')
+          report.append('')
+          report.append('INACTIVE_CANDIDATES')
+          for n in sorted(inactive): report.append(n)
           report.append('')
           report.append('REFERENCE_EVIDENCE')
           for n in state_names:
-              for r in references[n]:
-                  report.append(f'{n}\t{r["kind"]}\t{r["path"]}:{r["line"]}\t{r["text"]}')
+              for r in refs[n]: report.append(f'{n}\t{r["kind"]}\t{r["path"]}:{r["line"]}\t{r["text"]}')
 
-          Path('census/state-census.txt').write_text('\n'.join(report)+'\n',encoding='utf-8')
-          Path('census/state-census.json').write_text(json.dumps({
+          data={
               'roots':sorted(roots),'states':state_names,'reachable':sorted(reachable),
-              'unreachable':sorted(state_set-reachable),
-              'edges':{k:sorted(v) for k,v in edges.items()},'classes':classes,'references':references
-          },indent=2),encoding='utf-8')
-          print('\n'.join(report[:120]))
+              'inherited_runtime':sorted(inherited_runtime),'inactive_candidates':sorted(inactive),
+              'edges':{k:sorted(v) for k,v in edges.items()},'classes':classes,'references':refs,
+              'inheritance_runtime_edges':[list(x) for x in sorted(set(inheritance_edges))]
+          }
+          Path('census/state-census.txt').write_text('\n'.join(report)+'\n',encoding='utf-8')
+          Path('census/state-census.json').write_text(json.dumps(data,indent=2),encoding='utf-8')
+          print('\n'.join(report[:180]))
           PY
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
