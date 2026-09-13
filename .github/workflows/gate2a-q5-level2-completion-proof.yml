@@ -88,10 +88,10 @@ jobs:
             tag="02-step-${i}"
             capture "$tag"
             if [ "$i" = "07" ]; then
-              # The rendered shipping tutorial at this deterministic point explicitly says
-              # "IF A LEDGE IS TOO HIGH, SWITCH TO LISELOT BY PRESSING A." Obey that customer
-              # instruction with the ordinary keyboard input; no state inspection/mutation.
-              adb shell input keyevent KEYCODE_A; sleep 2
+              # The rendered shipping tutorial at this deterministic point asks the player
+              # to switch characters. Exact shipping keyboard authority is Registry.p1Switch="V";
+              # Android KEYCODE_A was wrong (it maps to the letter A / player-two LEFT).
+              adb shell input keyevent KEYCODE_V; sleep 2
               capture 02-step-07-after-switch
             fi
             gameplay_signature "level2-proof/${tag}.png" > "level2-proof/sig-${tag}.txt"
@@ -108,7 +108,7 @@ jobs:
             fi
           done
           test "$pid0" = "$(adb shell pidof "$PACKAGE"|tr -d '\r')"
-          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\ncharacter_switch_input=KEYCODE_A_after_rendered_tutorial\n' > level2-proof/method.txt
+          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\ncharacter_switch_input=KEYCODE_V_exact_shipping_p1Switch\n' > level2-proof/method.txt
           sleep 5; capture 03-transition-settled
           if [ "$transitioned" = 1 ]; then
             adb shell input keyevent KEYCODE_X; sleep 12; capture 04-default-action-result
