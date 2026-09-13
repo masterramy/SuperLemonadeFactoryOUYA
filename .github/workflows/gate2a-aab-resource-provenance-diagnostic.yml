@@ -1,4 +1,4 @@
-name: Gate 2A PNG/AAB Root-Cause Diagnostic
+name: Gate 2A Approved Icon/AAB Repair Proof
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-png-aab:
+  prove-approved-icon:
     runs-on: windows-2025
     steps:
       - name: Checkout diagnostic revision
@@ -24,8 +24,8 @@ jobs:
           git merge-base --is-ancestor fb89f9780d43127156ec86a1d666292e11ffb7cd HEAD
           if($LASTEXITCODE -ne 0){ throw 'Diagnostic branch no longer descends from exact-final head.' }
           $p='icons/android/icons/icon_192.png'; $h=(Get-FileHash -Algorithm SHA256 $p).Hash.ToLowerInvariant(); $n=(Get-Item $p).Length
-          "SOURCE_ICON_SHA256=$h BYTES=$n"
-          if($h -ne 'a9aa4cafb64e0ff859207abce2ae6c1d7d303d63ed3c0a1a2f122d70b7ad1efa' -or $n -ne 8520){ throw 'Unexpected source icon identity.' }
+          "CORRUPT_SOURCE_SHA256=$h BYTES=$n"
+          if($h -ne 'a9aa4cafb64e0ff859207abce2ae6c1d7d303d63ed3c0a1a2f122d70b7ad1efa' -or $n -ne 8520){ throw 'Unexpected corrupt source icon identity.' }
       - name: Set up Java
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
@@ -38,59 +38,37 @@ jobs:
         with:
           air-version: '51.3.4.3'
           accept-license: true
-      - name: Clone decoded pixels to a fresh PNG
+      - name: Fetch exact approved icon from canonical Drive artifact
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          Add-Type -AssemblyName System.Drawing
-          function PixelHashBitmap([System.Drawing.Bitmap]$Bmp){
-            $ms=New-Object IO.MemoryStream
-            try {
-              for($y=0;$y -lt $Bmp.Height;$y++){ for($x=0;$x -lt $Bmp.Width;$x++){ $v=[BitConverter]::GetBytes([int]$Bmp.GetPixel($x,$y).ToArgb()); $ms.Write($v,0,$v.Length) } }
-              $sha=[Security.Cryptography.SHA256]::Create(); try { return ([BitConverter]::ToString($sha.ComputeHash($ms.ToArray()))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose() }
-            } finally { $ms.Dispose() }
-          }
-          $srcPath=(Resolve-Path 'icons/android/icons/icon_192.png').Path
-          $src=[System.Drawing.Bitmap]::FromFile($srcPath)
-          try {
-            "DECODED_DIMENSIONS=$($src.Width)x$($src.Height) PIXELFORMAT=$($src.PixelFormat)"
-            if($src.Width -ne 192 -or $src.Height -ne 192){ throw 'Recovered source dimensions are not 192x192.' }
-            $before=PixelHashBitmap $src
-            $clone=New-Object System.Drawing.Bitmap($src.Width,$src.Height,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-            try {
-              $g=[System.Drawing.Graphics]::FromImage($clone)
-              try { $g.DrawImageUnscaled($src,0,0) } finally { $g.Dispose() }
-              $cloned=PixelHashBitmap $clone
-              if($before -ne $cloned){ throw 'Clone changed decoded pixels.' }
-              $out=(Join-Path $PWD 'icon_192_reencoded.png')
-              $clone.Save($out,[System.Drawing.Imaging.ImageFormat]::Png)
-            } finally { $clone.Dispose() }
-          } finally { $src.Dispose() }
-          $re=[System.Drawing.Bitmap]::FromFile((Resolve-Path 'icon_192_reencoded.png').Path)
-          try { $after=PixelHashBitmap $re } finally { $re.Dispose() }
-          $newHash=(Get-FileHash -Algorithm SHA256 'icon_192_reencoded.png').Hash.ToLowerInvariant(); $newBytes=(Get-Item 'icon_192_reencoded.png').Length
-          "SOURCE_PIXEL_SHA256=$before"; "CLONED_PIXEL_SHA256=$cloned"; "REENCODED_PIXEL_SHA256=$after"; "REENCODED_FILE_SHA256=$newHash BYTES=$newBytes"
-          if($before -ne $after){ throw 'Re-encoded PNG changed decoded pixels.' }
-      - name: Strict-audit fresh PNG
+          python -m pip install --disable-pip-version-check --quiet gdown==5.2.0
+          gdown --id 1MBBrg_T16NmYkrm-ZUDQgjRPHhTt5Hbk --output approved-icon192.png
+          if($LASTEXITCODE -ne 0 -or -not (Test-Path 'approved-icon192.png')){ throw 'Could not fetch approved Drive icon.' }
+          $h=(Get-FileHash -Algorithm SHA256 'approved-icon192.png').Hash.ToLowerInvariant(); $n=(Get-Item 'approved-icon192.png').Length
+          "APPROVED_ICON_SHA256=$h BYTES=$n"
+          if($h -ne '3ee6ad6c0b6035f6e67ba7a2cc01f6d8e4f53f3829f6f8f386d9bee0a624b900' -or $n -ne 48849){ throw 'Drive download does not match canonical approved icon identity.' }
+      - name: Strict-audit approved PNG
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           @'
           import binascii,struct,zlib
           from pathlib import Path
-          b=Path('icon_192_reencoded.png').read_bytes(); assert b[:8]==b'\x89PNG\r\n\x1a\n'; pos=8; idat=b''; chunks=[]
+          b=Path('approved-icon192.png').read_bytes(); assert b[:8]==b'\x89PNG\r\n\x1a\n'; pos=8; idat=b''; chunks=[]; w=h=None
           while pos<len(b):
               if pos+12>len(b): raise SystemExit('truncated header')
               n=struct.unpack('>I',b[pos:pos+4])[0]; typ=b[pos+4:pos+8]
               if pos+12+n>len(b): raise SystemExit(f'truncated chunk {typ!r}')
               data=b[pos+8:pos+8+n]; stored=struct.unpack('>I',b[pos+8+n:pos+12+n])[0]; calc=binascii.crc32(typ+data)&0xffffffff
               if stored!=calc: raise SystemExit(f'CRC fail {typ!r}')
-              chunks.append((typ.decode('latin1'),n));
+              if typ==b'IHDR': w,h=struct.unpack('>II',data[:8])
               if typ==b'IDAT': idat+=data
-              pos+=12+n
+              chunks.append((typ.decode('latin1'),n)); pos+=12+n
               if typ==b'IEND': break
-          raw=zlib.decompress(idat); print('REENCODED_STRICT_VALID','bytes=',len(b),'chunks=',chunks,'end=',pos,'trailing=',len(b)-pos,'raw_bytes=',len(raw))
-          if pos!=len(b): raise SystemExit('trailing bytes')
+          raw=zlib.decompress(idat)
+          print('APPROVED_PNG_VALID','dimensions=',(w,h),'bytes=',len(b),'chunks=',chunks,'end=',pos,'trailing=',len(b)-pos,'raw_bytes=',len(raw))
+          if (w,h)!=(192,192) or pos!=len(b): raise SystemExit('approved PNG structural assertion failed')
           '@ | Set-Content -NoNewline audit.py
           python audit.py
       - name: Compile exact source SWF
@@ -99,15 +77,18 @@ jobs:
           if not exist bin mkdir bin
           if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
           amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-      - name: Package using only the fresh pixel-identical icon bytes
+      - name: Package AAB with approved icon replacement only
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $androidSdk=$env:ANDROID_SDK_ROOT; if([string]::IsNullOrWhiteSpace($androidSdk)){ $androidSdk=$env:ANDROID_HOME }; if(-not (Test-Path $androidSdk)){ throw 'Android SDK missing' }
-          Copy-Item -Force 'icon_192_reencoded.png' 'icons/android/icons/icon_192.png'
-          $key=Join-Path $PWD 'diag-signing.p12'; $pass='gate2a-validation'; & adt -certificate -validityPeriod 1 -cn 'Gate 2A Diagnostic' 2048-RSA $key $pass; if($LASTEXITCODE -ne 0){ throw 'certificate creation failed' }
-          & adt -package -target aab -storetype pkcs12 -keystore $key -storepass $pass dist-reencoded.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -platformsdk $androidSdk
-          $exit=$LASTEXITCODE; "REENCODED_ADT_EXIT=$exit"
-          if(Test-Path 'dist-reencoded.aab'){ $sha=(Get-FileHash -Algorithm SHA256 'dist-reencoded.aab').Hash.ToLowerInvariant(); $bytes=(Get-Item 'dist-reencoded.aab').Length; "REENCODED_AAB_SHA256=$sha BYTES=$bytes" }
+          Copy-Item -Force 'approved-icon192.png' 'icons/android/icons/icon_192.png'
+          $h=(Get-FileHash -Algorithm SHA256 'icons/android/icons/icon_192.png').Hash.ToLowerInvariant(); if($h -ne '3ee6ad6c0b6035f6e67ba7a2cc01f6d8e4f53f3829f6f8f386d9bee0a624b900'){ throw 'Replacement drifted before ADT.' }
+          $key=Join-Path $PWD 'diag-signing.p12'; $pass='gate2a-validation'
+          & adt -certificate -validityPeriod 1 -cn 'Gate 2A Diagnostic' 2048-RSA $key $pass
+          if($LASTEXITCODE -ne 0){ throw 'certificate creation failed' }
+          & adt -package -target aab -storetype pkcs12 -keystore $key -storepass $pass dist-approved-icon.aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -platformsdk $androidSdk
+          $exit=$LASTEXITCODE; "APPROVED_ICON_ADT_EXIT=$exit"
+          if(Test-Path 'dist-approved-icon.aab'){ $sha=(Get-FileHash -Algorithm SHA256 'dist-approved-icon.aab').Hash.ToLowerInvariant(); $bytes=(Get-Item 'dist-approved-icon.aab').Length; "APPROVED_ICON_AAB_SHA256=$sha BYTES=$bytes" }
           Remove-Item -Force -ErrorAction SilentlyContinue $key
-          if($exit -ne 0){ throw "Re-encoded package still failed with ADT exit $exit" }
+          if($exit -ne 0){ throw "Approved-icon package still failed with ADT exit $exit" }
