@@ -18,7 +18,7 @@ jobs:
       - name: Checkout QA staging
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
-          fetch-depth: 16
+          fetch-depth: 24
 
       - name: Verify exact product ancestor and QA-only delta
         shell: bash
@@ -49,7 +49,7 @@ jobs:
           test "$(wc -c < "$APK" | tr -d ' ')" = '35875619'
           test "$(sha256sum "$APK" | awk '{print $1}')" = '53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2'
 
-      - name: Write ordinary-input probe
+      - name: Write ordinary-input rendezvous probe
         shell: bash
         run: |
           cat > probe.sh <<'EOF'
@@ -86,7 +86,6 @@ jobs:
           jump_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
           jump_dash_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; sleep .10; adb shell input keyevent KEYCODE_X >/dev/null 2>&1||true; wait "$p"||true; sleep .25; }
           liselot_double_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; sleep .16; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
-          walk_left(){ adb shell input keyevent --longpress KEYCODE_DPAD_LEFT >/dev/null 2>&1||true; sleep .30; }
           walk_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1||true; sleep .30; }
           launch(){ adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch-command.txt" 2>&1; sleep 4; for _ in 1 2 3 4; do dismiss_text 'Got it'; dismiss_text 'Wait'; sleep 1; done; sleep 8; }
           to_level_select(){ adb shell input keyevent KEYCODE_X; sleep 2; adb shell input keyevent KEYCODE_X; sleep 8; adb shell input keyevent KEYCODE_X; sleep 4; }
@@ -103,34 +102,27 @@ jobs:
           launch; to_level_select
           adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; adb shell input keyevent KEYCODE_X; sleep 12
           capture 01-level2-start
-
           for i in $(seq 1 7); do jump_right; done
-          capture 02-andre-at-high-wall
+          capture 02-andre-high-wall
           adb shell input keyevent KEYCODE_V; sleep 2
           capture 03-liselot-start
-
-          # Stop on/near the first edge of the high platform instead of overshooting to the exit.
           for i in $(seq 1 3); do liselot_double_right; done
-          capture 04-liselot-crate-approach
-          walk_left; capture 05-left-push-1
-          walk_left; capture 06-left-push-2
-          walk_left; capture 07-left-push-3
+          capture 04-both-high-platform
 
-          # Return to Andre and test the intended crate-assisted ascent first.
-          adb shell input keyevent KEYCODE_V; sleep 2
-          capture 08-andre-before-ascent
-          for i in $(seq 1 4); do jump_right; done
-          capture 09-andre-crate-ascent
-          for i in $(seq 1 3); do jump_dash_right; done
-          capture 10-andre-dash-ascent
-
-          # If both genuinely rendezvous, B can legally bind Liselot to Andre. No terminal confirmation is sent.
+          # The prior rendered run proved both characters are now on this same high platform.
+          # Close the remaining horizontal gap with one ordinary RIGHT hold, then try the real PIGGY input.
+          walk_right
+          capture 05-rendezvous-before-piggy
           adb shell input keyevent KEYCODE_B; sleep 2
-          capture 11-piggyback-rendezvous-attempt
-          for i in $(seq 1 5); do jump_dash_right; done
-          capture 12-rightward-piggyback-probe
+          capture 06-after-piggy-input
+
+          # Only two bounded movement probes follow. No menu/completion confirmation is ever sent deliberately.
+          jump_dash_right
+          capture 07-piggy-move-1
+          jump_dash_right
+          capture 08-piggy-move-2
           sleep 4
-          capture 13-terminal-observation
+          capture 09-terminal-observation
 
           printf '%s\n' \
             'ordinary_inputs_only=true' \
@@ -138,7 +130,7 @@ jobs:
             'teleport=false' \
             'forced_completion=false' \
             'switch_input=KEYCODE_V' \
-            'piggyback_input=KEYCODE_B_once_when_rendezvous_attempted' \
+            'piggyback_input=KEYCODE_B_at_rendered_same-platform-rendezvous' \
             'andre_action_dash=KEYCODE_X' \
             'completion_confirmation_input=false' \
             'unknown_terminal_states_are_not_blindly_confirmed=true' > "$OUT/method.txt"
@@ -151,7 +143,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Boot Android and run bounded Level 2 probe
+      - name: Boot Android and run bounded Level 2 rendezvous probe
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -185,5 +177,5 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add qa-proof/level2-piggyback-current
           git diff --cached --quiet && exit 0
-          git commit -m 'qa-proof: retain refined Level 2 crate probe frames'
+          git commit -m 'qa-proof: retain Level 2 rendezvous probe frames'
           git push origin HEAD:gate2a-android-modernization
