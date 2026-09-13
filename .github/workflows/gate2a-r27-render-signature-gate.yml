@@ -1,0 +1,43 @@
+name: Gate 2A R27 Render Signature Gate File
+
+on:
+  push:
+    branches:
+      - gate2a-r27-signature-gate-repair
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout staging source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9dda58d5f3086bf5908a90ab429e3020ce69f9f2
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Render exact one-line repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/gate2a-android-release.yml')
+          s=p.read_text()
+          old='$jarsignerOutput = & jarsigner -verify -strict -certs $aab.FullName 2>&1'
+          new='$jarsignerOutput = & jarsigner -verify -certs $aab.FullName 2>&1'
+          if s.count(old) != 1:
+              raise SystemExit(f'exact strict fence count={s.count(old)}')
+          p.write_text(s.replace(old,new))
+          PY
+          git diff --check
+          sha256sum .github/workflows/gate2a-android-release.yml
+      - name: Upload rendered workflow
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-r27-release-workflow
+          path: .github/workflows/gate2a-android-release.yml
+          if-no-files-found: error
