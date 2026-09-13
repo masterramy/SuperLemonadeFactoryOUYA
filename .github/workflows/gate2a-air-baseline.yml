@@ -428,6 +428,12 @@ jobs:
             echo "Android platform-tools unavailable on runtime-smoke runner" >&2
             exit 1
           fi
+          ADB="$SDK_ROOT/platform-tools/adb"
+          if [ ! -x "$ADB" ]; then
+            echo "Resolved adb is missing or not executable: $ADB" >&2
+            exit 1
+          fi
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           find "$SDK_ROOT/platform-tools" -type f -print0 | sort -z | while IFS= read -r -d '' f; do
             rel="${f#"$SDK_ROOT/platform-tools/"}"
             bytes=$(wc -c < "$f" | tr -d ' ')
@@ -435,8 +441,8 @@ jobs:
             printf '%s  %s  %s\n' "$sha" "$bytes" "$rel"
           done > smoke-provenance/platform-tools-sha256-manifest.txt
           sha256sum smoke-provenance/platform-tools-sha256-manifest.txt > smoke-provenance/platform-tools-manifest.sha256
-          adb version > smoke-provenance/adb-version.txt 2>&1
-          sha256sum "$(command -v adb)" > smoke-provenance/adb-binary.sha256
+          "$ADB" version > smoke-provenance/adb-version.txt 2>&1
+          sha256sum "$ADB" > smoke-provenance/adb-binary.sha256
 
       - name: Write runtime smoke script
         shell: bash
