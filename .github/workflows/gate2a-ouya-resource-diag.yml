@@ -57,7 +57,8 @@ jobs:
                 Remove-Item $tmp -Force
               }
             }
-            if($rows.Count -eq 0){'NO_OUYA_NAMED_AAB_ENTRIES'} else {$rows} | Set-Content diagnostic/ouya-aab-entries.txt -Encoding utf8
+            if($rows.Count -eq 0){ $out=@('NO_OUYA_NAMED_AAB_ENTRIES') } else { $out=$rows }
+            $out | Set-Content diagnostic/ouya-aab-entries.txt -Encoding utf8
             $zip.Entries | Sort-Object FullName | ForEach-Object FullName | Set-Content diagnostic/aab-entry-list.txt -Encoding utf8
           } finally {$zip.Dispose()}
           $airOuya=Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
