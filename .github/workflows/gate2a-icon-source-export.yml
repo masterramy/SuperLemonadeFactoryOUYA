@@ -1,0 +1,34 @@
+name: Gate 2A Icon Source Export
+
+on:
+  push:
+    branches:
+      - gate2a-aapt2-diagnostic-r20
+
+permissions:
+  contents: read
+
+jobs:
+  export-icons:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - name: Checkout diagnostic revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Export existing source images
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path icon-export | Out-Null
+          Copy-Item icons/android/icons/icon512.png icon-export/icon512.png
+          Copy-Item icons/android/icons/icon_144.png icon-export/icon_144.png
+          Copy-Item icons/android/icons/icon_114.png icon-export/icon_114.png
+          Get-FileHash -Algorithm SHA256 icon-export/*.png | Format-Table -AutoSize | Out-File icon-export/hashes.txt
+      - name: Upload source icons
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-icon-source-export
+          path: icon-export
+          if-no-files-found: error
