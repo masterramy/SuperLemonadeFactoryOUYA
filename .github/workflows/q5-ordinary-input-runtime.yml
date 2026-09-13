@@ -114,29 +114,35 @@ jobs:
           sleep 8
           capture 01-launch
 
-          # Ordinary shipping keyboard inputs only: action, menu activation, directional movement.
+          # Ordinary shipping inputs only. Two intro actions reliably reach the real menu.
           adb shell input keyevent KEYCODE_X; sleep 2
           adb shell input keyevent KEYCODE_X; sleep 8
           capture 02-main-menu
-          adb shell input keyevent KEYCODE_X; sleep 4
-          capture 03-level-select
+
+          # Convergent menu->Level 2 path: if the first menu activation lands, RIGHT+X
+          # enters Level 2; if it is missed, the second activation enters Level Select,
+          # and the later RIGHT+X does so. No QA state shortcut is used.
+          adb shell input keyevent KEYCODE_X; sleep 5
+          capture 03-after-menu-activation
           adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
           adb shell input keyevent KEYCODE_X; sleep 12
+          capture 04-after-first-level2-attempt
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
           adb shell input keyevent KEYCODE_X; sleep 12
-          capture 04-level2-before-right
+          capture 05-level2-before-right
 
-          # Flat-ground RIGHT: ordinary DPAD right input only, no QA hotkeys/state mutation.
-          for _ in $(seq 1 14); do adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 0.18; done
+          # Flat-ground RIGHT candidate: ordinary DPAD right only.
+          for _ in $(seq 1 18); do adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 0.18; done
           adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT || true
           sleep 3
-          capture 05-level2-after-right
+          capture 06-level2-after-right
 
           # Ordinary Android lifecycle interruption and return.
           adb shell input keyevent KEYCODE_HOME
           sleep 4
           adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > q5-evidence/return-from-home.txt 2>&1
           sleep 7
-          capture 06-after-background-return
+          capture 07-after-background-return
 
           printf '%s\n' \
             'candidate=703bf86dea43f527677b38c1886252d040bebfd2' \
@@ -172,7 +178,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: q5-exact-frozen-ordinary-input-r1
+          name: q5-exact-frozen-ordinary-input-r2
           path: q5-evidence
           if-no-files-found: error
           retention-days: 7
