@@ -45,18 +45,26 @@ jobs:
           $candidateArchives = @($candidateArchives | Sort-Object -Unique)
           "archive_count=$($candidateArchives.Count)" | Set-Content dist/container-summary.txt -Encoding utf8
 
-          $matches = New-Object System.Collections.Generic.List[string]
+          $matches = @()
           foreach ($archive in $candidateArchives) {
+            $oldPreference = $ErrorActionPreference
             try {
-              $list = & jar tf $archive 2>$null
+              $ErrorActionPreference = 'Continue'
+              $list = @(& jar tf $archive 2>$null)
+              $jarExit = $LASTEXITCODE
+              $ErrorActionPreference = $oldPreference
+              if ($jarExit -ne 0) {
+                $matches += "JAR_TF_ERROR`t$archive`texit=$jarExit"
+                continue
+              }
               $hits = @($list | Where-Object { $_ -match '(?i)ouya|app_entry/res/.+(icon|banner)' })
-              foreach ($hit in $hits) { $matches.Add("ENTRY`t$archive`t$hit") }
+              foreach ($hit in $hits) { $matches += "ENTRY`t$archive`t$hit" }
             } catch {
-              $matches.Add("JAR_TF_ERROR`t$archive`t$($_.Exception.Message)")
+              $ErrorActionPreference = $oldPreference
+              $matches += "JAR_TF_ERROR`t$archive`t$($_.Exception.Message)"
             }
           }
 
-          # Search likely AIR Java/tool binaries for literal references even when not archive entries.
           $literalTargets = @()
           foreach ($root in $roots) {
             Get-ChildItem -Path $root -Recurse -File -Include '*.jar','*.class','*.xml','*.properties','*.gradle','*.json','*.txt','*.bat' -ErrorAction SilentlyContinue |
@@ -68,16 +76,17 @@ jobs:
               $bytes = [IO.File]::ReadAllBytes($file)
               $ascii = [Text.Encoding]::ASCII.GetString($bytes)
               if ($ascii -match '(?i)ouya_icon|ouya_icon\.png|drawable-xhdpi[/\\]ouya_icon') {
-                $matches.Add("LITERAL`t$file`tOUYA_LITERAL_PRESENT")
+                $matches += "LITERAL`t$file`tOUYA_LITERAL_PRESENT"
               }
             } catch {}
           }
 
-          $matches | Sort-Object -Unique | Set-Content dist/ouya-container-matches.txt -Encoding utf8
+          $matches = @($matches | Sort-Object -Unique)
+          $matches | Set-Content dist/ouya-container-matches.txt -Encoding utf8
           Get-FileHash -Algorithm SHA256 (Join-Path $env:AIR_HOME 'lib/adt.jar'),(Join-Path $env:AIR_HOME 'lib/android/lib/resources/android-res.jar') |
             ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path)" } | Set-Content dist/core-container-hashes.txt -Encoding utf8
           Write-Host "OUYA container/literal matches: $($matches.Count)"
-          Get-Content dist/ouya-container-matches.txt | ForEach-Object { Write-Host $_ }
+          $matches | ForEach-Object { Write-Host $_ }
 
       - name: Upload container diagnostic
         if: always()
