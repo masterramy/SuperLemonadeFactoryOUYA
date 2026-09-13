@@ -4,5 +4,6 @@ teleport=false
 forced_completion=false
 switch_input=KEYCODE_V
 piggyback_input=KEYCODE_B_once_when_rendezvous_attempted
+andre_action_dash=KEYCODE_X
 completion_confirmation_input=false
 unknown_terminal_states_are_not_blindly_confirmed=true

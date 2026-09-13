@@ -1,3 +1,0 @@
-tag=07-liselot-right-side
-pid=1904
-focus=  mCurrentFocus=Window{c1c9e9e u0 com.ramybaheeg.slfport/com.ramybaheeg.slfport.AIRAppEntry}
