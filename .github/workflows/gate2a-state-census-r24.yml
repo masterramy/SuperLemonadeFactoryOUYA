@@ -1,0 +1,112 @@
+name: Gate 2A State Census R24
+
+on:
+  push:
+    branches:
+      - gate2a-state-census-r24
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Build exact source state graph and reachability census
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p census
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, json, collections
+
+          src=Path('src')
+          files=sorted(src.glob('*.as'))
+          texts={p:p.read_text(encoding='utf-8',errors='replace') for p in files}
+          classes={}
+          for p,t in texts.items():
+              m=re.search(r'\b(?:public\s+)?class\s+(\w+)\s+extends\s+(\w+)',t)
+              if m:
+                  classes[m.group(1)]={'path':str(p),'extends':m.group(2)}
+
+          # State candidates are explicit *State classes plus classes directly extending FlxState.
+          state_names=sorted(n for n,v in classes.items() if n.endswith('State') or v['extends']=='FlxState')
+          state_set=set(state_names)
+          edges=collections.defaultdict(set)
+          references=collections.defaultdict(list)
+
+          for p,t in texts.items():
+              owner=None
+              for n,v in classes.items():
+                  if v['path']==str(p): owner=n; break
+              lines=t.splitlines()
+              for i,line in enumerate(lines,1):
+                  for target in state_names:
+                      if re.search(r'\bnew\s+'+re.escape(target)+r'\s*\(',line):
+                          references[target].append({'path':str(p),'line':i,'kind':'construct','text':line.strip()[:220]})
+                          if owner in state_set: edges[owner].add(target)
+                      elif target in line and not re.search(r'\bclass\s+'+re.escape(target)+r'\b',line):
+                          references[target].append({'path':str(p),'line':i,'kind':'mention','text':line.strip()[:220]})
+
+          # Entry roots: SLF/Main construction references plus known shipping PCIntroState root.
+          roots={'PCIntroState'}
+          for rootfile in ['src/SLF.as','src/Main.as']:
+              t=texts.get(Path(rootfile),'')
+              for target in state_names:
+                  if re.search(r'\bnew\s+'+re.escape(target)+r'\s*\(',t): roots.add(target)
+
+          reachable=set(roots)
+          q=collections.deque(roots)
+          while q:
+              a=q.popleft()
+              for b in edges.get(a,()):
+                  if b not in reachable:
+                      reachable.add(b); q.append(b)
+
+          report=[]
+          report.append(f'GITHUB_SHA={__import__("os").environ.get("GITHUB_SHA","")}')
+          report.append('ROOTS='+','.join(sorted(roots)))
+          report.append(f'STATE_COUNT={len(state_names)}')
+          report.append(f'REACHABLE_COUNT={len(reachable)}')
+          report.append(f'UNREACHABLE_COUNT={len(state_set-reachable)}')
+          report.append('')
+          report.append('STATE_CLASSES')
+          for n in state_names:
+              v=classes[n]
+              report.append(f'{n}\textends={v["extends"]}\tpath={v["path"]}\treachable={str(n in reachable).lower()}\treferences={len(references[n])}')
+          report.append('')
+          report.append('CONSTRUCTION_EDGES')
+          for a in sorted(edges):
+              for b in sorted(edges[a]): report.append(f'{a} -> {b}')
+          report.append('')
+          report.append('UNREACHABLE_STATE_CLASSES')
+          for n in sorted(state_set-reachable): report.append(n)
+          report.append('')
+          report.append('REFERENCE_EVIDENCE')
+          for n in state_names:
+              for r in references[n]:
+                  report.append(f'{n}\t{r["kind"]}\t{r["path"]}:{r["line"]}\t{r["text"]}')
+
+          Path('census/state-census.txt').write_text('\n'.join(report)+'\n',encoding='utf-8')
+          Path('census/state-census.json').write_text(json.dumps({
+              'roots':sorted(roots),'states':state_names,'reachable':sorted(reachable),
+              'unreachable':sorted(state_set-reachable),
+              'edges':{k:sorted(v) for k,v in edges.items()},'classes':classes,'references':references
+          },indent=2),encoding='utf-8')
+          print('\n'.join(report[:120]))
+          PY
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gate2a-state-census-r24
+          path: census/
+          if-no-files-found: error
+          retention-days: 7
