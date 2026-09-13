@@ -1,0 +1,137 @@
+name: Gate 2A R25 Workflow Fixer
+
+on:
+  push:
+    branches:
+      - gate2a-r25-signature-diagnostic
+
+permissions:
+  contents: write
+
+jobs:
+  apply-workflow-fixes:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact workflow-fix target
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-r25-workflow-fix
+          persist-credentials: true
+          fetch-depth: 1
+
+      - name: Apply exact release and APK assertion repairs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Replace-ExactOnce([string]$path,[string]$old,[string]$new) {
+            $text = Get-Content -LiteralPath $path -Raw
+            $count = [regex]::Matches($text,[regex]::Escape($old)).Count
+            if ($count -ne 1) { throw "Expected exactly one guarded block in $path, found $count." }
+            $updated = $text.Replace($old,$new)
+            if ($updated -eq $text) { throw "Guarded replacement made no change in $path." }
+            [IO.File]::WriteAllText((Resolve-Path $path).Path,$updated,[Text.UTF8Encoding]::new($false))
+          }
+
+          $release = '.github/workflows/gate2a-android-release.yml'
+          $oldRelease = @'
+          $jarsignerOutput = & jarsigner -verify -strict -certs $aab.FullName 2>&1
+          $jarsignerExit = $LASTEXITCODE
+          $jarsignerOutput | Set-Content -Path dist/aab-signature-verify.txt -Encoding utf8
+          if ($jarsignerExit -ne 0) { throw "AAB JAR-signature verification failed (exit $jarsignerExit)." }
+'@
+          $newRelease = @'
+          $jarsignerOutput = & jarsigner -verify -strict -certs $aab.FullName 2>&1
+          $jarsignerExit = $LASTEXITCODE
+          $jarsignerText = ($jarsignerOutput | Out-String)
+          $jarsignerOutput | Set-Content -Path dist/aab-signature-verify.txt -Encoding utf8
+          if ($jarsignerText -notmatch '(?i)jar verified') {
+            throw "AAB strict JAR verification did not report a verified archive (exit $jarsignerExit)."
+          }
+          if ($env:PRODUCTION_SIGNING -eq 'true') {
+            if ($jarsignerExit -ne 0) { throw "Production AAB strict JAR-signature verification failed (exit $jarsignerExit)." }
+          } else {
+            $ordinaryJarsignerOutput = & jarsigner -verify -certs $aab.FullName 2>&1
+            $ordinaryJarsignerExit = $LASTEXITCODE
+            $ordinaryJarsignerText = ($ordinaryJarsignerOutput | Out-String)
+            $ordinaryJarsignerOutput | Set-Content -Path dist/aab-signature-verify-disposable.txt -Encoding utf8
+            if ($ordinaryJarsignerExit -ne 0 -or $ordinaryJarsignerText -notmatch '(?i)jar verified') {
+              throw "Disposable-validation AAB cryptographic JAR-signature verification failed (exit $ordinaryJarsignerExit)."
+            }
+            if ($jarsignerExit -notin @(0,4)) {
+              throw "Disposable-validation strict JAR verification returned an unexpected exit code $jarsignerExit."
+            }
+            if ($jarsignerExit -eq 4) {
+              if ($jarsignerText -notmatch '(?i)certificate chain is invalid' -or $jarsignerText -notmatch '(?i)signer certificate is self-signed') {
+                throw "Disposable-validation strict JAR verification returned exit 4 for an unrecognized signer error."
+              }
+            }
+            Add-Content -Path dist/release-metadata.txt -Value "aab_disposable_strict_exit=$jarsignerExit"
+          }
+'@
+          Replace-ExactOnce $release $oldRelease $newRelease
+
+          $releaseText = Get-Content -LiteralPath $release -Raw
+          $oldUpload = "            dist/aab-signature-verify.txt`n            dist/aab-signing-certificate.txt"
+          $newUpload = "            dist/aab-signature-verify.txt`n            dist/aab-signature-verify-disposable.txt`n            dist/aab-signing-certificate.txt"
+          if ([regex]::Matches($releaseText,[regex]::Escape($oldUpload)).Count -ne 1) { throw 'Release signature evidence upload fence drifted.' }
+          [IO.File]::WriteAllText((Resolve-Path $release).Path,$releaseText.Replace($oldUpload,$newUpload),[Text.UTF8Encoding]::new($false))
+
+          $baseline = '.github/workflows/gate2a-air-baseline.yml'
+          $oldDevice = @'
+            $ouyaNamed = @($entries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')
+            $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })
+            if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named device APK entries: $($unexpectedOuya -join ', ')" }
+            foreach ($entry in $allowedOuyaNamed) { if ($entries -notcontains $entry) { throw "Expected compatibility entry missing from device APK: $entry" } }
+            $compatAlias = $zip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')
+            if ($null -eq $compatAlias -or $compatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in device APK." }
+            if ($entries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in device APK.' }
+'@
+          $newDevice = @'
+            $ouyaNamed = @($entries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedOuyaNamed = @('assets/SLFforOuya.swf')
+            $unexpectedOuya = @($ouyaNamed | Where-Object { $_ -notin $allowedOuyaNamed })
+            if ($unexpectedOuya.Count -ne 0) { throw "Unexpected OUYA-named device APK entries: $($unexpectedOuya -join ', ')" }
+            foreach ($entry in $allowedOuyaNamed) { if ($entries -notcontains $entry) { throw "Expected historical build-name entry missing from device APK: $entry" } }
+            if ($entries -contains 'res/mipmap-xhdpi-v4/ouya_icon.png') { throw 'AAB-only ADT 412 compatibility alias unexpectedly appeared in device APK.' }
+            if ($entries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in device APK.' }
+'@
+          Replace-ExactOnce $baseline $oldDevice $newDevice
+
+          $oldEmu = @'
+            $emuOuyaNamed = @($emuEntries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedEmuOuyaNamed = @('assets/SLFforOuya.swf','res/mipmap-xhdpi-v4/ouya_icon.png')
+            $unexpectedEmuOuya = @($emuOuyaNamed | Where-Object { $_ -notin $allowedEmuOuyaNamed })
+            if ($unexpectedEmuOuya.Count -ne 0) { throw "Unexpected OUYA-named emulator APK entries: $($unexpectedEmuOuya -join ', ')" }
+            foreach ($entry in $allowedEmuOuyaNamed) { if ($emuEntries -notcontains $entry) { throw "Expected compatibility entry missing from emulator APK: $entry" } }
+            $emuCompatAlias = $emuZip.GetEntry('res/mipmap-xhdpi-v4/ouya_icon.png')
+            if ($null -eq $emuCompatAlias -or $emuCompatAlias.Length -ne 49049) { throw "ADT 412 compatibility alias identity drifted in emulator APK." }
+            if ($emuEntries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in emulator APK.' }
+'@
+          $newEmu = @'
+            $emuOuyaNamed = @($emuEntries | Where-Object { $_ -match '(?i)ouya' })
+            $allowedEmuOuyaNamed = @('assets/SLFforOuya.swf')
+            $unexpectedEmuOuya = @($emuOuyaNamed | Where-Object { $_ -notin $allowedEmuOuyaNamed })
+            if ($unexpectedEmuOuya.Count -ne 0) { throw "Unexpected OUYA-named emulator APK entries: $($unexpectedEmuOuya -join ', ')" }
+            foreach ($entry in $allowedEmuOuyaNamed) { if ($emuEntries -notcontains $entry) { throw "Expected historical build-name entry missing from emulator APK: $entry" } }
+            if ($emuEntries -contains 'res/mipmap-xhdpi-v4/ouya_icon.png') { throw 'AAB-only ADT 412 compatibility alias unexpectedly appeared in emulator APK.' }
+            if ($emuEntries -contains 'res/drawable-xhdpi-v4/ouya_icon.png') { throw 'Obsolete AIR OUYA drawable survived provider sanitation in emulator APK.' }
+'@
+          Replace-ExactOnce $baseline $oldEmu $newEmu
+
+          git diff --check
+          git diff -- .github/workflows/gate2a-android-release.yml .github/workflows/gate2a-air-baseline.yml
+
+      - name: Commit exact workflow fixes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $changed = @(git status --short)
+          if ($changed.Count -ne 2) { throw "Expected exactly two changed workflow files, got: $($changed -join '; ')" }
+          if ($changed[0] -notmatch 'gate2a-air-baseline.yml|gate2a-android-release.yml' -or $changed[1] -notmatch 'gate2a-air-baseline.yml|gate2a-android-release.yml') { throw "Unexpected changed paths: $($changed -join '; ')" }
+          git config user.name 'Gate 2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/gate2a-android-release.yml .github/workflows/gate2a-air-baseline.yml
+          git commit -m 'Gate 2A r25: repair recertification assertions'
+          git push origin HEAD:gate2a-r25-workflow-fix
