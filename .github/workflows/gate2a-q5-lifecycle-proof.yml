@@ -128,17 +128,28 @@ jobs:
           test -n "$pid_home"
           test "$pid_before" = "$pid_home"
 
-          # Ordinary Android app-switch input: open recents and activate the most recent app.
+          # Ordinary Android user input: open Recents and tap the visible center app card.
+          # The prior ENTER attempt selected Calendar on this image, so derive the actual
+          # screen center from the rendered Recents screenshot and tap that visible card.
           adb shell input keyevent KEYCODE_APP_SWITCH
           sleep 3
           adb exec-out screencap -p > lifecycle-proof/03-recents.png
-          adb shell input keyevent KEYCODE_ENTER
+          read rw rh < <(python3 - <<'PY'
+          import struct
+          with open('lifecycle-proof/03-recents.png','rb') as f: d=f.read(24)
+          if len(d)<24 or d[:8] != b'\x89PNG\r\n\x1a\n': raise SystemExit(90)
+          print(*struct.unpack('>II',d[16:24]))
+          PY
+          )
+          rx=$((rw / 2)); ry=$((rh / 2))
+          printf 'recents=%sx%s\ntap=%s,%s\n' "$rw" "$rh" "$rx" "$ry" > lifecycle-proof/recents-tap.txt
+          adb shell input tap "$rx" "$ry"
           sleep 8
           capture_app 04-level2-after-resume
 
           pid_after=$(adb shell pidof "$PACKAGE" | tr -d '\r')
           test "$pid_before" = "$pid_after"
-          printf 'PASS-CANDIDATE: exact frozen APK entered Level 2 with ordinary game inputs, was backgrounded by HOME, and returned through Android recents/ENTER with the same process alive, focused, and free of fatal runtime signatures. Rendered before/after frames require visual adjudication.\n' | tee lifecycle-proof/result.txt
+          printf 'PASS-CANDIDATE: exact frozen APK entered Level 2 with ordinary game inputs, was backgrounded by HOME, and returned by tapping the visible app card in Android Recents with the same process alive, focused, and free of fatal runtime signatures. Rendered before/after frames require visual adjudication.\n' | tee lifecycle-proof/result.txt
           EOF
           chmod +x lifecycle-proof.sh
 
