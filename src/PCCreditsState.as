@@ -51,18 +51,20 @@ package
 			gradient2.y = 0;
 			add(gradient2);
 
-			var portPanel:FlxSprite = new FlxSprite(20, 42);
-			portPanel.makeGraphic(FlxG.width - 40, 116, 0x99eeeccd);
+			// Draw the moving credits first so the fixed port-information panel
+			// remains an opaque readability layer while credits scroll behind it.
+			creditsText = new FlxText(20, 190, FlxG.width - 40, creditsStr, true);
+			creditsText.setFormat("commodore", 8, 0xff7725a1, "center");
+			creditsText.velocity.y = -18;
+			add(creditsText);
+
+			var portPanel:FlxSprite = new FlxSprite(20, 30);
+			portPanel.makeGraphic(FlxG.width - 40, 128, 0xffeeeccd);
 			add(portPanel);
 
 			portInfoText = new FlxText(30, 50, FlxG.width - 60, portInfoStr, true);
 			portInfoText.setFormat("commodore", 8, 0xff7725a1, "center");
 			add(portInfoText);
-
-			creditsText = new FlxText(20, 190, FlxG.width - 40, creditsStr, true);
-			creditsText.setFormat("commodore", 8, 0xff7725a1, "center");
-			creditsText.velocity.y = -18;
-			add(creditsText);
 
 			var borderTop:FlxTileblock = new FlxTileblock(0, 0, FlxG.width, 30);
 			borderTop.loadTiles(Registry.ImgLevel1Tiles, 10, 10, 0, true);
@@ -98,10 +100,10 @@ package
 			super.update();
 
 			if ((FlxG.keys.justPressed(Registry.homeKey) ||
-			FlxG.keys.justPressed(Registry.p1Jump) ||
-			FlxG.keys.justPressed(Registry.p1Action) ||
-			FlxG.joystick.j1ButtonBackJustPressed ||
-			FlxG.joystick.j1ButtonAJustPressed || FlxG.ouyaController.o.pressed) && !fading) {
+				FlxG.keys.justPressed(Registry.p1Jump) ||
+				FlxG.keys.justPressed(Registry.p1Action) ||
+				FlxG.joystick.j1ButtonBackJustPressed ||
+				FlxG.joystick.j1ButtonAJustPressed || FlxG.ouyaController.o.pressed) && !fading) {
 				FlxG.play(Registry.SndPing, Registry.pingVolume);
 				onQuit();
 			}
