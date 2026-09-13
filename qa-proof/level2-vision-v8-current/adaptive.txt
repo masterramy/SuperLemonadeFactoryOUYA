@@ -1,0 +1,4 @@
+descend=1 detector_unresolved_stop
+grounded_guard=false
+rendezvous_guard=false
+piggy_input_sent=false
