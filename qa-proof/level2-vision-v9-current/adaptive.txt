@@ -1,0 +1,14 @@
+step=1 ax=566 ay=533 lx=1429 ly=733 dx=-863 dy=-200
+step=2 ax=894 ay=533 lx=1433 ly=733 dx=-539 dy=-200
+step=3 ax=1192 ay=506 lx=1433 ly=733 dx=-241 dy=-227
+step=4 ax=1113 ay=507 lx=1433 ly=733 dx=-320 dy=-226
+step=5 ax=825 ay=507 lx=1433 ly=733 dx=-608 dy=-226
+step=6 ax=517 ay=537 lx=1433 ly=733 dx=-916 dy=-196
+step=7 ax=577 ay=537 lx=1433 ly=733 dx=-856 dy=-196
+step=8 ax=865 ay=537 lx=1433 ly=733 dx=-568 dy=-196
+step=9 ax=1137 ay=507 lx=1433 ly=733 dx=-296 dy=-226
+step=10 ax=1181 ay=507 lx=1433 ly=733 dx=-252 dy=-226
+step=11 ax=893 ay=507 lx=1433 ly=733 dx=-540 dy=-226
+step=12 ax=593 ay=537 lx=1433 ly=733 dx=-840 dy=-196
+rendezvous_guard=false
+piggy_input_sent=false
