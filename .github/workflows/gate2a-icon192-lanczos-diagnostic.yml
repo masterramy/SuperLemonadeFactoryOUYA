@@ -22,6 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # exact-byte reproduction diagnostic only
           python -m pip install --disable-pip-version-check --no-input pillow==12.3.0
           python - <<'PY'
           from PIL import Image
@@ -46,8 +47,7 @@ jobs:
           add('rgb-default', resized.convert('RGB'))
           for level in range(10):
               add(f'rgba-c{level}', resized.convert('RGBA'), compress_level=level)
-          for optimize in (True,):
-              add('rgba-opt', resized.convert('RGBA'), optimize=optimize)
+          add('rgba-opt', resized.convert('RGBA'), optimize=True)
           match = [(n,d) for n,d,h in variants if h == expected and len(d)==expected_bytes]
           if not match:
               raise SystemExit('no exact canonical candidate reproduction')
