@@ -9,113 +9,95 @@ permissions:
   contents: read
 
 jobs:
-  trace-aab-resources:
+  isolate-png-encoding:
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout diagnostic revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Verify diagnostic base
+      - name: Verify exact-final ancestor
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $parent = (& git rev-parse HEAD^).Trim().ToLowerInvariant()
-          if ($parent -ne 'fb89f9780d43127156ec86a1d666292e11ffb7cd') {
-            throw "Diagnostic parent mismatch: $parent"
-          }
+          $ErrorActionPreference='Stop'
+          & git merge-base --is-ancestor fb89f9780d43127156ec86a1d666292e11ffb7cd HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Exact-final head is not an ancestor of this isolated diagnostic branch.' }
+          $changed = & git diff --name-only fb89f9780d43127156ec86a1d666292e11ffb7cd..HEAD
+          $bad = @($changed | Where-Object { $_ -ne '.github/workflows/gate2a-aab-resource-provenance-diagnostic.yml' })
+          if ($bad.Count -gt 0) { throw "Diagnostic branch mutated non-diagnostic paths: $($bad -join ', ')" }
 
-      - name: Set up Java
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
-        with:
-          distribution: temurin
-          java-version: "17.0.20+8"
-
-      - name: Set up AIR SDK
-        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
-        with:
-          air-version: "51.3.4.3"
-          accept-license: true
-
-      - name: Inventory source and AIR resource candidates
+      - name: Locate Android AAPT2
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          function Png-Ihdr([string]$Path) {
-            $b = [IO.File]::ReadAllBytes($Path)
-            if ($b.Length -lt 33) { return 'not-png-or-too-short' }
-            $sig = [BitConverter]::ToString($b[0..7])
-            if ($sig -ne '89-50-4E-47-0D-0A-1A-0A') { return "bad-signature=$sig" }
-            [Array]::Reverse($b,16,4); $w = [BitConverter]::ToUInt32($b,16); [Array]::Reverse($b,16,4)
-            [Array]::Reverse($b,20,4); $h = [BitConverter]::ToUInt32($b,20); [Array]::Reverse($b,20,4)
-            return "png=${w}x${h};bitDepth=$($b[24]);colorType=$($b[25]);bytes=$($b.Length)"
-          }
-          'SOURCE ICONS'
-          Get-ChildItem -LiteralPath 'icons/android/icons' -File | Sort-Object Name | ForEach-Object {
-            $sha=(Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
-            "$($_.Name) sha256=$sha $(Png-Ihdr $_.FullName)"
-          }
-          'AIR MATCHES'
-          $air=(Resolve-Path $env:AIR_HOME).Path
-          $matches = Get-ChildItem -Path $air -Recurse -File -ErrorAction Stop | Where-Object { $_.Name -match '(?i)^(ouya_icon|icon)\.png$' -or $_.FullName -match '(?i)ouya' }
-          if (-not $matches) { 'NO_AIR_RESOURCE_MATCHES' }
-          $matches | Sort-Object FullName | ForEach-Object {
-            $sha=(Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
-            $rel=[IO.Path]::GetRelativePath($air,$_.FullName).Replace('\','/')
-            "$rel sha256=$sha $(Png-Ihdr $_.FullName)"
-          }
+          $ErrorActionPreference='Stop'
+          $sdk=$env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) { $sdk=$env:ANDROID_HOME }
+          $aapt2=Get-ChildItem -Path (Join-Path $sdk 'build-tools') -Recurse -Filter aapt2.exe -File | Sort-Object FullName | Select-Object -Last 1
+          if (-not $aapt2) { throw 'aapt2.exe not found' }
+          "AAPT2=$($aapt2.FullName)"
+          "AAPT2_PATH=$($aapt2.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          & $aapt2.FullName version
 
-      - name: Compile exact source SWF
-        shell: cmd
-        run: |
-          if not exist bin mkdir bin
-          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
-          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-
-      - name: Trace ADT generated resources during AAB packaging
+      - name: Directly compile exact 192 PNG with AAPT2
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          function Png-Ihdr([string]$Path) {
-            $b = [IO.File]::ReadAllBytes($Path)
-            if ($b.Length -lt 33) { return 'not-png-or-too-short' }
-            $sig = [BitConverter]::ToString($b[0..7])
-            if ($sig -ne '89-50-4E-47-0D-0A-1A-0A') { return "bad-signature=$sig" }
-            [Array]::Reverse($b,16,4); $w = [BitConverter]::ToUInt32($b,16); [Array]::Reverse($b,16,4)
-            [Array]::Reverse($b,20,4); $h = [BitConverter]::ToUInt32($b,20); [Array]::Reverse($b,20,4)
-            return "png=${w}x${h};bitDepth=$($b[24]);colorType=$($b[25]);bytes=$($b.Length)"
-          }
-          $androidSdk=$env:ANDROID_SDK_ROOT
-          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk=$env:ANDROID_HOME }
-          if (-not (Test-Path $androidSdk)) { throw 'Android SDK missing' }
-          $key=Join-Path $PWD 'diag-signing.p12'
-          $pass='gate2a-validation'
-          & adt -certificate -validityPeriod 1 -cn 'Gate 2A Diagnostic' 2048-RSA $key $pass
-          if ($LASTEXITCODE -ne 0) { throw 'certificate creation failed' }
-          $adt=(Get-Command adt).Source
-          $args=@('-package','-target','aab','-storetype','pkcs12','-keystore',$key,'-storepass',$pass,'dist-diag.aab','application.xml','-C','bin','SLFforOuya.swf','-C','icons/android','icons/icon_48.png','icons/icon_57.png','icons/icon_72.png','icons/icon_96.png','icons/icon_114.png','icons/icon_144.png','icons/icon_192.png','-platformsdk',$androidSdk)
-          $started=Get-Date
-          $p=Start-Process -FilePath $adt -ArgumentList $args -PassThru -NoNewWindow
-          $seen=@{}
-          while (-not $p.HasExited) {
-            Get-ChildItem -Path $env:TEMP -Recurse -File -Filter '*.png' -ErrorAction SilentlyContinue |
-              Where-Object { $_.LastWriteTime -ge $started.AddSeconds(-2) -and $_.FullName -match '(?i)\\app\\src\\main\\res\\' -and $_.Name -match '(?i)^(icon|ouya_icon)\.png$' } |
-              ForEach-Object {
-                if (-not $seen.ContainsKey($_.FullName)) {
-                  try {
-                    $sha=(Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
-                    "GENERATED $($_.FullName) sha256=$sha $(Png-Ihdr $_.FullName)"
-                    $seen[$_.FullName]=$true
-                  } catch {}
-                }
-              }
-            Start-Sleep -Milliseconds 100
-            $p.Refresh()
-          }
-          "ADT_EXIT=$($p.ExitCode)"
-          if ($seen.Count -eq 0) { 'NO_GENERATED_RESOURCE_CAPTURED' }
-          Remove-Item -Force -ErrorAction SilentlyContinue $key
-          # Diagnostic deliberately succeeds so provenance lines remain easy to inspect.
+          $ErrorActionPreference='Continue'
+          $src='icons/android/icons/icon_192.png'
+          $sha=(Get-FileHash -Algorithm SHA256 $src).Hash.ToLowerInvariant()
+          "SOURCE_SHA256=$sha"
+          New-Item -ItemType Directory -Force -Path 'diag-original/mipmap-xxxhdpi' | Out-Null
+          Copy-Item $src 'diag-original/mipmap-xxxhdpi/icon.png'
+          & $env:AAPT2_PATH compile --dir diag-original -o diag-original.zip 2>&1 | ForEach-Object { "AAPT2_ORIGINAL $_" }
+          "AAPT2_ORIGINAL_EXIT=$LASTEXITCODE"
+
+      - name: Re-encode pixels losslessly and compile sanitized PNG
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Add-Type -AssemblyName System.Drawing
+          $src=(Resolve-Path 'icons/android/icons/icon_192.png').Path
+          New-Item -ItemType Directory -Force -Path 'diag-sanitized/mipmap-xxxhdpi' | Out-Null
+          $dst=(Join-Path $PWD 'diag-sanitized/mipmap-xxxhdpi/icon.png')
+          $img=[System.Drawing.Image]::FromFile($src)
+          try {
+            "DECODED_WIDTH=$($img.Width)"
+            "DECODED_HEIGHT=$($img.Height)"
+            "DECODED_PIXELFORMAT=$($img.PixelFormat)"
+            $img.Save($dst,[System.Drawing.Imaging.ImageFormat]::Png)
+          } finally { $img.Dispose() }
+          $origSha=(Get-FileHash -Algorithm SHA256 $src).Hash.ToLowerInvariant()
+          $newSha=(Get-FileHash -Algorithm SHA256 $dst).Hash.ToLowerInvariant()
+          "ORIGINAL_SHA256=$origSha"
+          "SANITIZED_SHA256=$newSha"
+          "SANITIZED_BYTES=$((Get-Item $dst).Length)"
+          $ErrorActionPreference='Continue'
+          & $env:AAPT2_PATH compile --dir diag-sanitized -o diag-sanitized.zip 2>&1 | ForEach-Object { "AAPT2_SANITIZED $_" }
+          "AAPT2_SANITIZED_EXIT=$LASTEXITCODE"
+
+      - name: Inspect PNG chunks and CRCs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import struct, zlib
+          for path in [r"icons/android/icons/icon_192.png", r"diag-sanitized/mipmap-xxxhdpi/icon.png"]:
+              data=open(path,'rb').read()
+              print('PNG_FILE',path,'bytes',len(data))
+              assert data[:8] == b'\x89PNG\r\n\x1a\n'
+              p=8
+              i=0
+              while p+12 <= len(data):
+                  n=struct.unpack('>I',data[p:p+4])[0]
+                  typ=data[p+4:p+8]
+                  payload=data[p+8:p+8+n]
+                  stored=struct.unpack('>I',data[p+8+n:p+12+n])[0]
+                  calc=zlib.crc32(typ+payload)&0xffffffff
+                  print('CHUNK',i,typ.decode('latin1'),'len',n,'crc',f'{stored:08x}','calc',f'{calc:08x}','ok',stored==calc)
+                  p += 12+n
+                  i += 1
+                  if typ == b'IEND': break
+              print('TRAILING_BYTES',len(data)-p)
+          '@ | python -
