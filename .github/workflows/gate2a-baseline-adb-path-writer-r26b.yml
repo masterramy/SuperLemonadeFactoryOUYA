@@ -1,0 +1,25 @@
+name: Gate 2A r26b baseline adb path writer
+
+on:
+  push:
+    branches:
+      - gate2a-baseline-adb-path-writer-r26
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: gate2a-baseline-adb-path-writer-r26
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Apply exact guarded patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TARGET_BRANCH: gate2a-android-modernization
+        run: python3 tools/gate2a_patch_baseline_adb_r26.py
