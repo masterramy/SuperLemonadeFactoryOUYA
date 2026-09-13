@@ -1,4 +1,4 @@
-name: Gate 2A R25 Workflow Fixer V2
+name: Gate 2A R26 Runtime Provenance Fixer
 on:
   push:
     branches: [gate2a-r25-signature-diagnostic]
@@ -10,36 +10,37 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: gate2a-r25-workflow-fix
+          ref: gate2a-r26-runtime-provenance-fix
           persist-credentials: true
           fetch-depth: 1
-      - name: Guarded two-file repair
+      - name: Apply exact runtime provenance repair
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import base64
-          pairs = {
-            '.github/workflows/gate2a-android-release.yml': [
-              ('ICAgICAgICAgICRqYXJzaWduZXJPdXRwdXQgPSAmIGphcnNpZ25lciAtdmVyaWZ5IC1zdHJpY3QgLWNlcnRzICRhYWIuRnVsbE5hbWUgMj4mMQogICAgICAgICAgJGphcnNpZ25lckV4aXQgPSAkTEFTVEVYSVRDT0RFCiAgICAgICAgICAkamFyc2lnbmVyT3V0cHV0IHwgU2V0LUNvbnRlbnQgLVBhdGggZGlzdC9hYWItc2lnbmF0dXJlLXZlcmlmeS50eHQgLUVuY29kaW5nIHV0ZjgKICAgICAgICAgIGlmICgkamFyc2lnbmVyRXhpdCAtbmUgMCkgeyB0aHJvdyAiQUFCIEpBUi1zaWduYXR1cmUgdmVyaWZpY2F0aW9uIGZhaWxlZCAoZXhpdCAkamFyc2lnbmVyRXhpdCkuIiB9Cg==','ICAgICAgICAgICRqYXJzaWduZXJPdXRwdXQgPSAmIGphcnNpZ25lciAtdmVyaWZ5IC1zdHJpY3QgLWNlcnRzICRhYWIuRnVsbE5hbWUgMj4mMQogICAgICAgICAgJGphcnNpZ25lckV4aXQgPSAkTEFTVEVYSVRDT0RFCiAgICAgICAgICAkamFyc2lnbmVyVGV4dCA9ICgkamFyc2lnbmVyT3V0cHV0IHwgT3V0LVN0cmluZykKICAgICAgICAgICRqYXJzaWduZXJPdXRwdXQgfCBTZXQtQ29udGVudCAtUGF0aCBkaXN0L2FhYi1zaWduYXR1cmUtdmVyaWZ5LnR4dCAtRW5jb2RpbmcgdXRmOAogICAgICAgICAgaWYgKCRqYXJzaWduZXJUZXh0IC1ub3RtYXRjaCAnKD9pKWphciB2ZXJpZmllZCcpIHsKICAgICAgICAgICAgdGhyb3cgIkFBQiBzdHJpY3QgSkFSIHZlcmlmaWNhdGlvbiBkaWQgbm90IHJlcG9ydCBhIHZlcmlmaWVkIGFyY2hpdmUgKGV4aXQgJGphcnNpZ25lckV4aXQpLiIKICAgICAgICAgIH0KICAgICAgICAgIGlmICgkZW52OlBST0RVQ1RJT05fU0lHTklORyAtZXEgJ3RydWUnKSB7CiAgICAgICAgICAgIGlmICgkamFyc2lnbmVyRXhpdCAtbmUgMCkgeyB0aHJvdyAiUHJvZHVjdGlvbiBBQUIgc3RyaWN0IEpBUi1zaWduYXR1cmUgdmVyaWZpY2F0aW9uIGZhaWxlZCAoZXhpdCAkamFyc2lnbmVyRXhpdCkuIiB9CiAgICAgICAgICB9IGVsc2UgewogICAgICAgICAgICAkb3JkaW5hcnlKYXJzaWduZXJPdXRwdXQgPSAmIGphcnNpZ25lciAtdmVyaWZ5IC1jZXJ0cyAkYWFiLkZ1bGxOYW1lIDI+JjEKICAgICAgICAgICAgJG9yZGluYXJ5SmFyc2lnbmVyRXhpdCA9ICRMQVNURVhJVENPREUKICAgICAgICAgICAgJG9yZGluYXJ5SmFyc2lnbmVyVGV4dCA9ICgkb3JkaW5hcnlKYXJzaWduZXJPdXRwdXQgfCBPdXQtU3RyaW5nKQogICAgICAgICAgICAkb3JkaW5hcnlKYXJzaWduZXJPdXRwdXQgfCBTZXQtQ29udGVudCAtUGF0aCBkaXN0L2FhYi1zaWduYXR1cmUtdmVyaWZ5LWRpc3Bvc2FibGUudHh0IC1FbmNvZGluZyB1dGY4CiAgICAgICAgICAgIGlmICgkb3JkaW5hcnlKYXJzaWduZXJFeGl0IC1uZSAwIC1vciAkb3JkaW5hcnlKYXJzaWduZXJUZXh0IC1ub3RtYXRjaCAnKD9pKWphciB2ZXJpZmllZCcpIHsKICAgICAgICAgICAgICB0aHJvdyAiRGlzcG9zYWJsZS12YWxpZGF0aW9uIEFBQiBjcnlwdG9ncmFwaGljIEpBUi1zaWduYXR1cmUgdmVyaWZpY2F0aW9uIGZhaWxlZCAoZXhpdCAkb3JkaW5hcnlKYXJzaWduZXJFeGl0KS4iCiAgICAgICAgICAgIH0KICAgICAgICAgICAgaWYgKCRqYXJzaWduZXJFeGl0IC1ub3RpbiBAKDAsNCkpIHsKICAgICAgICAgICAgICB0aHJvdyAiRGlzcG9zYWJsZS12YWxpZGF0aW9uIHN0cmljdCBKQVIgdmVyaWZpY2F0aW9uIHJldHVybmVkIGFuIHVuZXhwZWN0ZWQgZXhpdCBjb2RlICRqYXJzaWduZXJFeGl0LiIKICAgICAgICAgICAgfQogICAgICAgICAgICBpZiAoJGphcnNpZ25lckV4aXQgLWVxIDQpIHsKICAgICAgICAgICAgICBpZiAoJGphcnNpZ25lclRleHQgLW5vdG1hdGNoICcoP2kpY2VydGlmaWNhdGUgY2hhaW4gaXMgaW52YWxpZCcgLW9yICRqYXJzaWduZXJUZXh0IC1ub3RtYXRjaCAnKD9pKXNpZ25lciBjZXJ0aWZpY2F0ZSBpcyBzZWxmLXNpZ25lZCcpIHsKICAgICAgICAgICAgICAgIHRocm93ICJEaXNwb3NhYmxlLXZhbGlkYXRpb24gc3RyaWN0IEpBUiB2ZXJpZmljYXRpb24gcmV0dXJuZWQgZXhpdCA0IGZvciBhbiB1bnJlY29nbml6ZWQgc2lnbmVyIGVycm9yLiIKICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KICAgICAgICAgICAgQWRkLUNvbnRlbnQgLVBhdGggZGlzdC9yZWxlYXNlLW1ldGFkYXRhLnR4dCAtVmFsdWUgImFhYl9kaXNwb3NhYmxlX3N0cmljdF9leGl0PSRqYXJzaWduZXJFeGl0IgogICAgICAgICAgfQo='),
-              ('ICAgICAgICAgICAgZGlzdC9hYWItc2lnbmF0dXJlLXZlcmlmeS50eHQKICAgICAgICAgICAgZGlzdC9hYWItc2lnbmluZy1jZXJ0aWZpY2F0ZS50eHQ=','ICAgICAgICAgICAgZGlzdC9hYWItc2lnbmF0dXJlLXZlcmlmeS50eHQKICAgICAgICAgICAgZGlzdC9hYWItc2lnbmF0dXJlLXZlcmlmeS1kaXNwb3NhYmxlLnR4dAogICAgICAgICAgICBkaXN0L2FhYi1zaWduaW5nLWNlcnRpZmljYXRlLnR4dA==')],
-            '.github/workflows/gate2a-air-baseline.yml': [
-              ('ICAgICAgICAgICAgJG91eWFOYW1lZCA9IEAoJGVudHJpZXMgfCBXaGVyZS1PYmplY3QgeyAkXyAtbWF0Y2ggJyg/aSlvdXlhJyB9KQogICAgICAgICAgICAkYWxsb3dlZE91eWFOYW1lZCA9IEAoJ2Fzc2V0cy9TTEZmb3JPdXlhLnN3ZicsJ3Jlcy9taXBtYXAteGhkcGktdjQvb3V5YV9pY29uLnBuZycpCiAgICAgICAgICAgICR1bmV4cGVjdGVkT3V5YSA9IEAoJG91eWFOYW1lZCB8IFdoZXJlLU9iamVjdCB7ICRfIC1ub3RpbiAkYWxsb3dlZE91eWFOYW1lZCB9KQogICAgICAgICAgICBpZiAoJHVuZXhwZWN0ZWRPdXlhLkNvdW50IC1uZSAwKSB7IHRocm93ICJVbmV4cGVjdGVkIE9VWUEtbmFtZWQgZGV2aWNlIEFQSyBlbnRyaWVzOiAkKCR1bmV4cGVjdGVkT3V5YSAtam9pbiAnLCAnKSIgfQogICAgICAgICAgICBmb3JlYWNoICgkZW50cnkgaW4gJGFsbG93ZWRPdXlhTmFtZWQpIHsgaWYgKCRlbnRyaWVzIC1ub3Rjb250YWlucyAkZW50cnkpIHsgdGhyb3cgIkV4cGVjdGVkIGNvbXBhdGliaWxpdHkgZW50cnkgbWlzc2luZyBmcm9tIGRldmljZSBBUEs6ICRlbnRyeSIgfSB9CiAgICAgICAgICAgICRjb21wYXRBbGlhcyA9ICR6aXAuR2V0RW50cnkoJ3Jlcy9taXBtYXAteGhkcGktdjQvb3V5YV9pY29uLnBuZycpCiAgICAgICAgICAgIGlmICgkbnVsbCAtZXEgJGNvbXBhdEFsaWFzIC1vciAkY29tcGF0QWxpYXMuTGVuZ3RoIC1uZSA0OTA0OSkgeyB0aHJvdyAiQURUIDQxMiBjb21wYXRpYmlsaXR5IGFsaWFzIGlkZW50aXR5IGRyaWZ0ZWQgaW4gZGV2aWNlIEFQSy4iIH0KICAgICAgICAgICAgaWYgKCRlbnRyaWVzIC1jb250YWlucyAncmVzL2RyYXdhYmxlLXhoZHBpLXY0L291eWFfaWNvbi5wbmcnKSB7IHRocm93ICdPYnNvbGV0ZSBBSVIgT1VZQSBkcmF3YWJsZSBzdXJ2aXZlZCBwcm92aWRlciBzYW5pdGF0aW9uIGluIGRldmljZSBBUEsuJyB9Cg==','ICAgICAgICAgICAgJG91eWFOYW1lZCA9IEAoJGVudHJpZXMgfCBXaGVyZS1PYmplY3QgeyAkXyAtbWF0Y2ggJyg/aSlvdXlhJyB9KQogICAgICAgICAgICAkYWxsb3dlZE91eWFOYW1lZCA9IEAoJ2Fzc2V0cy9TTEZmb3JPdXlhLnN3ZicpCiAgICAgICAgICAgICR1bmV4cGVjdGVkT3V5YSA9IEAoJG91eWFOYW1lZCB8IFdoZXJlLU9iamVjdCB7ICRfIC1ub3RpbiAkYWxsb3dlZE91eWFOYW1lZCB9KQogICAgICAgICAgICBpZiAoJHVuZXhwZWN0ZWRPdXlhLkNvdW50IC1uZSAwKSB7IHRocm93ICJVbmV4cGVjdGVkIE9VWUEtbmFtZWQgZGV2aWNlIEFQSyBlbnRyaWVzOiAkKCR1bmV4cGVjdGVkT3V5YSAtam9pbiAnLCAnKSIgfQogICAgICAgICAgICBmb3JlYWNoICgkZW50cnkgaW4gJGFsbG93ZWRPdXlhTmFtZWQpIHsgaWYgKCRlbnRyaWVzIC1ub3Rjb250YWlucyAkZW50cnkpIHsgdGhyb3cgIkV4cGVjdGVkIGhpc3RvcmljYWwgYnVpbGQtbmFtZSBlbnRyeSBtaXNzaW5nIGZyb20gZGV2aWNlIEFQSzogJGVudHJ5IiB9IH0KICAgICAgICAgICAgaWYgKCRlbnRyaWVzIC1jb250YWlucyAncmVzL21pcG1hcC14aGRwaS12NC9vdXlhX2ljb24ucG5nJykgeyB0aHJvdyAnQUFCLW9ubHkgQURUIDQxMiBjb21wYXRpYmlsaXR5IGFsaWFzIHVuZXhwZWN0ZWRseSBhcHBlYXJlZCBpbiBkZXZpY2UgQVBLLicgfQogICAgICAgICAgICBpZiAoJGVudHJpZXMgLWNvbnRhaW5zICdyZXMvZHJhd2FibGUteGhkcGktdjQvb3V5YV9pY29uLnBuZycpIHsgdGhyb3cgJ09ic29sZXRlIEFJUiBPVVlBIGRyYXdhYmxlIHN1cnZpdmVkIHByb3ZpZGVyIHNhbml0YXRpb24gaW4gZGV2aWNlIEFQSy4nIH0K'),
-              ('ICAgICAgICAgICAgJGVtdU91eWFOYW1lZCA9IEAoJGVtdUVudHJpZXMgfCBXaGVyZS1PYmplY3QgeyAkXyAtbWF0Y2ggJyg/aSlvdXlhJyB9KQogICAgICAgICAgICAkYWxsb3dlZEVtdU91eWFOYW1lZCA9IEAoJ2Fzc2V0cy9TTEZmb3JPdXlhLnN3ZicsJ3Jlcy9taXBtYXAteGhkcGktdjQvb3V5YV9pY29uLnBuZycpCiAgICAgICAgICAgICR1bmV4cGVjdGVkRW11T3V5YSA9IEAoJGVtdU91eWFOYW1lZCB8IFdoZXJlLU9iamVjdCB7ICRfIC1ub3RpbiAkYWxsb3dlZEVtdU91eWFOYW1lZCB9KQogICAgICAgICAgICBpZiAoJHVuZXhwZWN0ZWRFbXVPdXlhLkNvdW50IC1uZSAwKSB7IHRocm93ICJVbmV4cGVjdGVkIE9VWUEtbmFtZWQgZW11bGF0b3IgQVBLIGVudHJpZXM6ICQoJHVuZXhwZWN0ZWRFbXVPdXlhIC1qb2luICcsICcpIiB9CiAgICAgICAgICAgIGZvcmVhY2ggKCRlbnRyeSBpbiAkYWxsb3dlZEVtdU91eWFOYW1lZCkgeyBpZiAoJGVtdUVudHJpZXMgLW5vdGNvbnRhaW5zICRlbnRyeSkgeyB0aHJvdyAiRXhwZWN0ZWQgY29tcGF0aWJpbGl0eSBlbnRyeSBtaXNzaW5nIGZyb20gZW11bGF0b3IgQVBLOiAkZW50cnkiIH0gfQogICAgICAgICAgICAkZW11Q29tcGF0QWxpYXMgPSAkZW11WmlwLkdldEVudHJ5KCdyZXMvbWlwbWFwLXhoZHBpLXY0L291eWFfaWNvbi5wbmcnKQogICAgICAgICAgICBpZiAoJG51bGwgLWVxICRlbXVDb21wYXRBbGlhcyAtb3IgJGVtdUNvbXBhdEFsaWFzLkxlbmd0aCAtbmUgNDkwNDkpIHsgdGhyb3cgIkFEVCA0MTIgY29tcGF0aWJpbGl0eSBhbGlhcyBpZGVudGl0eSBkcmlmdGVkIGluIGVtdWxhdG9yIEFQSy4iIH0KICAgICAgICAgICAgaWYgKCRlbXVFbnRyaWVzIC1jb250YWlucyAncmVzL2RyYXdhYmxlLXhoZHBpLXY0L291eWFfaWNvbi5wbmcnKSB7IHRocm93ICdPYnNvbGV0ZSBBSVIgT1VZQSBkcmF3YWJsZSBzdXJ2aXZlZCBwcm92aWRlciBzYW5pdGF0aW9uIGluIGVtdWxhdG9yIEFQSy4nIH0K','ICAgICAgICAgICAgJGVtdU91eWFOYW1lZCA9IEAoJGVtdUVudHJpZXMgfCBXaGVyZS1PYmplY3QgeyAkXyAtbWF0Y2ggJyg/aSlvdXlhJyB9KQogICAgICAgICAgICAkYWxsb3dlZEVtdU91eWFOYW1lZCA9IEAoJ2Fzc2V0cy9TTEZmb3JPdXlhLnN3ZicpCiAgICAgICAgICAgICR1bmV4cGVjdGVkRW11T3V5YSA9IEAoJGVtdU91eWFOYW1lZCB8IFdoZXJlLU9iamVjdCB7ICRfIC1ub3RpbiAkYWxsb3dlZEVtdU91eWFOYW1lZCB9KQogICAgICAgICAgICBpZiAoJHVuZXhwZWN0ZWRFbXVPdXlhLkNvdW50IC1uZSAwKSB7IHRocm93ICJVbmV4cGVjdGVkIE9VWUEtbmFtZWQgZW11bGF0b3IgQVBLIGVudHJpZXM6ICQoJHVuZXhwZWN0ZWRFbXVPdXlhIC1qb2luICcsICcpIiB9CiAgICAgICAgICAgIGZvcmVhY2ggKCRlbnRyeSBpbiAkYWxsb3dlZEVtdU91eWFOYW1lZCkgeyBpZiAoJGVtdUVudHJpZXMgLW5vdGNvbnRhaW5zICRlbnRyeSkgeyB0aHJvdyAiRXhwZWN0ZWQgaGlzdG9yaWNhbCBidWlsZC1uYW1lIGVudHJ5IG1pc3NpbmcgZnJvbSBlbXVsYXRvciBBUEs6ICRlbnRyeSIgfSB9CiAgICAgICAgICAgIGlmICgkZW11RW50cmllcyAtY29udGFpbnMgJ3Jlcy9taXBtYXAteGhkcGktdjQvb3V5YV9pY29uLnBuZycpIHsgdGhyb3cgJ0FBQi1vbmx5IEFEVCA0MTIgY29tcGF0aWJpbGl0eSBhbGlhcyB1bmV4cGVjdGVkbHkgYXBwZWFyZWQgaW4gZW11bGF0b3IgQVBLLicgfQogICAgICAgICAgICBpZiAoJGVtdUVudHJpZXMgLWNvbnRhaW5zICdyZXMvZHJhd2FibGUteGhkcGktdjQvb3V5YV9pY29uLnBuZycpIHsgdGhyb3cgJ09ic29sZXRlIEFJUiBPVVlBIGRyYXdhYmxlIHN1cnZpdmVkIHByb3ZpZGVyIHNhbml0YXRpb24gaW4gZW11bGF0b3IgQVBLLicgfQo=')]
-          }
-          for path, reps in pairs.items():
-              p=Path(path); s=p.read_text()
-              for a,b in reps:
-                  old=base64.b64decode(a).decode(); new=base64.b64decode(b).decode()
-                  if s.count(old)!=1: raise SystemExit(f'{path}: expected one guarded block, got {s.count(old)}')
-                  s=s.replace(old,new)
-              p.write_text(s)
+          p=Path('.github/workflows/gate2a-air-baseline.yml')
+          s=p.read_text()
+          old='''          sha256sum smoke-provenance/platform-tools-sha256-manifest.txt > smoke-provenance/platform-tools-manifest.sha256
+          adb version > smoke-provenance/adb-version.txt 2>&1
+          sha256sum "$(command -v adb)" > smoke-provenance/adb-binary.sha256
+'''
+          new='''          sha256sum smoke-provenance/platform-tools-sha256-manifest.txt > smoke-provenance/platform-tools-manifest.sha256
+          ADB="$SDK_ROOT/platform-tools/adb"
+          if [ ! -x "$ADB" ]; then
+            echo "Android adb binary missing or not executable at $ADB" >&2
+            exit 1
+          fi
+          "$ADB" version > smoke-provenance/adb-version.txt 2>&1
+          sha256sum "$ADB" > smoke-provenance/adb-binary.sha256
+'''
+          if s.count(old)!=1: raise SystemExit(f'expected one provenance block, got {s.count(old)}')
+          p.write_text(s.replace(old,new))
           PY
           git diff --check
-          git status --short
-          test "$(git status --short | wc -l)" -eq 2
+          git diff -- .github/workflows/gate2a-air-baseline.yml
+          test "$(git status --short | wc -l)" -eq 1
           git config user.name 'Gate 2A QA Worker'
           git config user.email 'actions@users.noreply.github.com'
-          git add .github/workflows/gate2a-android-release.yml .github/workflows/gate2a-air-baseline.yml
-          git commit -m 'Gate 2A r25: repair recertification assertions'
-          git push origin HEAD:gate2a-r25-workflow-fix
+          git add .github/workflows/gate2a-air-baseline.yml
+          git commit -m 'Gate 2A r26: resolve adb from proven SDK root'
+          git push origin HEAD:gate2a-r26-runtime-provenance-fix
