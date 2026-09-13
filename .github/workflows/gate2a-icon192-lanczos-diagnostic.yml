@@ -1,4 +1,4 @@
-name: Gate 2A Icon 192 Lanczos Diagnostic
+name: Gate 2A Icon 192 Canonical Repair Writer
 
 on:
   push:
@@ -6,50 +6,64 @@ on:
       - gate2a-icon192-lanczos-diagnostic
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  write-repair:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout exact diagnostic source
+      - name: Checkout isolated repair branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Reproduce canonical Lanczos candidate
+          ref: gate2a-icon192-repair-r20
+          persist-credentials: true
+          fetch-depth: 2
+      - name: Verify repair branch basis
         shell: bash
         run: |
           set -euo pipefail
-          # exact-byte reproduction diagnostic only
+          test "$(git rev-parse HEAD)" = "fb89f9780d43127156ec86a1d666292e11ffb7cd"
+          test -z "$(git status --porcelain)"
+      - name: Derive and validate exact canonical 192px launcher icon
+        shell: bash
+        run: |
+          set -euo pipefail
           python -m pip install --disable-pip-version-check --no-input pillow==12.3.0
           python - <<'PY'
           from PIL import Image
           from pathlib import Path
-          import hashlib, io
+          import hashlib
           src_path = Path('icons/android/icons/icon_144.png')
+          dst_path = Path('icons/android/icons/icon_192.png')
           expected = '57d9bfd68e08211f0acc05f4780dc857c9e130f2b127dbddde319035a7488f28'
           expected_bytes = 52035
-          src = Image.open(src_path)
-          print('pillow=', Image.__version__ if hasattr(Image,'__version__') else 'unknown')
-          print('source_mode=', src.mode, 'source_size=', src.size, 'source_info_keys=', sorted(src.info.keys()))
-          if src.size != (144,144):
-              raise SystemExit('unexpected source dimensions')
-          variants = []
-          def add(name, im, **save_kwargs):
-              b = io.BytesIO(); im.save(b, format='PNG', **save_kwargs); data=b.getvalue()
-              h=hashlib.sha256(data).hexdigest(); print(name, len(data), h)
-              variants.append((name,data,h))
-          resized = src.resize((192,192), Image.Resampling.LANCZOS)
-          add('default', resized)
-          add('rgba-default', resized.convert('RGBA'))
-          add('rgb-default', resized.convert('RGB'))
-          for level in range(10):
-              add(f'rgba-c{level}', resized.convert('RGBA'), compress_level=level)
-          add('rgba-opt', resized.convert('RGBA'), optimize=True)
-          match = [(n,d) for n,d,h in variants if h == expected and len(d)==expected_bytes]
-          if not match:
-              raise SystemExit('no exact canonical candidate reproduction')
-          print('CANONICAL_MATCH=', match[0][0])
+          with Image.open(src_path) as src:
+              if src.size != (144,144) or src.mode != 'RGBA':
+                  raise SystemExit(f'unexpected canonical source: {src.size} {src.mode}')
+              out = src.resize((192,192), Image.Resampling.LANCZOS)
+              out.save(dst_path, format='PNG')
+          data = dst_path.read_bytes()
+          actual = hashlib.sha256(data).hexdigest()
+          print('icon192_sha256=', actual)
+          print('icon192_bytes=', len(data))
+          if actual != expected or len(data) != expected_bytes:
+              raise SystemExit('exact canonical repair bytes do not match authority')
+          with Image.open(dst_path) as check:
+              check.load()
+              if check.size != (192,192) or check.mode != 'RGBA':
+                  raise SystemExit('derived icon decode/dimensions/mode invalid')
           PY
+          changed="$(git status --porcelain)"
+          test "$(printf '%s\n' "$changed" | wc -l)" -eq 1
+          printf '%s\n' "$changed" | grep -Eq 'icons/android/icons/icon_192\.png$'
+      - name: Commit one-file canonical repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Gate2A QA Worker'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- icons/android/icons/icon_192.png
+          test "$(git diff --cached --name-only)" = 'icons/android/icons/icon_192.png'
+          git commit -m 'Gate 2A rev41: repair truncated 192px launcher icon (canonical Lanczos)'
+          git push origin HEAD:gate2a-icon192-repair-r20
