@@ -69,7 +69,10 @@ jobs:
           print(sum(abs(x-y) for x,y in zip(a,b))/len(a))
           PY
           }
-          move_once(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .18; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .25; }
+          # Ordinary shipping traversal gesture. Liselot's exact Character implementation
+          # grants her double jump only when a second p1Jump press lands while airborne,
+          # so issue two real C presses during the same held-RIGHT movement interval.
+          move_once(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; sleep .16; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .18; }
           launch(){ adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$1" 2>&1; sleep 4; for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done; sleep 8; }
           to_level_select(){ adb shell input keyevent KEYCODE_X; sleep 2; adb shell input keyevent KEYCODE_X; sleep 8; adb shell input keyevent KEYCODE_X; sleep 4; }
 
@@ -88,9 +91,6 @@ jobs:
             tag="02-step-${i}"
             capture "$tag"
             if [ "$i" = "07" ]; then
-              # The rendered shipping tutorial at this deterministic point asks the player
-              # to switch characters. Exact shipping keyboard authority is Registry.p1Switch="V";
-              # Android KEYCODE_A was wrong (it maps to the letter A / player-two LEFT).
               adb shell input keyevent KEYCODE_V; sleep 2
               capture 02-step-07-after-switch
             fi
@@ -108,7 +108,7 @@ jobs:
             fi
           done
           test "$pid0" = "$(adb shell pidof "$PACKAGE"|tr -d '\r')"
-          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\ncharacter_switch_input=KEYCODE_V_exact_shipping_p1Switch\n' > level2-proof/method.txt
+          printf 'ordinary_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nrendered_state_guard=true\ncharacter_switch_input=KEYCODE_V_exact_shipping_p1Switch\nmovement_gesture=held_RIGHT_plus_two_real_C_jump_presses_for_liselot_double_jump\n' > level2-proof/method.txt
           sleep 5; capture 03-transition-settled
           if [ "$transitioned" = 1 ]; then
             adb shell input keyevent KEYCODE_X; sleep 12; capture 04-default-action-result
