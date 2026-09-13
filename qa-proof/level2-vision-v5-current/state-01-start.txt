@@ -1,0 +1,3 @@
+tag=01-start
+pid=2657
+focus=  mCurrentFocus=Window{8c6fc7f u0 Application Not Responding: com.google.android.apps.nexuslauncher}
