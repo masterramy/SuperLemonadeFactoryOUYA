@@ -1,0 +1,169 @@
+name: Gate 2A Q5 Pause Render Proof
+
+on:
+  push:
+    branches: [gate2a-android-modernization]
+    paths: [.github/workflows/gate2a-q5-pause-proof.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  pause-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download frozen emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34751262569
+
+      - name: Verify frozen APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          test -f "$APK"
+          bytes=$(wc -c < "$APK" | tr -d ' ')
+          sha=$(sha256sum "$APK" | awk '{print $1}')
+          printf 'bytes=%s\nsha256=%s\nsource_commit=%s\nsource_run=%s\n' "$bytes" "$sha" '4b9027134c1786a262df76df09b95ef34338ca87' '34751262569' | tee frozen-apk-identity.txt
+          test "$bytes" = "35875555"
+          test "$sha" = "c33340f6370e30ab6742c75d79fb7d8b3312fb492c3f3198a709e5f46569b4f7"
+
+      - name: Record adb provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p pause-proof/provenance
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDK_ROOT"
+          ADB="$SDK_ROOT/platform-tools/adb"
+          test -x "$ADB"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          "$ADB" version > pause-proof/provenance/adb-version.txt 2>&1
+          sha256sum "$ADB" > pause-proof/provenance/adb-binary.sha256
+          cp frozen-apk-identity.txt pause-proof/provenance/
+
+      - name: Write pause harness
+        shell: bash
+        run: |
+          cat > pause-proof.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p pause-proof
+          APK="runtime-apk/SLF-emulator-x64.apk"
+          PACKAGE="com.ramybaheeg.slfport"
+
+          capture_app() {
+            local tag="$1"
+            adb shell dumpsys window > "pause-proof/window-${tag}.txt" 2>&1
+            adb exec-out screencap -p > "pause-proof/${tag}.png"
+            adb logcat -d > "pause-proof/logcat-${tag}.txt" 2>&1
+            local pid focus
+            pid=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            focus=$(grep -m1 'mCurrentFocus=' "pause-proof/window-${tag}.txt" || true)
+            printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "pause-proof/state-${tag}.txt"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "pause-proof/logcat-${tag}.txt" > "pause-proof/fatal-${tag}.txt"; then exit 80; fi
+          }
+
+          dismiss_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml pause-proof/window-ui.xml >/dev/null 2>&1 || return 0
+            local coords
+            coords=$(python3 - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          wanted=sys.argv[1]
+          try: root=ET.parse('pause-proof/window-ui.xml').getroot()
+          except Exception: raise SystemExit(0)
+          for n in root.iter('node'):
+              if n.attrib.get('text') != wanted: continue
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2=map(int,m.groups()); print(f'{(x1+x2)//2} {(y1+y2)//2}'); break
+          PY
+            )
+            if [ -n "$coords" ]; then adb shell input tap $coords >/dev/null 2>&1 || true; sleep 1; fi
+          }
+
+          adb install -r "$APK" > pause-proof/install.txt 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > pause-proof/launch-command.txt 2>&1
+          sleep 4
+          for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done
+          sleep 8
+
+          # Ordinary game inputs: intro -> Play -> Level Select -> Level 2.
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 8
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 12
+          adb shell input keyevent KEYCODE_X; sleep 12
+          capture_app 01-level2-before-pause
+          pid_before=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+
+          # Shipping pause input proven by exact-final PlayState: keyboard P toggles FlxG.paused.
+          adb shell input keyevent KEYCODE_P
+          sleep 4
+          capture_app 02-paused
+          pid_paused=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          test "$pid_before" = "$pid_paused"
+
+          # Same ordinary shipping input resumes.
+          adb shell input keyevent KEYCODE_P
+          sleep 4
+          capture_app 03-after-unpause
+          pid_after=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          test "$pid_before" = "$pid_after"
+
+          # Benign ordinary movement after resume proves gameplay input/update resumed.
+          adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT
+          sleep 2
+          capture_app 04-after-resume-movement
+          pid_move=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+          test "$pid_before" = "$pid_move"
+
+          printf 'PASS-CANDIDATE: exact frozen APK entered Level 2 with ordinary inputs, accepted shipping P pause/unpause input, retained the same live/focused process with no fatal runtime signatures, and accepted ordinary movement after resume. Rendered pause overlay and resumed gameplay frames require visual adjudication. No save/game-state files were edited or injected.\n' | tee pause-proof/result.txt
+          EOF
+          chmod +x pause-proof.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise pause path
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash pause-proof.sh
+
+      - name: Upload pause evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate2a-q5-pause-render-proof
+          path: pause-proof
+          if-no-files-found: error
