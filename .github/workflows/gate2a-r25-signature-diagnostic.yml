@@ -43,13 +43,18 @@ jobs:
           }
           Remove-Item -Force $target
 
-      - name: Compile exact source and package disposable AAB
+      - name: Compile exact source
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Package disposable AAB
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path dist,bin | Out-Null
-          & amxmlc -load-config+=obj/SLF_for_OuyaConfig.xml -output=bin/SLFforOuya.swf
-          if ($LASTEXITCODE -ne 0) { throw "amxmlc failed: $LASTEXITCODE" }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
           & adt -certificate -validityPeriod 1 -cn 'Gate 2A Validation' 2048-RSA release-signing.p12 gate2a-validation
           if ($LASTEXITCODE -ne 0) { throw "certificate creation failed: $LASTEXITCODE" }
           $androidSdk = $env:ANDROID_SDK_ROOT
