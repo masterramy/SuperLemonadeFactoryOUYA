@@ -16,6 +16,7 @@ jobs:
       - name: Apply exact runtime provenance repair
         shell: bash
         run: |
+          # r26 guarded single-hunk repair
           python3 - <<'PY'
           from pathlib import Path
           p=Path('.github/workflows/gate2a-air-baseline.yml')
