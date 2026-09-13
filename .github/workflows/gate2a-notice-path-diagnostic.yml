@@ -34,13 +34,17 @@ jobs:
         with:
           air-version: '51.3.4.3'
           accept-license: true
-      - name: Compile and package with preserved notice paths
+      - name: Compile exact repaired source
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+      - name: Package with preserved notice paths and verify archive entries
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          New-Item -ItemType Directory -Force -Path bin,dist | Out-Null
-          & amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
-          if ($LASTEXITCODE -ne 0) { throw 'compile failed' }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
           $keyPath=Join-Path $PWD 'diag.p12'; $pass='gate2a-validation'
           & adt -certificate -validityPeriod 1 -cn 'Gate 2A Notice Diagnostic' 2048-RSA $keyPath $pass
           if ($LASTEXITCODE -ne 0) { throw 'certificate failed' }
