@@ -1,0 +1,156 @@
+name: Q5 Exact-Frozen Rendered UI
+
+on:
+  push:
+    branches:
+      - qa/q5-rendered-ui-r1
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rendered-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download exact-frozen emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 34743928276
+
+      - name: Verify frozen APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual=$(sha256sum runtime-apk/SLF-emulator-x64.apk | awk '{print $1}')
+          expected=d37655e51498b83c1db2dac015df8326be4d13d928dbb0cd970ea1f5354e118b
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual" > apk-identity.txt
+          test "$actual" = "$expected"
+
+      - name: Write UI harness
+        shell: bash
+        run: |
+          cat > ui-runtime.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p ui-evidence
+          APK=runtime-apk/SLF-emulator-x64.apk
+          PACKAGE=com.ramybaheeg.slfport
+          adb install -r "$APK" > ui-evidence/install.txt 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+          dismiss_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml ui-evidence/window-ui.xml >/dev/null 2>&1 || return 0
+            local coords
+            coords=$(python3 - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          wanted=sys.argv[1]
+          try: root=ET.parse('ui-evidence/window-ui.xml').getroot()
+          except Exception: raise SystemExit
+          for node in root.iter('node'):
+              if node.attrib.get('text') != wanted: continue
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2=map(int,m.groups()); print((x1+x2)//2,(y1+y2)//2); break
+          PY
+            )
+            if [ -n "$coords" ]; then adb shell input tap $coords >/dev/null 2>&1 || true; sleep 1; fi
+          }
+
+          capture() {
+            local stem="$1"
+            adb exec-out screencap -p > "ui-evidence/${stem}.png"
+            adb shell dumpsys window > "ui-evidence/${stem}-window.txt" 2>&1
+            adb logcat -d > "ui-evidence/${stem}-logcat.txt" 2>&1
+            local pid focus
+            pid=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            focus=$(grep -m1 'mCurrentFocus=' "ui-evidence/${stem}-window.txt" || true)
+            printf 'pid=%s\nfocus=%s\n' "$pid" "$focus" > "ui-evidence/${stem}-health.txt"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "ui-evidence/${stem}-logcat.txt" > "ui-evidence/${stem}-fatal-scan.txt"; then exit 90; fi
+          }
+
+          fresh_menu() {
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >/dev/null 2>&1
+            sleep 4
+            for _ in 1 2 3 4; do dismiss_text "Got it"; dismiss_text "Wait"; sleep 1; done
+            sleep 6
+            adb shell input keyevent KEYCODE_X; sleep 2
+            adb shell input keyevent KEYCODE_X; sleep 8
+          }
+
+          # Main menu customer state.
+          adb logcat -c
+          fresh_menu
+          capture 01-main-menu
+
+          # Options: one ordinary DOWN from Factory Floor, then action.
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 6
+          capture 02-options
+
+          # Help: fresh menu, two ordinary DOWN presses, then action.
+          fresh_menu
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+          adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 6
+          capture 03-help
+
+          # Credits: fresh menu, three ordinary DOWN presses, then action.
+          fresh_menu
+          for _ in 1 2 3; do adb shell input keyevent KEYCODE_DPAD_DOWN; sleep 1; done
+          adb shell input keyevent KEYCODE_X; sleep 8
+          capture 04-credits
+
+          printf '%s\n' \
+            'candidate=703bf86dea43f527677b38c1886252d040bebfd2' \
+            'apk_sha256=d37655e51498b83c1db2dac015df8326be4d13d928dbb0cd970ea1f5354e118b' \
+            'inputs=ordinary_shipping_only' \
+            'qa_hotkeys=none' \
+            'save_or_state_mutation=none' \
+            'result=PASS_CANDIDATE_REQUIRES_RENDERED_ADJUDICATION' > ui-evidence/result.txt
+          EOF
+          chmod +x ui-runtime.sh
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise rendered UI
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash ui-runtime.sh
+
+      - name: Upload rendered UI evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: q5-exact-frozen-rendered-ui-r1
+          path: ui-evidence
+          if-no-files-found: error
+          retention-days: 7
