@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+          python3 -m pip install --disable-pip-version-check --quiet pillow==11.3.0 numpy==2.3.3
           mkdir -p proof
           python3 - <<'PY'
           from PIL import Image
@@ -50,7 +50,6 @@ jobs:
           def metric(p):
               im=np.asarray(Image.open(p).convert('RGB'))
               h,w,_=im.shape
-              # R18's required lower-center player-state region. Relative coordinates keep this resolution-independent.
               x0,x1=int(w*.48),int(w*.70); y0,y1=int(h*.45),int(h*.78)
               q=im[y0:y1,x0:x1].astype(np.int16)
               R,G,B=q[:,:,0],q[:,:,1],q[:,:,2]
@@ -58,8 +57,6 @@ jobs:
               sat=((q.max(axis=2)-q.min(axis=2))>60).mean()
               return float(green),float(sat),(x0,y0,x1,y1)
           gg,gs,box=metric(good); bg,bs,_=metric(bad)
-          # Adversarially selected to leave margin from both retained classes.
-          # Required R18 state has both a localized green player signal and higher localized chroma.
           def accept(g,s): return g>=0.004 and s>=0.050
           out=(f'roi={box}\nR18 green_fraction={gg:.6f} saturated_fraction={gs:.6f} accept={accept(gg,gs)}\n'
                f'R19_false_positive green_fraction={bg:.6f} saturated_fraction={bs:.6f} accept={accept(bg,bs)}\n'
@@ -70,8 +67,9 @@ jobs:
           assert not accept(bg,bs), 'R19 retained false-positive must REJECT'
           PY
       - name: Upload guard proof
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gate2a-q5-r20-r18-semantic-guard
           path: proof
-          if-no-files-found: error
+          if-no-files-found: warn
