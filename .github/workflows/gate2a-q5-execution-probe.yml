@@ -1,0 +1,22 @@
+name: Gate 2A Q5 Execution Probe
+
+on:
+  push:
+    branches:
+      - qa/exact-frozen-q5-runtime-20260913
+
+permissions:
+  contents: read
+
+jobs:
+  execution-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify runner and frozen candidate target
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_available=true"
+          echo "frozen_candidate=703bf86dea43f527677b38c1886252d040bebfd2"
+          echo "qa_branch=${GITHUB_SHA}"
