@@ -57,6 +57,7 @@ jobs:
             $PSNativeCommandUseErrorActionPreference = $oldNative
             $ErrorActionPreference = $oldPreference
           }
+          $global:LASTEXITCODE = 0
           $text = ($output | Out-String)
           Write-Host $text
           if ($rc -eq 0) { throw 'Production BAT unexpectedly succeeded without required external inputs.' }
