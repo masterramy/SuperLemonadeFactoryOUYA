@@ -92,6 +92,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed.' }
           if (-not (Test-Path (Join-Path $env:ANDROID_SDK_ROOT 'platforms/android-36/android.jar'))) { throw 'android-36 platform did not install.' }
 
+      - name: Remove setup-action checkout residue
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # setup-adobe-air-action downloads AIRSDK_Windows.zip into the checkout.
+          # It is infrastructure residue, not repository/source content. Remove only
+          # that known setup artifact, then require an otherwise-clean worktree so
+          # the builder's provenance guard remains strict.
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "Unexpected dirty checkout before provenance build:`n$($dirty -join "`n")" }
+
       - name: Run one-click disposable validation BAT
         shell: pwsh
         run: |
