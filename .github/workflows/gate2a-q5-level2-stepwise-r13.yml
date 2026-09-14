@@ -1,0 +1,229 @@
+name: Gate 2A Q5 AFC2 Level 2 Stepwise R13
+
+on:
+  push:
+    branches: [qa/q5-afc2-level2-r13]
+    paths: [.github/workflows/gate2a-q5-level2-stepwise-r13.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  level2-stepwise-r13:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 32
+
+      - name: Verify QA-only branch and runtime equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          FROZEN=afc2e65a65dc95e35ef3391b92be8adc7827e16f
+          CUSTOMER=9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c
+          test "$(git rev-parse HEAD^)" = "$FROZEN"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/gate2a-q5-level2-stepwise-r13.yml"
+          git diff --name-only "$CUSTOMER..$FROZEN" | sort > proof/freeze-vs-customer.txt
+          printf '%s\n' '.github/workflows/gate2a-windows-aab-builders-validation.yml' 'BUILD_AAB_PRODUCTION.bat' 'BUILD_AAB_VALIDATION.bat' 'tools/build-aab.ps1' | sort > proof/allowed.txt
+          diff -u proof/allowed.txt proof/freeze-vs-customer.txt
+          printf '%s\n' \
+            'ordinary_shipping_inputs_only=true' \
+            'save_or_game_state_edit=false' \
+            'teleport=false' \
+            'forced_completion=false' \
+            'r12_input_capability_run=34808850816' \
+            'new_action=one_liselot_double_jump_right_from_reproduced_crate_tutorial_state' \
+            'post_new_action_gameplay_input=false' \
+            'source_basis=PC_level2_crate_at_x763_on_upper_platform_and_tutorial_requires_push_left;R12_rendered_state_has_liselot_left_of_crate_so_next_bounded_goal_is_reposition_to_crate_right_side_without_pushing' \
+            > proof/method.txt
+
+      - name: Download runtime-equivalent emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34777986347
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=runtime-apk/SLF-emulator-x64.apk
+          test "$(wc -c < "$APK" | tr -d ' ')" = 35875619
+          test "$(sha256sum "$APK" | awk '{print $1}')" = 53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2
+          sha256sum "$APK" > proof/runtime-apk-sha256.txt
+
+      - name: Write bounded R13 crate-positioning probe
+        shell: bash
+        run: |
+          cat > probe.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK=runtime-apk/SLF-emulator-x64.apk
+          PACKAGE=com.ramybaheeg.slfport
+          OUT=proof
+          DEV=/dev/input/event1
+
+          capture(){
+            tag="$1"
+            adb shell dumpsys window > "$OUT/window-$tag.txt" 2>&1
+            adb exec-out screencap -p > "$OUT/$tag.png"
+            adb logcat -d > "$OUT/logcat-$tag.txt" 2>&1
+            pid=$(adb shell pidof "$PACKAGE" | tr -d '\r')
+            focus=$(grep -m1 'mCurrentFocus=' "$OUT/window-$tag.txt" || true)
+            printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "$OUT/state-$tag.txt"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+            ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-$tag.txt" > "$OUT/fatal-$tag.txt"
+          }
+
+          dismiss_text(){
+            wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || return 0
+            adb pull /sdcard/window.xml "$OUT/window-ui.xml" >/dev/null 2>&1 || return 0
+            coords=$(python3 - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          try: r=ET.parse('proof/window-ui.xml').getroot()
+          except: raise SystemExit
+          for n in r.iter('node'):
+            if n.attrib.get('text')==sys.argv[1]:
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:
+                a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2); break
+          PY
+            )
+            [ -z "$coords" ] || { adb shell input tap $coords >/dev/null 2>&1 || true; sleep 1; }
+          }
+
+          jump_right(){
+            adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!
+            sleep .05
+            adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true
+            wait "$p" || true
+            sleep .20
+          }
+
+          liselot_double_right(){
+            adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!
+            sleep .05
+            adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true
+            sleep .16
+            adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true
+            wait "$p" || true
+            sleep .20
+          }
+
+          walk_left(){
+            adb shell input keyevent --longpress KEYCODE_DPAD_LEFT >/dev/null 2>&1 || true
+            sleep .25
+          }
+
+          raw_down(){ adb shell "sendevent $DEV 1 $1 1; sendevent $DEV 0 0 0"; }
+          raw_up(){ adb shell "sendevent $DEV 1 $1 0; sendevent $DEV 0 0 0"; }
+
+          raw_held_liselot_double_right(){
+            raw_down 106
+            sleep .04
+            raw_down 46
+            sleep .30
+            raw_up 46
+            sleep .06
+            raw_down 46
+            sleep .08
+            raw_up 46
+            sleep .22
+            raw_up 106
+          }
+
+          adb root > "$OUT/adb-root.txt" 2>&1
+          sleep 2
+          adb wait-for-device
+          adb shell id > "$OUT/root-identity.txt"
+          adb shell "test -w $DEV"
+          adb shell "getevent -lp $DEV" > "$OUT/keyboard-device.txt" 2>&1
+          grep -q KEY_C "$OUT/keyboard-device.txt"
+          grep -q KEY_RIGHT "$OUT/keyboard-device.txt"
+
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          adb logcat -c
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
+          sleep 4
+          for _ in 1 2 3 4; do dismiss_text 'Got it'; dismiss_text 'Wait'; sleep 1; done
+          sleep 8
+
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 8
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 12
+          adb shell input keyevent KEYCODE_X; sleep 12
+          capture 01-start
+
+          for i in $(seq 1 7); do jump_right; done
+          adb shell input keyevent KEYCODE_V; sleep 2
+          for i in $(seq 1 11); do liselot_double_right; done
+          for i in $(seq 1 6); do walk_left; done
+          adb shell input keyevent KEYCODE_V; sleep 2
+          capture 06-known-safe-prefix
+
+          adb shell input keyevent KEYCODE_V; sleep 2
+          capture 07-switch-once-to-liselot
+          liselot_double_right
+          sleep 1.25
+          capture 08-r6-equivalent-settled
+          liselot_double_right
+          sleep 1.25
+          capture 09-r7-equivalent-ledged-face
+          raw_held_liselot_double_right
+          sleep 1.25
+          capture 11-r12-equivalent-crate-tutorial
+
+          # R13: exactly one new bounded puzzle-positioning action. R12 leaves
+          # Liselot on the left side of the crate while the shipping tutorial
+          # requires pushing it LEFT. A single double-jump RIGHT attempts only
+          # to clear/reposition around the crate. No gameplay input follows.
+          raw_held_liselot_double_right
+          capture 12-immediate-after-crate-positioning-jump
+          sleep 1.25
+          capture 13-settled-after-crate-positioning-jump
+          printf 'Reproduced the R12 crate-tutorial state, executed exactly one Liselot double-jump RIGHT as a bounded attempt to reposition from the crate left side to its right side, then sent zero further gameplay input and captured immediate plus settled rendered states.\n' > "$OUT/result.txt"
+          EOF
+          chmod +x probe.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and run bounded R13 observation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash probe.sh
+
+      - name: Upload proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-afc2-level2-stepwise-r13
+          path: proof
+          if-no-files-found: error
