@@ -1,0 +1,194 @@
+name: Gate 2A Q5 AFC2 Level 2 R22 Accelerated Completion Tranche
+
+on:
+  push:
+    branches: [qa/q5-afc2-level2-r22-accelerated-tranche]
+    paths: [.github/workflows/gate2a-q5-level2-r22-accelerated-tranche.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  r22:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with: {fetch-depth: 32}
+      - name: Verify QA-only branch and frozen equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          FROZEN=afc2e65a65dc95e35ef3391b92be8adc7827e16f
+          test "$(git rev-parse HEAD^)" = "$FROZEN"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/gate2a-q5-level2-r22-accelerated-tranche.yml"
+          printf '%s\n' 'ordinary_shipping_inputs_only=true' 'save_or_game_state_edit=false' 'teleport=false' 'forced_completion=false' 'r15_prefix_replay=true' 'milestones_fail_closed_before_next_action=true' 'completion_requires_rendered_level_complete_template=true' 'cold_persistence_only_after_rendered_completion=true' > proof/method.txt
+      - name: Download exact frozen runtime APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34777986347
+      - name: Download proven R15 reference
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-q5-afc2-level2-stepwise-r15-crate-left-push
+          path: r15-reference
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34820224086
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=runtime-apk/SLF-emulator-x64.apk
+          test "$(wc -c < "$APK" | tr -d ' ')" = 35875619
+          test "$(sha256sum "$APK" | awk '{print $1}')" = 53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2
+          sha256sum "$APK" > proof/runtime-apk-sha256.txt
+      - name: Install semantic guard dependencies
+        run: python3 -m pip install --disable-pip-version-check --quiet pillow==11.3.0 opencv-python-headless==4.12.0.88
+      - name: Write guarded tranche
+        shell: bash
+        run: |
+          cat > probe.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK=runtime-apk/SLF-emulator-x64.apk; PACKAGE=com.ramybaheeg.slfport; OUT=proof; DEV=/dev/input/event1
+          capture(){ tag="$1"; adb shell dumpsys window > "$OUT/window-$tag.txt" 2>&1; adb exec-out screencap -p > "$OUT/$tag.png"; adb logcat -d > "$OUT/logcat-$tag.txt" 2>&1; pid=$(adb shell pidof "$PACKAGE"|tr -d '\r'); focus=$(grep -m1 'mCurrentFocus=' "$OUT/window-$tag.txt"||true); printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "$OUT/state-$tag.txt"; test -n "$pid"; echo "$focus"|grep -q "$PACKAGE"; ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-$tag.txt" > "$OUT/fatal-$tag.txt"; }
+          healthy(){ tag="$1"; python3 - "$OUT/$tag.png" "$OUT/guard-$tag.txt" <<'PY'
+          from PIL import Image
+          import sys
+          im=Image.open(sys.argv[1]).convert('RGB'); px=list(im.getdata()); n=len(px); lum=[sum(c)/3 for c in px]
+          mean=sum(lum)/n; dark=sum(v<100 for v in lum)/n
+          open(sys.argv[2],'w').write(f'mean_luma={mean:.3f}\ndark_fraction={dark:.6f}\n')
+          if not (mean>135 and dark<0.32): raise SystemExit(20)
+          PY
+          }
+          clear_anr(){ tag="$1"; adb shell uiautomator dump /sdcard/anr.xml >/dev/null 2>&1||return 0; adb pull /sdcard/anr.xml "$OUT/anr-$tag.xml" >/dev/null 2>&1||return 0; if grep -q "Pixel Launcher" "$OUT/anr-$tag.xml" && grep -Eq "isn.t responding|not responding" "$OUT/anr-$tag.xml"; then coords=$(python3 - "$OUT/anr-$tag.xml" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          try:r=ET.parse(sys.argv[1]).getroot()
+          except:raise SystemExit
+          for wanted in ('Close app','Wait'):
+            for n in r.iter('node'):
+              if n.attrib.get('text')==wanted:
+                m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+                if m:a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2);raise SystemExit
+          PY
+          ); [ -z "$coords" ]||adb shell input tap $coords >/dev/null 2>&1||true; sleep 1; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/refocus-$tag.txt" 2>&1||true; sleep 1; fi; }
+          checkpoint(){ clear_anr "$1"; capture "$1"; healthy "$1"; }
+          dismiss(){ wanted="$1"; suffix="$2"; adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1||return 0; adb pull /sdcard/window.xml "$OUT/window-ui-$suffix.xml" >/dev/null 2>&1||return 0; coords=$(python3 - "$OUT/window-ui-$suffix.xml" "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          try:r=ET.parse(sys.argv[1]).getroot()
+          except:raise SystemExit
+          for n in r.iter('node'):
+            if n.attrib.get('text')==sys.argv[2]:
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2);break
+          PY
+          ); [ -z "$coords" ]||{ adb shell input tap $coords >/dev/null 2>&1||true; sleep 1; }; }
+          down(){ adb shell "sendevent $DEV 1 $1 1; sendevent $DEV 0 0 0"; }; up(){ adb shell "sendevent $DEV 1 $1 0; sendevent $DEV 0 0 0"; }
+          jr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1&p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
+          dr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1&p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; sleep .16; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
+          wl(){ adb shell input keyevent --longpress KEYCODE_DPAD_LEFT >/dev/null 2>&1||true; sleep .25; }
+          rawdr(){ down 106; sleep .04; down 46; sleep .30; up 46; sleep .06; down 46; sleep .08; up 46; sleep .22; up 106; }
+          rawleft_push(){ down 105; sleep 1.20; up 105; }; rawleft_park(){ down 105; sleep .80; up 105; }
+          liselot_spike(){ down 106; sleep .04; down 46; sleep .30; up 46; sleep .16; down 46; sleep .10; up 46; sleep .42; up 106; }
+          andre_jump_dash(){ down 106; sleep .04; down 46; sleep .25; up 46; sleep .05; down 45; sleep .42; up 45; sleep .18; up 106; }
+          r15_semantic(){ python3 - "$OUT/15-r15-settled.png" r15-reference/15-left-push-settled.png "$OUT/r15-semantic.txt" <<'PY'
+          from PIL import Image
+          import numpy as np,sys
+          cur=np.array(Image.open(sys.argv[1]).convert('RGB'),dtype=np.int16); ref=np.array(Image.open(sys.argv[2]).convert('RGB'),dtype=np.int16)
+          if cur.shape!=ref.shape: raise SystemExit(30)
+          h,w,_=cur.shape; boxes=[(int(.24*w),int(.48*h),int(.58*w),int(.70*h)),(int(.46*w),int(.25*h),int(.88*w),int(.48*h))]
+          maes=[float(np.abs(cur[y0:y1,x0:x1]-ref[y0:y1,x0:x1]).mean()) for x0,y0,x1,y1 in boxes]
+          r,g,b=cur[:,:,0],cur[:,:,1],cur[:,:,2]; green=(g>140)&(g>r*1.25)&(g>b*1.1)&(r<180); Y=np.indices(green.shape)[0]; yy,xx=np.where(green&(Y<int(.72*h)))
+          open(sys.argv[3],'w').write(f'localized_mae_1={maes[0]:.4f}\nlocalized_mae_2={maes[1]:.4f}\ngreen_pixels={len(xx)}\n')
+          if len(xx)<300 or max(maes)>34: raise SystemExit(31)
+          PY
+          }
+          beyond_spike(){ tag="$1"; who="$2"; python3 - "$OUT/$tag.png" "$OUT/position-$tag.txt" "$who" <<'PY'
+          from PIL import Image
+          import numpy as np,sys
+          im=np.array(Image.open(sys.argv[1]).convert('RGB')); h,w,_=im.shape; r,g,b=im[:,:,0],im[:,:,1],im[:,:,2]; Y=np.indices((h,w))[0]
+          if sys.argv[3]=='liselot': m=(g>140)&(g>r*1.25)&(g>b*1.1)&(r<180)
+          else: m=(r>150)&(g>80)&(g<200)&(b<80)
+          yy,xx=np.where(m&(Y<int(.72*h))); 
+          if len(xx)<80: raise SystemExit(40)
+          px=float(np.median(xx)); purple=(r>100)&(b>100)&(g<120)&(r>g*1.3)&(b>g*1.3); y0,y1=int(.60*h),int(.68*h); cols=[]
+          for x in range(w):
+            ys=np.where(purple[y0:y1,x])[0]
+            if len(ys) and ys.min()+y0<int(.655*h): cols.append(x)
+          groups=[]
+          if cols:
+            s=pr=cols[0]
+            for x in cols[1:]:
+              if x-pr>32:
+                if pr-s>40: groups.append((s,pr))
+                s=x
+              pr=x
+            if pr-s>40: groups.append((s,pr))
+          if not groups: raise SystemExit(41)
+          spike=min(groups,key=lambda q:abs((q[0]+q[1])/2-px)); passed=px>spike[1]+20
+          open(sys.argv[2],'w').write(f'actor={sys.argv[3]}\nactor_x={px:.2f}\nspike_group={spike}\npassed={passed}\nall_groups={groups}\n')
+          if not passed: raise SystemExit(42)
+          PY
+          }
+          completion_guard(){ python3 - "$OUT/30-completion-candidate.png" "$OUT/completion-template.txt" <<'PY'
+          import cv2,sys
+          hay=cv2.imread(sys.argv[1],cv2.IMREAD_COLOR); tpl=cv2.imread('data/buttons/levelCompleteGraphic.png',cv2.IMREAD_COLOR)
+          if hay is None or tpl is None: raise SystemExit(50)
+          best=-1
+          for scale in (1.75,2.0,2.25):
+            t=cv2.resize(tpl,None,fx=scale,fy=scale,interpolation=cv2.INTER_NEAREST)
+            if t.shape[0]<hay.shape[0] and t.shape[1]<hay.shape[1]: best=max(best,float(cv2.matchTemplate(hay,t,cv2.TM_CCOEFF_NORMED).max()))
+          open(sys.argv[2],'w').write(f'level_complete_template_score={best:.6f}\n')
+          if best<0.55: raise SystemExit(51)
+          PY
+          }
+          launch(){ adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch-$1.txt" 2>&1; sleep 4; for i in 1 2 3 4; do dismiss 'Got it' "$1-$i"; dismiss 'Wait' "$1-$i"; sleep 1; done; sleep 8; }
+          to_level_select(){ adb shell input keyevent KEYCODE_X; sleep 2; adb shell input keyevent KEYCODE_X; sleep 8; adb shell input keyevent KEYCODE_X; sleep 4; }
+          adb root > "$OUT/adb-root.txt" 2>&1; sleep 2; adb wait-for-device; adb shell id > "$OUT/root-identity.txt"; adb shell "test -w $DEV"; adb shell "getevent -lp $DEV" > "$OUT/keyboard-device.txt" 2>&1; grep -q KEY_C "$OUT/keyboard-device.txt"; grep -q KEY_RIGHT "$OUT/keyboard-device.txt"; grep -q KEY_LEFT "$OUT/keyboard-device.txt"; grep -q KEY_X "$OUT/keyboard-device.txt"; grep -q KEY_V "$OUT/keyboard-device.txt"
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1; adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1||true; adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1||true; adb shell settings put system user_rotation 1 >/dev/null 2>&1||true; adb shell wm user-rotation lock 1 >/dev/null 2>&1||true; adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1||true; adb shell wm dismiss-keyguard >/dev/null 2>&1||true
+          launch first; to_level_select; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; adb shell input keyevent KEYCODE_X; sleep 12; checkpoint 01-start
+          for i in $(seq 1 7); do jr; done; adb shell input keyevent KEYCODE_V; sleep 2; for i in $(seq 1 11); do dr; done; for i in $(seq 1 6); do wl; done; adb shell input keyevent KEYCODE_V; sleep 2
+          checkpoint 06-pre-switch; adb shell input keyevent KEYCODE_V; sleep 2; checkpoint 07-post-switch; dr; sleep 1.25; checkpoint 08-r6; dr; sleep 1.25; checkpoint 09-r7; rawdr; sleep 1.25; checkpoint 11-r12-crate; rawdr; sleep 1.25; checkpoint 13-right-of-crate; rawleft_push; sleep 1.25; checkpoint 15-r15-settled; r15_semantic
+          adb shell input keyevent KEYCODE_V; sleep 1.0; checkpoint 16-andre-active; rawleft_park; sleep 1.25; checkpoint 17-andre-parked
+          adb shell input keyevent KEYCODE_V; sleep 1.25; checkpoint 18-liselot-active
+          liselot_spike; sleep 1.5; checkpoint 20-liselot-spike-settled; beyond_spike 20-liselot-spike-settled liselot
+          adb shell input keyevent KEYCODE_V; sleep 1.25; checkpoint 21-andre-active
+          for i in $(seq 1 10); do andre_jump_dash; sleep .45; checkpoint "22-andre-burst-$i"; done
+          beyond_spike 22-andre-burst-10 andre
+          for i in $(seq 1 3); do andre_jump_dash; sleep .4; checkpoint "24-andre-exit-$i"; done
+          adb shell input keyevent KEYCODE_V; sleep 1.0; checkpoint 25-liselot-active
+          for i in $(seq 1 3); do liselot_spike; sleep .4; checkpoint "26-liselot-exit-$i"; done
+          down 106; sleep .60; up 106; sleep 2; checkpoint 30-completion-candidate; completion_guard
+          adb shell input keyevent KEYCODE_X; sleep 8; checkpoint 31-next-level-render
+          launch cold; to_level_select; checkpoint 40-cold-level-select; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep .5; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep .5; adb shell input keyevent KEYCODE_X; sleep 12; checkpoint 41-cold-level3-attempt
+          printf 'R22 reached rendered completion template gate and cold Level-3 ordinary-navigation attempt; final promotion still requires sequential human render adjudication.\n' > "$OUT/result.txt"
+          EOF
+          chmod +x probe.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot Android and execute R22
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash probe.sh
+      - name: Upload sequential proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-afc2-level2-r22-accelerated-tranche
+          path: proof
+          if-no-files-found: error
