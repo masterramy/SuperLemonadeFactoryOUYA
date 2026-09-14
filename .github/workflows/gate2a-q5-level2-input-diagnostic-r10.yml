@@ -1,0 +1,119 @@
+name: Gate 2A Q5 AFC2 Level 2 Input Diagnostic R10
+
+on:
+  push:
+    branches: [qa/q5-afc2-level2-r10]
+    paths: [.github/workflows/gate2a-q5-level2-input-diagnostic-r10.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  input-diagnostic-r10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 8
+
+      - name: Verify diagnostic-only branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          FROZEN=afc2e65a65dc95e35ef3391b92be8adc7827e16f
+          test "$(git rev-parse HEAD^)" = "$FROZEN"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/gate2a-q5-level2-input-diagnostic-r10.yml"
+          printf '%s\n' \
+            'diagnostic_only=true' \
+            'game_installed=false' \
+            'game_launched=false' \
+            'gameplay_input=false' \
+            'save_or_game_state_edit=false' \
+            'purpose=identify_real_keyboard_event_device_and_true_key_down_up_capability' \
+            > proof/method.txt
+
+      - name: Write standalone diagnostic script
+        shell: bash
+        run: |
+          cat > diagnostic.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -uo pipefail
+          OUT=proof
+          mkdir -p "$OUT"
+          adb wait-for-device
+
+          {
+            echo '=== initial shell identity ==='
+            adb shell id || true
+            echo '=== build properties ==='
+            echo -n 'ro.build.type='; adb shell getprop ro.build.type || true
+            echo -n 'ro.debuggable='; adb shell getprop ro.debuggable || true
+            echo -n 'ro.secure='; adb shell getprop ro.secure || true
+          } > "$OUT/identity-before-root.txt" 2>&1
+
+          adb shell input --help > "$OUT/input-help.txt" 2>&1 || true
+          adb shell cat /proc/bus/input/devices > "$OUT/proc-bus-input-devices-before-root.txt" 2>&1 || true
+          adb shell getevent -lp > "$OUT/getevent-lp-before-root.txt" 2>&1 || true
+          adb shell dumpsys input > "$OUT/dumpsys-input-before-root.txt" 2>&1 || true
+          adb shell 'ls -l /dev/input; for d in /dev/input/event*; do echo "=== $d ==="; ls -l "$d"; test -r "$d" && echo readable=yes || echo readable=no; test -w "$d" && echo writable=yes || echo writable=no; done' > "$OUT/dev-input-before-root.txt" 2>&1 || true
+
+          {
+            echo '=== adb root request ==='
+            adb root 2>&1
+            echo "adb_root_rc=$?"
+            sleep 2
+            adb wait-for-device
+            echo "adb_wait_rc=$?"
+            echo '=== identity after root request ==='
+            adb shell id 2>&1
+          } > "$OUT/root-capability.txt" 2>&1 || true
+
+          adb shell cat /proc/bus/input/devices > "$OUT/proc-bus-input-devices-after-root.txt" 2>&1 || true
+          adb shell getevent -lp > "$OUT/getevent-lp-after-root.txt" 2>&1 || true
+          adb shell dumpsys input > "$OUT/dumpsys-input-after-root.txt" 2>&1 || true
+          adb shell 'ls -l /dev/input; for d in /dev/input/event*; do echo "=== $d ==="; ls -l "$d"; test -r "$d" && echo readable=yes || echo readable=no; test -w "$d" && echo writable=yes || echo writable=no; done' > "$OUT/dev-input-after-root.txt" 2>&1 || true
+
+          python3 - <<'PY' > "$OUT/summary.txt"
+          import re, pathlib
+          p=pathlib.Path('proof')
+          root=(p/'root-capability.txt').read_text(errors='replace') if (p/'root-capability.txt').exists() else ''
+          ge=(p/'getevent-lp-after-root.txt').read_text(errors='replace') if (p/'getevent-lp-after-root.txt').exists() else ''
+          dev=(p/'dev-input-after-root.txt').read_text(errors='replace') if (p/'dev-input-after-root.txt').exists() else ''
+          print('root_uid0=' + str('uid=0(root)' in root).lower())
+          print('event_nodes=' + ','.join(sorted(set(re.findall(r'/dev/input/event\d+', ge+dev)))))
+          print('has_key_c_name=' + str('KEY_C' in ge).lower())
+          print('has_key_right_name=' + str('KEY_RIGHT' in ge).lower())
+          print('writable_event_nodes=' + ','.join(re.findall(r'=== (/dev/input/event\d+) ===.*?writable=yes', dev, re.S)))
+          PY
+
+          printf 'Diagnostic collection complete; no game was installed or launched and no gameplay key was injected.\n' > "$OUT/result.txt"
+          EOF
+          chmod +x diagnostic.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and collect input diagnostics
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash diagnostic.sh
+
+      - name: Upload diagnostic proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-afc2-level2-input-diagnostic-r10
+          path: proof
+          if-no-files-found: error
