@@ -1,0 +1,121 @@
+name: Gate 2A Q5 AFC2 Level 2 Input Diagnostic R11
+
+on:
+  push:
+    branches: [qa/q5-afc2-level2-r11]
+    paths: [.github/workflows/gate2a-q5-level2-input-diagnostic-r11.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  input-diagnostic-r11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 8
+
+      - name: Verify diagnostic-only branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          FROZEN=afc2e65a65dc95e35ef3391b92be8adc7827e16f
+          test "$(git rev-parse HEAD^)" = "$FROZEN"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/gate2a-q5-level2-input-diagnostic-r11.yml"
+          printf '%s\n' \
+            'diagnostic_only=true' \
+            'game_installed=false' \
+            'game_launched=false' \
+            'gameplay_input=false' \
+            'save_or_game_state_edit=false' \
+            'purpose=prove_real_keyboard_event_device_raw_key_down_up_injection_capability' \
+            > proof/method.txt
+
+      - name: Write standalone diagnostic script
+        shell: bash
+        run: |
+          cat > diagnostic.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          OUT=proof
+          mkdir -p "$OUT"
+          adb wait-for-device
+          adb root > "$OUT/adb-root.txt" 2>&1
+          sleep 2
+          adb wait-for-device
+          adb shell id > "$OUT/identity.txt" 2>&1
+          adb shell getevent -lp > "$OUT/getevent-lp.txt" 2>&1
+          adb shell cat /proc/bus/input/devices > "$OUT/proc-bus-input-devices.txt" 2>&1
+
+          # R10 proved the emulator keyboard is /dev/input/event1 and exposes KEY_C/KEY_RIGHT.
+          DEV=/dev/input/event1
+          adb shell "test -r $DEV && test -w $DEV"
+          adb shell "getevent -lp $DEV" > "$OUT/keyboard-device.txt" 2>&1
+
+          # Monitor the real keyboard event node while injecting an ordinary C press/release
+          # and RIGHT press/release using Linux input events. No game is installed or launched.
+          adb shell "timeout 4 getevent -lt $DEV > /data/local/tmp/r11-events.txt 2>&1 &"
+          sleep 0.5
+          {
+            echo 'C_down'
+            adb shell "sendevent $DEV 1 46 1; sendevent $DEV 0 0 0"
+            sleep 0.40
+            echo 'C_up'
+            adb shell "sendevent $DEV 1 46 0; sendevent $DEV 0 0 0"
+            sleep 0.20
+            echo 'RIGHT_down'
+            adb shell "sendevent $DEV 1 106 1; sendevent $DEV 0 0 0"
+            sleep 0.40
+            echo 'RIGHT_up'
+            adb shell "sendevent $DEV 1 106 0; sendevent $DEV 0 0 0"
+          } > "$OUT/injection-commands.txt" 2>&1
+          sleep 1
+          adb shell cat /data/local/tmp/r11-events.txt > "$OUT/observed-events.txt" 2>&1 || true
+
+          python3 - <<'PY' > "$OUT/summary.txt"
+          from pathlib import Path
+          p=Path('proof')
+          ident=(p/'identity.txt').read_text(errors='replace')
+          dev=(p/'keyboard-device.txt').read_text(errors='replace')
+          obs=(p/'observed-events.txt').read_text(errors='replace')
+          cmds=(p/'injection-commands.txt').read_text(errors='replace')
+          print('root_uid0=' + str('uid=0(root)' in ident).lower())
+          print('keyboard_event_node=/dev/input/event1')
+          print('keyboard_has_key_c=' + str('KEY_C' in dev).lower())
+          print('keyboard_has_key_right=' + str('KEY_RIGHT' in dev).lower())
+          print('sendevent_commands_completed=' + str(all(x in cmds for x in ['C_down','C_up','RIGHT_down','RIGHT_up'])).lower())
+          # getevent output can render numeric/type names differently; retain raw capture for adjudication.
+          print('observed_event_bytes=' + str(len(obs.encode())))
+          PY
+          printf 'R11 complete; diagnostic only; game never installed/launched; no gameplay-state claim.\n' > "$OUT/result.txt"
+          EOF
+          chmod +x diagnostic.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and prove raw keyboard injection path
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash diagnostic.sh
+
+      - name: Upload diagnostic proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-afc2-level2-input-diagnostic-r11
+          path: proof
+          if-no-files-found: error
