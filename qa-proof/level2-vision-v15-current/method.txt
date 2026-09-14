@@ -1,0 +1,15 @@
+exact_product_ancestor=9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c
+shipping_level_file=data/SLF_levelEditor/PC/level2.oel
+shipping_level_starts_first=andre
+ordinary_shipping_inputs_only=true
+touchscreen_movement=false
+switch_input_used=false
+piggy_activation_input=B
+source_overlap_gate=overlapWithOffset(player1,player2,40,0)
+rendered_stability_required_before_B=true
+rendered_follow_lock_required_for_proof=true
+save_or_game_state_read=false
+save_or_game_state_edit=false
+teleport=false
+forced_completion=false
+level_completion_claimed=false

@@ -1,0 +1,7 @@
+Starting: Intent { cmp=com.ramybaheeg.slfport/.AIRAppEntry }
+Status: ok
+LaunchState: COLD
+Activity: com.ramybaheeg.slfport/.AIRAppEntry
+TotalTime: 2967
+WaitTime: 2979
+Complete
