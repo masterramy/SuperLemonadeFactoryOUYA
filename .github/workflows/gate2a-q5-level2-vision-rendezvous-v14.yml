@@ -1,0 +1,241 @@
+name: Gate 2A Q5 Level 2 Vision Rendezvous V14
+
+on:
+  push:
+    branches: [gate2a-android-modernization]
+    paths: [.github/workflows/gate2a-q5-level2-vision-rendezvous-v14.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  level2-vision-v14:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with: {fetch-depth: 96}
+      - name: Verify exact product ancestor, QA-only delta, and source-ground piggyback contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRODUCT='9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c'
+          git merge-base --is-ancestor "$PRODUCT" HEAD
+          if git diff --name-only "$PRODUCT" HEAD | grep -Ev '^(\.github/workflows/gate2a-q5-.*\.yml|qa-proof/level2-.*-current/.*)$' | grep -q .; then
+            echo 'Non-QA delta above exact-final' >&2
+            exit 1
+          fi
+          git show "$PRODUCT:src/Registry.as" | grep -F 'public static var p1Up:String = "UP";'
+          git show "$PRODUCT:src/Registry.as" | grep -F 'public static var p1Switch:String = "V";'
+          git show "$PRODUCT:src/Registry.as" | grep -F 'public static var p1Piggyback:String = "B";'
+          git show "$PRODUCT:src/PlayState.as" | grep -F 'FlxG.overlapWithOffset(player1, player2, 40,0,piggyback)'
+          git show "$PRODUCT:src/PlayState.as" | grep -F 'FlxG.keys.justPressed(Registry.p1Up)'
+          git show "$PRODUCT:src/PlayState.as" | grep -F 'player1._isPiggyBacking = true;'
+          git show "$PRODUCT:src/PlayState.as" | grep -F 'player2._isPiggyBacking = true;'
+          git show "$PRODUCT:src/PlayState.as" | grep -F 'player2.x = player1.x;'
+          git show "$PRODUCT:src/PlayState.as" | grep -F 'player2.y = player1.y-player1.height+1;'
+      - name: Download exact repaired emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          run-id: 34777986347
+      - name: Verify APK identity and write feedback-steered probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='runtime-apk/SLF-emulator-x64.apk'
+          test "$(wc -c < "$APK"|tr -d ' ')" = '35875619'
+          test "$(sha256sum "$APK"|awk '{print $1}')" = '53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2'
+          python3 -m pip install --disable-pip-version-check pillow
+          cat > vision.py <<'PY'
+          from PIL import Image
+          import sys
+          im=Image.open(sys.argv[1]).convert('RGB'); w,h=im.size; p=im.load()
+          A={(225,145,172),(225,142,170),(247,172,209),(225,149,175),(225,151,177),(238,200,207),(234,155,35),(236,167,35)}
+          L={(178,207,91),(170,200,87),(97,191,31),(216,214,51),(254,233,103),(182,210,93),(174,203,89),(218,49,72),(169,50,46),(160,43,42)}
+          def locate(colors):
+            pts=[(x,y) for y in range(280,int(h*.82)) for x in range(120,w-120) if p[x,y] in colors]
+            if not pts:return None
+            buckets={}
+            for x,y in pts:
+              k=(x//96,y//96); buckets[k]=buckets.get(k,0)+1
+            best=max(buckets,key=buckets.get); bx,by=best
+            local=[(x,y) for x,y in pts if abs(x//96-bx)<=1 and abs(y//96-by)<=1]
+            if len(local)<64:return None
+            return (sum(x for x,y in local)//len(local),sum(y for x,y in local)//len(local),len(local))
+          a=locate(A); l=locate(L)
+          print('A',*(a or ('NA','NA',0))); print('L',*(l or ('NA','NA',0)))
+          if a and l: print('DX',a[0]-l[0]); print('DY',a[1]-l[1])
+          PY
+          cat > probe.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK='runtime-apk/SLF-emulator-x64.apk'; PACKAGE='com.ramybaheeg.slfport'; OUT='level2-vision-v14'; mkdir -p "$OUT"
+          dismiss(){ adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1||return 0; adb pull /sdcard/window.xml "$OUT/ui.xml" >/dev/null 2>&1||return 0; python3 - "$1" <<'PY' >/tmp/c
+          import re,sys,xml.etree.ElementTree as ET
+          try:r=ET.parse('level2-vision-v14/ui.xml').getroot()
+          except:raise SystemExit
+          for n in r.iter('node'):
+            if n.attrib.get('text')==sys.argv[1]:
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2);break
+          PY
+          read x y </tmp/c||true; [ -z "${x:-}" ]||{ adb shell input tap "$x" "$y"; sleep 1; }; }
+          stabilize(){ for n in 1 2 3 4 5 6; do focus=$(adb shell dumpsys window 2>/dev/null|grep -m1 'mCurrentFocus='||true); echo "$focus"|grep -q "$PACKAGE" && return 0; dismiss 'Wait'; dismiss 'Got it'; adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >> "$OUT/refocus.txt" 2>&1||true; sleep 2; done; return 1; }
+          capture(){ tag="$1"; stabilize; adb shell dumpsys window > "$OUT/window-${tag}.txt" 2>&1; adb exec-out screencap -p > "$OUT/${tag}.png"; adb logcat -d > "$OUT/logcat-${tag}.txt" 2>&1; pid=$(adb shell pidof "$PACKAGE"|tr -d '\r'); focus=$(grep -m1 'mCurrentFocus=' "$OUT/window-${tag}.txt"||true); printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "$OUT/state-${tag}.txt"; test -n "$pid"; echo "$focus"|grep -q "$PACKAGE"; ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-${tag}.txt" > "$OUT/fatal-${tag}.txt"; python3 vision.py "$OUT/${tag}.png" > "$OUT/vision-${tag}.txt"||true; }
+          jr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT & p=$!; sleep .05; adb shell input keyevent KEYCODE_C; wait "$p"||true; sleep .30; }
+          dbr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT & p=$!; sleep .05; adb shell input keyevent KEYCODE_C; sleep .16; adb shell input keyevent KEYCODE_C; wait "$p"||true; sleep .38; }
+          dbl(){ adb shell input keyevent --longpress KEYCODE_DPAD_LEFT & p=$!; sleep .05; adb shell input keyevent KEYCODE_C; sleep .16; adb shell input keyevent KEYCODE_C; wait "$p"||true; sleep .38; }
+          ml(){ adb shell input touchscreen swipe 500 1280 500 1280 35; sleep .20; }
+          mr(){ adb shell input touchscreen swipe 920 1280 920 1280 35; sleep .20; }
+          sl(){ adb shell input touchscreen swipe 500 1280 500 1280 120; sleep .28; }
+          parse(){ f="$1"; ax=$(awk '$1=="A"{print $2}' "$f"|tail -1); ay=$(awk '$1=="A"{print $3}' "$f"|tail -1); lx=$(awk '$1=="L"{print $2}' "$f"|tail -1); ly=$(awk '$1=="L"{print $3}' "$f"|tail -1); }
+          numeric(){ [[ "$1" =~ ^[0-9]+$ ]]; }
+          abs(){ local v="$1"; [ "$v" -lt 0 ] && echo $((-v)) || echo "$v"; }
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1; adb shell settings put secure immersive_mode_confirmations confirmed||true; adb shell settings put system accelerometer_rotation 0||true; adb shell settings put system user_rotation 1||true; adb shell wm user-rotation lock 1||true; adb shell input keyevent KEYCODE_WAKEUP||true; adb shell wm dismiss-keyguard||true
+          adb shell am force-stop com.google.android.apps.nexuslauncher >/dev/null 2>&1||true; adb logcat -c; adb shell am force-stop "$PACKAGE"||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt"; sleep 5; for _ in 1 2 3 4; do dismiss 'Got it'; dismiss 'Wait'; done; stabilize; sleep 2; dismiss 'Wait'; stabilize
+          adb shell input keyevent KEYCODE_X; sleep 2; stabilize; adb shell input keyevent KEYCODE_X; sleep 8; dismiss 'Wait'; stabilize; adb shell input keyevent KEYCODE_X; sleep 4; stabilize; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; dismiss 'Wait'; stabilize; adb shell input keyevent KEYCODE_X; sleep 12; dismiss 'Wait'; stabilize
+          for _ in $(seq 1 7); do jr; done; adb shell input keyevent KEYCODE_V; sleep 1.2; for _ in $(seq 1 3); do dbr; done; for _ in 1 2 3; do sl; done; dbl; capture 01-pair
+
+          piggy_candidate=false; piggy_follow_candidate=false; active_identity=unknown; toward_key=unknown; prev_adx=99999; prev_dx=0
+          for i in $(seq 1 28); do
+            capture "02-adapt-${i}"; parse "$OUT/vision-02-adapt-${i}.txt"
+            if ! numeric "$ax" || ! numeric "$ay" || ! numeric "$lx" || ! numeric "$ly"; then echo "adapt=$i detector_unresolved_stop" >> "$OUT/adaptive.txt"; break; fi
+            dx=$((ax-lx)); dy=$((ay-ly)); adx=$(abs "$dx"); ady=$(abs "$dy")
+            echo "adapt=$i ax=$ax ay=$ay lx=$lx ly=$ly dx=$dx dy=$dy active=$active_identity toward=$toward_key" >> "$OUT/adaptive.txt"
+
+            # Let the shipping game decide whether the real overlap gate is satisfied.
+            # UP is harmless when it is not; if piggyback activates, rendered attachment should persist.
+            if [ "$adx" -le 180 ] && [ "$ady" -le 180 ]; then
+              adb shell input keyevent KEYCODE_DPAD_UP; sleep .10
+              capture "03-up-${i}-immediate"; parse "$OUT/vision-03-up-${i}-immediate.txt"
+              if numeric "$ax" && numeric "$ay" && numeric "$lx" && numeric "$ly"; then
+                idx=$((ax-lx)); idy=$((ay-ly)); iadx=$(abs "$idx"); iady=$(abs "$idy")
+                sleep .35; capture "03-up-${i}-settled"; parse "$OUT/vision-03-up-${i}-settled.txt"
+                if numeric "$ax" && numeric "$ay" && numeric "$lx" && numeric "$ly"; then
+                  sdx=$((ax-lx)); sdy=$((ay-ly)); sadx=$(abs "$sdx"); sady=$(abs "$sdy"); ddx=$(abs $((idx-sdx))); ddy=$(abs $((idy-sdy)))
+                  echo "up=$i immediate_dx=$idx immediate_dy=$idy settled_dx=$sdx settled_dy=$sdy relative_drift_x=$ddx relative_drift_y=$ddy" >> "$OUT/adaptive.txt"
+                  if [ "$iadx" -le 65 ] && [ "$sadx" -le 65 ] && [ "$iady" -le 135 ] && [ "$sady" -le 135 ] && [ "$ddx" -le 30 ] && [ "$ddy" -le 35 ]; then
+                    piggy_candidate=true; echo "source_grounded_piggy_candidate_step=$i" >> "$OUT/adaptive.txt"
+                    for _ in 1 2 3 4; do adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep .08; done
+                    sleep .22; capture "04-follow-${i}"; parse "$OUT/vision-04-follow-${i}.txt"
+                    if numeric "$ax" && numeric "$ay" && numeric "$lx" && numeric "$ly"; then
+                      fdx=$((ax-lx)); fdy=$((ay-ly)); fadx=$(abs "$fdx"); fady=$(abs "$fdy"); fddx=$(abs $((sdx-fdx))); fddy=$(abs $((sdy-fdy)))
+                      echo "follow=$i dx=$fdx dy=$fdy relative_drift_x=$fddx relative_drift_y=$fddy" >> "$OUT/adaptive.txt"
+                      if [ "$fadx" -le 70 ] && [ "$fady" -le 140 ] && [ "$fddx" -le 35 ] && [ "$fddy" -le 40 ]; then piggy_follow_candidate=true; echo "piggy_follow_candidate_step=$i" >> "$OUT/adaptive.txt"; break; fi
+                    fi
+                  fi
+                fi
+              fi
+            fi
+
+            # Learn which character is active and which horizontal key reduces relative X distance.
+            # A short LEFT probe changes DX negative when Andre is active and positive when Liselot is active.
+            if [ "$toward_key" = unknown ]; then
+              base_dx=$dx; base_adx=$adx
+              ml; capture "02-probe-left-${i}"; parse "$OUT/vision-02-probe-left-${i}.txt"
+              if numeric "$ax" && numeric "$ay" && numeric "$lx" && numeric "$ly"; then
+                probe_dx=$((ax-lx)); probe_adx=$(abs "$probe_dx"); delta_dx=$((probe_dx-base_dx))
+                if [ "$delta_dx" -lt 0 ]; then active_identity=andre; else active_identity=liselot; fi
+                if [ "$probe_adx" -lt "$base_adx" ]; then toward_key=LEFT; else toward_key=RIGHT; fi
+                echo "polarity_step=$i base_dx=$base_dx probe_dx=$probe_dx delta_dx=$delta_dx active=$active_identity toward=$toward_key" >> "$OUT/adaptive.txt"
+                dx=$probe_dx; adx=$probe_adx; dy=$((ay-ly)); ady=$(abs "$dy")
+              else
+                echo "polarity_step=$i unresolved" >> "$OUT/adaptive.txt"; break
+              fi
+            fi
+
+            # If a previously learned direction is clearly increasing separation, reverse it.
+            if [ "$prev_adx" -lt 99999 ] && [ "$adx" -gt $((prev_adx+90)) ]; then
+              if [ "$toward_key" = LEFT ]; then toward_key=RIGHT; else toward_key=LEFT; fi
+              echo "reverse_step=$i previous_adx=$prev_adx current_adx=$adx new_toward=$toward_key" >> "$OUT/adaptive.txt"
+            fi
+            prev_adx=$adx; prev_dx=$dx
+
+            # Ground vertical correction in the empirically identified active character.
+            # Jump only when the active character is visibly lower (larger screen Y); otherwise
+            # move horizontally toward the partner and allow gravity/platform traversal to work.
+            active_y=$ay; passive_y=$ly
+            if [ "$active_identity" = liselot ]; then active_y=$ly; passive_y=$ay; fi
+            lower_by=$((active_y-passive_y))
+            if [ "$lower_by" -gt 55 ]; then
+              if [ "$toward_key" = LEFT ]; then dbl; else dbr; fi
+              echo "action_step=$i jump_toward=$toward_key active_lower_by=$lower_by" >> "$OUT/adaptive.txt"
+            else
+              if [ "$adx" -gt 260 ]; then
+                for _ in 1 2 3; do if [ "$toward_key" = LEFT ]; then ml; else mr; fi; done
+              elif [ "$adx" -gt 120 ]; then
+                for _ in 1 2; do if [ "$toward_key" = LEFT ]; then ml; else mr; fi; done
+              else
+                if [ "$toward_key" = LEFT ]; then ml; else mr; fi
+              fi
+              echo "action_step=$i horizontal_toward=$toward_key active_lower_by=$lower_by" >> "$OUT/adaptive.txt"
+            fi
+          done
+          echo "piggy_candidate=$piggy_candidate" >> "$OUT/adaptive.txt"
+          echo "piggy_follow_candidate=$piggy_follow_candidate" >> "$OUT/adaptive.txt"
+          echo "final_active_identity=$active_identity" >> "$OUT/adaptive.txt"
+          echo "final_toward_key=$toward_key" >> "$OUT/adaptive.txt"
+          capture 05-terminal-observation
+          printf '%s\n' \
+            ordinary_shipping_inputs_only=true \
+            exact_product_ancestor=9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c \
+            activation_source_grounded=true \
+            source_p1_up_binding=UP \
+            source_p1_piggyback_binding=B \
+            source_p1_switch_binding=V \
+            source_overlap_gate='overlapWithOffset(player1,player2,40,0)' \
+            up_input_delegates_overlap_truth_to_game=true \
+            rendered_feedback_steering=true \
+            active_character_inferred_from_relative_motion=true \
+            steering_direction_reverses_on_measured_divergence=true \
+            jump_only_when_empirical_active_character_is_lower=true \
+            no_switch_between_rendezvous_and_up_activation=true \
+            repeated_immediate_and_settled_rendered_capture=true \
+            follow_input_rendered_attachment_probe=true \
+            save_or_game_state_read=false \
+            save_or_game_state_edit=false \
+            teleport=false \
+            forced_completion=false \
+            completion_claimed=false \
+            unknown_terminal_states_are_not_confirmed=true > "$OUT/method.txt"
+          EOF
+          chmod +x probe.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules; sudo udevadm trigger --name-match=kvm
+      - name: Run feedback-steered piggyback probe
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash probe.sh
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-level2-vision-rendezvous-v14
+          path: level2-vision-v14
+          if-no-files-found: error
+      - name: Retain current rendered proof
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d level2-vision-v14 || exit 0
+          rm -rf qa-proof/level2-vision-v14-current; mkdir -p qa-proof/level2-vision-v14-current
+          cp level2-vision-v14/*.png level2-vision-v14/*.txt qa-proof/level2-vision-v14-current/ 2>/dev/null || true
+          git config user.name 'Gate 2A QA Worker'; git config user.email 'actions@users.noreply.github.com'
+          git add qa-proof/level2-vision-v14-current
+          git diff --cached --quiet && exit 0
+          git commit -m 'qa-proof: retain feedback-steered Level 2 piggyback attempt'
+          git push origin HEAD:gate2a-android-modernization
