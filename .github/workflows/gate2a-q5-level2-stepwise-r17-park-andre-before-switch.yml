@@ -1,0 +1,133 @@
+name: Gate 2A Q5 AFC2 Level 2 Stepwise R17 Park Andre Before Switch
+
+on:
+  push:
+    branches: [qa/q5-afc2-level2-r17-park-andre-before-switch]
+    paths: [.github/workflows/gate2a-q5-level2-stepwise-r17-park-andre-before-switch.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  level2-stepwise-r17-park-andre-before-switch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with: {fetch-depth: 32}
+      - name: Verify QA-only branch and frozen equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p proof
+          FROZEN=afc2e65a65dc95e35ef3391b92be8adc7827e16f
+          CUSTOMER=9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c
+          test "$(git rev-parse HEAD^)" = "$FROZEN"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/gate2a-q5-level2-stepwise-r17-park-andre-before-switch.yml"
+          git diff --name-only "$CUSTOMER..$FROZEN" | sort > proof/freeze-vs-customer.txt
+          printf '%s\n' '.github/workflows/gate2a-windows-aab-builders-validation.yml' 'BUILD_AAB_PRODUCTION.bat' 'BUILD_AAB_VALIDATION.bat' 'tools/build-aab.ps1' | sort > proof/allowed.txt
+          diff -u proof/allowed.txt proof/freeze-vs-customer.txt
+          printf '%s\n' \
+            'ordinary_shipping_inputs_only=true' \
+            'save_or_game_state_edit=false' \
+            'teleport=false' \
+            'forced_completion=false' \
+            'source_grounded_cause=inactive_Andre_on_enemy_patrol_route_becomes_lethal_when_active' \
+            'new_action=exactly_one_bounded_LEFT_hold_on_Andre_before_switching_to_Liselot' \
+            'post_new_action_gameplay_input=false' > proof/method.txt
+      - name: Download runtime-equivalent emulator APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-emulator-x64-apk
+          path: runtime-apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 34777986347
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=runtime-apk/SLF-emulator-x64.apk
+          test "$(wc -c < "$APK" | tr -d ' ')" = 35875619
+          test "$(sha256sum "$APK" | awk '{print $1}')" = 53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2
+          sha256sum "$APK" > proof/runtime-apk-sha256.txt
+      - name: Install image guard dependency
+        run: python3 -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+      - name: Write bounded probe
+        shell: bash
+        run: |
+          cat > probe.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK=runtime-apk/SLF-emulator-x64.apk; PACKAGE=com.ramybaheeg.slfport; OUT=proof; DEV=/dev/input/event1
+          capture(){ tag="$1"; adb shell dumpsys window > "$OUT/window-$tag.txt" 2>&1; adb exec-out screencap -p > "$OUT/$tag.png"; adb logcat -d > "$OUT/logcat-$tag.txt" 2>&1; pid=$(adb shell pidof "$PACKAGE"|tr -d '\r'); focus=$(grep -m1 'mCurrentFocus=' "$OUT/window-$tag.txt"||true); printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "$OUT/state-$tag.txt"; test -n "$pid"; echo "$focus"|grep -q "$PACKAGE"; ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-$tag.txt" > "$OUT/fatal-$tag.txt"; }
+          guard(){ tag="$1"; python3 - "$OUT/$tag.png" "$OUT/guard-$tag.txt" <<'PY'
+          from PIL import Image
+          import sys
+          p,out=sys.argv[1:3]; im=Image.open(p).convert('RGB'); px=list(im.getdata()); n=len(px)
+          lum=[sum(c)/3 for c in px]; mean=sum(lum)/n; dark=sum(v<100 for v in lum)/n; bright=sum(v>180 for v in lum)/n
+          purple=sum(1 for r,g,b in px if r>80 and b>80 and r>g*1.25 and b>g*1.15)/n
+          open(out,'w').write(f'mean_luma={mean:.3f}\ndark_fraction={dark:.6f}\nbright_share={bright:.6f}\npurple_fraction={purple:.6f}\n')
+          if not(mean>140 and dark<0.30): raise SystemExit(20)
+          PY
+          }
+          checkpoint(){ capture "$1"; guard "$1"; }
+          dismiss(){ wanted="$1"; adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1||return 0; adb pull /sdcard/window.xml "$OUT/window-ui.xml" >/dev/null 2>&1||return 0; coords=$(python3 - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          try:r=ET.parse('proof/window-ui.xml').getroot()
+          except:raise SystemExit
+          for n in r.iter('node'):
+            if n.attrib.get('text')==sys.argv[1]:
+              m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+              if m:a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2);break
+          PY
+          ); [ -z "$coords" ]||{ adb shell input tap $coords >/dev/null 2>&1||true; sleep 1; }; }
+          jr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1&p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
+          dr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1&p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; sleep .16; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
+          wl(){ adb shell input keyevent --longpress KEYCODE_DPAD_LEFT >/dev/null 2>&1||true; sleep .25; }
+          down(){ adb shell "sendevent $DEV 1 $1 1; sendevent $DEV 0 0 0"; }; up(){ adb shell "sendevent $DEV 1 $1 0; sendevent $DEV 0 0 0"; }
+          rawleft_park(){ down 105; sleep .80; up 105; }
+
+          adb root > "$OUT/adb-root.txt" 2>&1; sleep 2; adb wait-for-device; adb shell id > "$OUT/root-identity.txt"; adb shell "test -w $DEV"; adb shell "getevent -lp $DEV" > "$OUT/keyboard-device.txt" 2>&1; grep -q KEY_C "$OUT/keyboard-device.txt"; grep -q KEY_RIGHT "$OUT/keyboard-device.txt"; grep -q KEY_LEFT "$OUT/keyboard-device.txt"
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1; adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1||true; adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1||true; adb shell settings put system user_rotation 1 >/dev/null 2>&1||true; adb shell wm user-rotation lock 1 >/dev/null 2>&1||true; adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1||true; adb shell wm dismiss-keyguard >/dev/null 2>&1||true
+          adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1; sleep 4
+          for _ in 1 2 3 4; do dismiss 'Got it'; dismiss 'Wait'; sleep 1; done; sleep 8
+          adb shell input keyevent KEYCODE_X; sleep 2; adb shell input keyevent KEYCODE_X; sleep 8; adb shell input keyevent KEYCODE_X; sleep 4; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; adb shell input keyevent KEYCODE_X; sleep 12
+          checkpoint 01-start
+          for i in $(seq 1 7); do jr; done
+          adb shell input keyevent KEYCODE_V; sleep 2
+          for i in $(seq 1 11); do dr; done
+          for i in $(seq 1 6); do wl; done
+          adb shell input keyevent KEYCODE_V; sleep 2
+
+          checkpoint 06-pre-park-andre
+          rawleft_park
+          capture 07-park-andre-immediate
+          sleep 1.25
+          checkpoint 08-park-andre-settled
+          printf 'Healthy precondition captured; exactly one bounded ordinary LEFT hold executed on Andre; zero later gameplay input sent.\n' > "$OUT/result.txt"
+          EOF
+          chmod +x probe.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot Android and run R17
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash probe.sh
+      - name: Upload proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-q5-afc2-level2-stepwise-r17-park-andre-before-switch
+          path: proof
+          if-no-files-found: error
