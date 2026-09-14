@@ -34,7 +34,7 @@ jobs:
             'save_or_game_state_edit=false' \
             'teleport=false' \
             'forced_completion=false' \
-            'qa_runtime_stabilization=launcher_ANR_dialog_dismissal_before_guarded_checkpoints' \
+            'qa_runtime_stabilization=launcher_ANR_dismissal_plus_rendered_cutscene_skip_before_guarded_gameplay' \
             'source_grounded_cause=inactive_Andre_on_enemy_patrol_route_becomes_lethal_when_active' \
             'new_action=exactly_one_bounded_LEFT_hold_on_Andre_before_switching_to_Liselot' \
             'post_new_action_gameplay_input=false' > proof/method.txt
@@ -94,6 +94,32 @@ jobs:
                 if m:a,b,c,d=map(int,m.groups());print((a+c)//2,(b+d)//2,wanted);raise SystemExit
           PY
           ); if [ -n "$coords" ]; then x=$(echo "$coords"|awk '{print $1}'); y=$(echo "$coords"|awk '{print $2}'); choice=$(echo "$coords"|cut -d' ' -f3-); printf 'launcher_anr_choice=%s\n' "$choice" >> "$OUT/runtime-stabilization.txt"; adb shell input tap "$x" "$y" >/dev/null 2>&1||true; sleep 1; fi; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" >> "$OUT/refocus-$tag.txt" 2>&1||true; sleep 1; fi; }
+          cutscene_present(){ png="$1"; python3 - "$png" <<'PY'
+          from PIL import Image
+          import sys
+          im=Image.open(sys.argv[1]).convert('RGB'); w,h=im.size
+          x0,x1=int(w*.10),int(w*.90); band=max(1,int(h*.15))
+          def frac(y0,y1):
+              pts=[im.getpixel((x,y)) for y in range(y0,y1,4) for x in range(x0,x1,4)]
+              return sum(max(p)<35 for p in pts)/len(pts)
+          top,bottom=frac(0,band),frac(h-band,h)
+          print(f'top_black={top:.6f} bottom_black={bottom:.6f}', file=sys.stderr)
+          raise SystemExit(0 if top>0.70 and bottom>0.70 else 1)
+          PY
+          }
+          skip_rendered_cutscene(){
+            for i in 1 2 3; do
+              clear_launcher_anr "cutscene-$i"
+              capture "cutscene-check-$i"
+              if cutscene_present "$OUT/cutscene-check-$i.png" 2> "$OUT/cutscene-metrics-$i.txt"; then
+                printf 'cutscene_skip_attempt=%s\n' "$i" >> "$OUT/runtime-stabilization.txt"
+                adb shell input keyevent KEYCODE_Y >/dev/null 2>&1||true
+                sleep 4
+              else
+                return 0
+              fi
+            done
+          }
           checkpoint(){ clear_launcher_anr "$1"; capture "$1"; guard "$1"; }
           jr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1&p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
           dr(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1&p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; sleep .16; adb shell input keyevent KEYCODE_C >/dev/null 2>&1||true; wait "$p"||true; sleep .20; }
@@ -106,6 +132,7 @@ jobs:
           adb logcat -c; adb shell am force-stop "$PACKAGE" >/dev/null 2>&1||true; adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1; sleep 4
           for _ in 1 2 3 4; do dismiss 'Got it' startup; dismiss 'Wait' startup; sleep 1; done; sleep 8
           adb shell input keyevent KEYCODE_X; sleep 2; adb shell input keyevent KEYCODE_X; sleep 8; adb shell input keyevent KEYCODE_X; sleep 4; adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; adb shell input keyevent KEYCODE_X; sleep 12
+          skip_rendered_cutscene
           checkpoint 01-start
           for i in $(seq 1 7); do jr; done
           adb shell input keyevent KEYCODE_V; sleep 2
