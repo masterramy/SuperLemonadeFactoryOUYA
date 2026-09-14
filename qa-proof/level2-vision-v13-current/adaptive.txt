@@ -1,0 +1,22 @@
+adapt=1 ax=1232 ay=533 lx=1429 ly=733 dx=-197 dy=-200
+adapt=2 ax=1102 ay=602 lx=1429 ly=491 dx=-327 dy=111
+adapt=3 ax=1130 ay=786 lx=1429 ly=571 dx=-299 dy=215
+adapt=4 ax=1654 ay=897 lx=1233 ly=747 dx=421 dy=150
+adapt=5 ax=2034 ay=653 lx=801 ly=571 dx=1233 dy=82
+adapt=6 ax=2069 ay=507 lx=389 ly=611 dx=1680 dy=-104
+adapt=7 ax=1702 ay=550 lx=386 ly=573 dx=1316 dy=-23
+adapt=8 ax=1405 ay=507 lx=520 ly=881 dx=885 dy=-374
+adapt=9 ax=1721 ay=537 lx=389 ly=551 dx=1332 dy=-14
+adapt=10 ax=1993 ay=507 lx=437 ly=893 dx=1556 dy=-386
+adapt=11 ax=2121 ay=549 lx=389 ly=747 dx=1732 dy=-198
+adapt=12 ax=1757 ay=519 lx=386 ly=513 dx=1371 dy=6
+adapt=13 ax=1522 ay=506 lx=437 ly=893 dx=1085 dy=-387
+adapt=14 ax=1614 ay=533 lx=389 ly=611 dx=1225 dy=-78
+adapt=15 ax=2008 ay=518 lx=389 ly=651 dx=1619 dy=-133
+adapt=16 ax=2122 ay=506 lx=389 ly=551 dx=1733 dy=-45
+adapt=17 ax=1866 ay=506 lx=385 ly=893 dx=1481 dy=-387
+adapt=18 ax=1472 ay=533 lx=389 ly=551 dx=1083 dy=-18
+adapt=19 ax=1508 ay=506 lx=437 ly=893 dx=1071 dy=-387
+adapt=20 ax=1900 ay=518 lx=386 ly=513 dx=1514 dy=5
+piggy_candidate=false
+piggy_follow_candidate=false
