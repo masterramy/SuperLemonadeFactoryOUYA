@@ -1,4 +1,4 @@
-name: Gate 2A Q5 Frozen Flat-Ground RIGHT
+name: Gate 2A Q5 Frozen Lifecycle
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   actions: read
 
 jobs:
-  frozen-flat-right:
+  frozen-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -36,10 +36,10 @@ jobs:
           test "$ACTUAL" = "$EXPECTED"
           cp "$APK" runtime-apk/SLF-emulator-x64.apk
 
-      - name: Write ordinary-input flat-ground RIGHT probe
+      - name: Write ordinary-input lifecycle probe
         shell: bash
         run: |
-          cat > q5-flat-right.sh <<'EOF'
+          cat > q5-lifecycle.sh <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
           mkdir -p evidence
@@ -55,18 +55,14 @@ jobs:
             coords="$(python3 - "$wanted" <<'PY'
           import re, sys, xml.etree.ElementTree as ET
           wanted=sys.argv[1].lower()
-          try:
-              root=ET.parse('evidence/window.xml').getroot()
-          except Exception:
-              raise SystemExit(0)
+          try: root=ET.parse('evidence/window.xml').getroot()
+          except Exception: raise SystemExit(0)
           for n in root.iter('node'):
               text=(n.attrib.get('text','')+' '+n.attrib.get('content-desc','')).lower()
               if wanted in text:
                   m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', n.attrib.get('bounds',''))
                   if m:
-                      x1,y1,x2,y2=map(int,m.groups())
-                      print(f'{(x1+x2)//2} {(y1+y2)//2}')
-                      break
+                      x1,y1,x2,y2=map(int,m.groups()); print(f'{(x1+x2)//2} {(y1+y2)//2}'); break
           PY
             )"
             if [ -n "$coords" ]; then
@@ -85,51 +81,64 @@ jobs:
           adb shell wm dismiss-keyguard || true
           adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > evidence/launch.txt 2>&1
           sleep 12
-
-          # Dismiss Android's first-run fullscreen education overlay only. This is
-          # system UI, not game state or gameplay input.
           dismiss_system_overlay_text "got it"
           dismiss_system_overlay_text "ok"
-          adb exec-out screencap -p > evidence/00-after-system-overlay-dismissal.png
 
-          # Ordinary shipping keyboard inputs only: dismiss intro, activate Factory Floor,
-          # select Level 2 from the fresh-save Level Select, then capture the spawn state.
-          adb shell input keyevent KEYCODE_X
+          # Ordinary shipping inputs to fresh-save Level 2.
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 8
+          adb shell input keyevent KEYCODE_X; sleep 4
+          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
+          adb shell input keyevent KEYCODE_X; sleep 12
+          adb shell input keyevent KEYCODE_X; sleep 8
+
+          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-gameplay.txt
+          adb shell dumpsys window > evidence/window-gameplay.txt 2>&1
+          adb exec-out screencap -p > evidence/01-gameplay-before-pause.png
+
+          # Actual rendered touchscreen PAUSE control on 3120x1440 landscape canvas.
+          adb shell input tap 2630 120
           sleep 2
-          adb shell input keyevent KEYCODE_X
-          sleep 8
-          adb shell input keyevent KEYCODE_X
+          adb exec-out screencap -p > evidence/02-paused-a.png
           sleep 4
-          adb shell input keyevent KEYCODE_DPAD_RIGHT
-          sleep 1
-          adb shell input keyevent KEYCODE_X
-          sleep 12
-          # Same bounded shipping-action fallback used by the certified baseline; harmless in gameplay.
-          adb shell input keyevent KEYCODE_X
-          sleep 8
+          adb exec-out screencap -p > evidence/03-paused-b.png
+          sha256sum evidence/02-paused-a.png evidence/03-paused-b.png > evidence/pause-frame-sha256.txt
 
-          adb shell dumpsys window > evidence/window-before-right.txt 2>&1
-          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-before-right.txt
-          adb exec-out screencap -p > evidence/01-level2-before-right.png
-
-          # Exercise RIGHT alone from the initial Level-2 ground state: no jump, teleport,
-          # completion key, save edit, or game-state mutation.
+          # Same rendered control now resumes.
+          adb shell input tap 2630 120
+          sleep 2
           adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT
           sleep 2
-          adb shell dumpsys window > evidence/window-after-right.txt 2>&1
-          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-after-right.txt
-          adb exec-out screencap -p > evidence/02-level2-after-right.png
+          adb exec-out screencap -p > evidence/04-resumed-after-right.png
+          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-after-resume.txt
+
+          # HOME is ordinary Android lifecycle behavior. Preserve process, then relaunch app
+          # through launcher intent and prove post-return input.
+          adb shell input keyevent KEYCODE_HOME
+          sleep 3
+          adb exec-out screencap -p > evidence/05-home-background.png
+          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-background.txt
+          adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > evidence/return-launch.txt 2>&1
+          sleep 4
+          adb exec-out screencap -p > evidence/06-returned-gameplay.png
+          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-returned.txt
+          adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT
+          sleep 2
+          adb exec-out screencap -p > evidence/07-post-return-right.png
+          adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-post-return.txt
 
           adb logcat -d > evidence/logcat.txt 2>&1 || true
           grep -Ei 'FATAL EXCEPTION|Process: com\.ramybaheeg\.slfport' evidence/logcat.txt > evidence/fatal-scan.txt || true
           sha256sum evidence/*.png > evidence/frame-sha256.txt
-          printf 'input_class=ordinary_shipping_keyboard\nprobe=flat_ground_right_only\nforced_completion=false\nteleport=false\nsave_mutation=false\n' > evidence/probe-contract.txt
-          test -s evidence/pid-before-right.txt
-          test -s evidence/pid-after-right.txt
-          cmp -s evidence/pid-before-right.txt evidence/pid-after-right.txt
+          printf 'input_class=ordinary_shipping_keyboard_and_touch_plus_android_home\nforced_completion=false\nteleport=false\nsave_mutation=false\n' > evidence/probe-contract.txt
+          test -s evidence/pid-gameplay.txt
           test ! -s evidence/fatal-scan.txt
+          cmp -s evidence/pid-gameplay.txt evidence/pid-after-resume.txt
+          cmp -s evidence/pid-gameplay.txt evidence/pid-background.txt
+          cmp -s evidence/pid-gameplay.txt evidence/pid-returned.txt
+          cmp -s evidence/pid-gameplay.txt evidence/pid-post-return.txt
           EOF
-          chmod +x q5-flat-right.sh
+          chmod +x q5-lifecycle.sh
 
       - name: Enable KVM
         shell: bash
@@ -138,7 +147,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Boot Android and execute exact-frozen RIGHT probe
+      - name: Boot Android and execute exact-frozen lifecycle probe
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -147,13 +156,13 @@ jobs:
           profile: pixel_7_pro
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: bash q5-flat-right.sh
+          script: bash q5-lifecycle.sh
 
-      - name: Upload rendered evidence
+      - name: Upload rendered lifecycle evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: gate2a-q5-frozen-flat-right
+          name: gate2a-q5-frozen-lifecycle
           path: evidence
           if-no-files-found: error
           retention-days: 14
