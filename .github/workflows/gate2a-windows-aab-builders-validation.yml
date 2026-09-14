@@ -46,8 +46,17 @@ jobs:
           Remove-Item Env:SLF_ANDROID_KEYSTORE -ErrorAction SilentlyContinue
           Remove-Item Env:SLF_ANDROID_KEYSTORE_PASSWORD -ErrorAction SilentlyContinue
           Remove-Item Env:SLF_ANDROID_EXPECTED_CERT_SHA256 -ErrorAction SilentlyContinue
-          $output = & cmd.exe /d /c BUILD_AAB_PRODUCTION.bat 2>&1
-          $rc = $LASTEXITCODE
+          $oldNative = $PSNativeCommandUseErrorActionPreference
+          $oldPreference = $ErrorActionPreference
+          try {
+            $PSNativeCommandUseErrorActionPreference = $false
+            $ErrorActionPreference = 'Continue'
+            $output = & cmd.exe /d /c BUILD_AAB_PRODUCTION.bat 2>&1
+            $rc = $LASTEXITCODE
+          } finally {
+            $PSNativeCommandUseErrorActionPreference = $oldNative
+            $ErrorActionPreference = $oldPreference
+          }
           $text = ($output | Out-String)
           Write-Host $text
           if ($rc -eq 0) { throw 'Production BAT unexpectedly succeeded without required external inputs.' }
