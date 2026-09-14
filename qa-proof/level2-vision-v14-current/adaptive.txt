@@ -1,0 +1,29 @@
+adapt=1 ax=1074 ay=545 lx=1433 ly=752 dx=-359 dy=-207 active=unknown toward=unknown
+polarity_step=1 base_dx=-359 probe_dx=-140 delta_dx=219 active=liselot toward=LEFT
+action_step=1 jump_toward=LEFT active_lower_by=233
+adapt=2 ax=1326 ay=714 lx=1426 ly=621 dx=-100 dy=93 active=liselot toward=LEFT
+up=2 immediate_dx=-332 immediate_dy=-40 settled_dx=-539 settled_dy=-71 relative_drift_x=207 relative_drift_y=31
+action_step=2 jump_toward=LEFT active_lower_by=71
+adapt=3 ax=1580 ay=910 lx=1439 ly=585 dx=141 dy=325 active=liselot toward=LEFT
+action_step=3 horizontal_toward=LEFT active_lower_by=-325
+adapt=4 ax=1012 ay=506 lx=1629 ly=893 dx=-617 dy=-387 active=liselot toward=LEFT
+reverse_step=4 previous_adx=141 current_adx=617 new_toward=RIGHT
+action_step=4 jump_toward=RIGHT active_lower_by=387
+adapt=5 ax=782 ay=518 lx=1689 ly=723 dx=-907 dy=-205 active=liselot toward=RIGHT
+reverse_step=5 previous_adx=617 current_adx=907 new_toward=LEFT
+action_step=5 jump_toward=LEFT active_lower_by=205
+adapt=6 ax=709 ay=537 lx=1429 ly=823 dx=-720 dy=-286 active=liselot toward=LEFT
+action_step=6 jump_toward=LEFT active_lower_by=286
+adapt=7 ax=521 ay=507 lx=1441 ly=733 dx=-920 dy=-226 active=liselot toward=LEFT
+reverse_step=7 previous_adx=720 current_adx=920 new_toward=RIGHT
+action_step=7 jump_toward=RIGHT active_lower_by=226
+adapt=8 ax=361 ay=535 lx=1689 ly=759 dx=-1328 dy=-224 active=liselot toward=RIGHT
+reverse_step=8 previous_adx=920 current_adx=1328 new_toward=LEFT
+action_step=8 jump_toward=LEFT active_lower_by=224
+adapt=9 ax=941 ay=507 lx=1429 ly=733 dx=-488 dy=-226 active=liselot toward=LEFT
+action_step=9 jump_toward=LEFT active_lower_by=226
+adapt=10 detector_unresolved_stop
+piggy_candidate=false
+piggy_follow_candidate=false
+final_active_identity=liselot
+final_toward_key=LEFT
