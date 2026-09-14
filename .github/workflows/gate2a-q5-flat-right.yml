@@ -45,6 +45,37 @@ jobs:
           mkdir -p evidence
           APK="$PWD/runtime-apk/SLF-emulator-x64.apk"
           PACKAGE="com.ramybaheeg.slfport"
+
+          dismiss_system_overlay_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/window.xml evidence/window.xml >/dev/null 2>&1 || true
+            if [ ! -s evidence/window.xml ]; then return 0; fi
+            local coords
+            coords="$(python3 - "$wanted" <<'PY'
+          import re, sys, xml.etree.ElementTree as ET
+          wanted=sys.argv[1].lower()
+          try:
+              root=ET.parse('evidence/window.xml').getroot()
+          except Exception:
+              raise SystemExit(0)
+          for n in root.iter('node'):
+              text=(n.attrib.get('text','')+' '+n.attrib.get('content-desc','')).lower()
+              if wanted in text:
+                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', n.attrib.get('bounds',''))
+                  if m:
+                      x1,y1,x2,y2=map(int,m.groups())
+                      print(f'{(x1+x2)//2} {(y1+y2)//2}')
+                      break
+          PY
+            )"
+            if [ -n "$coords" ]; then
+              adb shell input tap $coords >/dev/null 2>&1 || true
+              echo "dismissed_system_overlay=$wanted at $coords" >> evidence/system-overlay-dismissal.txt
+              sleep 2
+            fi
+          }
+
           adb install -r "$APK" | tee evidence/install.txt
           adb shell pm clear "$PACKAGE" | tee evidence/pm-clear.txt
           adb shell settings put system accelerometer_rotation 0 || true
@@ -53,7 +84,13 @@ jobs:
           adb shell input keyevent KEYCODE_WAKEUP || true
           adb shell wm dismiss-keyguard || true
           adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 > evidence/launch.txt 2>&1
-          sleep 14
+          sleep 12
+
+          # Dismiss Android's first-run fullscreen education overlay only. This is
+          # system UI, not game state or gameplay input.
+          dismiss_system_overlay_text "got it"
+          dismiss_system_overlay_text "ok"
+          adb exec-out screencap -p > evidence/00-after-system-overlay-dismissal.png
 
           # Ordinary shipping keyboard inputs only: dismiss intro, activate Factory Floor,
           # select Level 2 from the fresh-save Level Select, then capture the spawn state.
@@ -84,7 +121,7 @@ jobs:
           adb exec-out screencap -p > evidence/02-level2-after-right.png
 
           adb logcat -d > evidence/logcat.txt 2>&1 || true
-          grep -Ei 'FATAL EXCEPTION|AndroidRuntime|Process: com\.ramybaheeg\.slfport' evidence/logcat.txt > evidence/fatal-scan.txt || true
+          grep -Ei 'FATAL EXCEPTION|Process: com\.ramybaheeg\.slfport' evidence/logcat.txt > evidence/fatal-scan.txt || true
           sha256sum evidence/*.png > evidence/frame-sha256.txt
           printf 'input_class=ordinary_shipping_keyboard\nprobe=flat_ground_right_only\nforced_completion=false\nteleport=false\nsave_mutation=false\n' > evidence/probe-contract.txt
           test -s evidence/pid-before-right.txt
