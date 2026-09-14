@@ -36,7 +36,7 @@ jobs:
           test "$ACTUAL" = "$EXPECTED"
           cp "$APK" runtime-apk/SLF-emulator-x64.apk
 
-      - name: Write ordinary-input lifecycle probe
+      - name: Write guarded ordinary-input lifecycle probe
         shell: bash
         run: |
           cat > q5-lifecycle.sh <<'EOF'
@@ -84,36 +84,33 @@ jobs:
           dismiss_system_overlay_text "got it"
           dismiss_system_overlay_text "ok"
 
-          # Ordinary shipping inputs to fresh-save Level 2.
+          # Deterministic ordinary shipping path: intro -> main menu -> Factory Floor ->
+          # default Level 1 -> shipping Y cutscene skip -> live gameplay.
           adb shell input keyevent KEYCODE_X; sleep 2
           adb shell input keyevent KEYCODE_X; sleep 8
           adb shell input keyevent KEYCODE_X; sleep 4
-          adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1
-          adb shell input keyevent KEYCODE_X; sleep 12
           adb shell input keyevent KEYCODE_X; sleep 8
+          adb shell input keyevent KEYCODE_Y; sleep 10
 
           adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-gameplay.txt
-          adb shell dumpsys window > evidence/window-gameplay.txt 2>&1
           adb exec-out screencap -p > evidence/01-gameplay-before-pause.png
 
-          # Actual rendered touchscreen PAUSE control on 3120x1440 landscape canvas.
-          adb shell input tap 2630 120
+          # Actual rendered touchscreen PAUSE button center on 3120x1440 landscape canvas.
+          adb shell input tap 2630 70
           sleep 2
           adb exec-out screencap -p > evidence/02-paused-a.png
           sleep 4
           adb exec-out screencap -p > evidence/03-paused-b.png
-          sha256sum evidence/02-paused-a.png evidence/03-paused-b.png > evidence/pause-frame-sha256.txt
 
-          # Same rendered control now resumes.
-          adb shell input tap 2630 120
+          # Same shipping touch control resumes, followed by ordinary RIGHT movement.
+          adb shell input tap 2630 70
           sleep 2
           adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT
           sleep 2
           adb exec-out screencap -p > evidence/04-resumed-after-right.png
           adb shell pidof "$PACKAGE" | tr -d '\r' > evidence/pid-after-resume.txt
 
-          # HOME is ordinary Android lifecycle behavior. Preserve process, then relaunch app
-          # through launcher intent and prove post-return input.
+          # Ordinary Android HOME/background/return lifecycle path.
           adb shell input keyevent KEYCODE_HOME
           sleep 3
           adb exec-out screencap -p > evidence/05-home-background.png
@@ -130,13 +127,18 @@ jobs:
           adb logcat -d > evidence/logcat.txt 2>&1 || true
           grep -Ei 'FATAL EXCEPTION|Process: com\.ramybaheeg\.slfport' evidence/logcat.txt > evidence/fatal-scan.txt || true
           sha256sum evidence/*.png > evidence/frame-sha256.txt
+          sha256sum evidence/02-paused-a.png evidence/03-paused-b.png > evidence/pause-frame-sha256.txt
           printf 'input_class=ordinary_shipping_keyboard_and_touch_plus_android_home\nforced_completion=false\nteleport=false\nsave_mutation=false\n' > evidence/probe-contract.txt
+
           test -s evidence/pid-gameplay.txt
           test ! -s evidence/fatal-scan.txt
           cmp -s evidence/pid-gameplay.txt evidence/pid-after-resume.txt
           cmp -s evidence/pid-gameplay.txt evidence/pid-background.txt
           cmp -s evidence/pid-gameplay.txt evidence/pid-returned.txt
           cmp -s evidence/pid-gameplay.txt evidence/pid-post-return.txt
+          cmp -s evidence/02-paused-a.png evidence/03-paused-b.png
+          ! cmp -s evidence/01-gameplay-before-pause.png evidence/02-paused-a.png
+          ! cmp -s evidence/03-paused-b.png evidence/04-resumed-after-right.png
           EOF
           chmod +x q5-lifecycle.sh
 
