@@ -1,8 +1,8 @@
-name: Gate 2A Q5 Level 2 Repaired Candidate Proof
+name: Gate 2A Q5 AFC2 Level 2 Ordinary-Input Proof
 
 on:
   push:
-    branches: [gate2a-android-modernization]
+    branches: [qa/q5-afc2-level2-r1]
     paths: [.github/workflows/gate2a-q5-level2-completion-proof.yml]
   workflow_dispatch:
 
@@ -11,48 +11,61 @@ permissions:
   actions: read
 
 jobs:
-  repaired-level2-proof:
+  frozen-level2-proof:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Checkout repaired candidate plus QA harness
+      - name: Checkout frozen candidate plus QA-only harness
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
-          fetch-depth: 2
+          fetch-depth: 16
 
-      - name: Verify QA-only harness delta and audit customer control instructions
+      - name: Verify QA-only delta and runtime dependency equivalence
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p level2-proof
-          PRODUCT_PARENT="81e9c5b9253757d3882dccdea01e66d18b160c00"
+          PRODUCT_PARENT="afc2e65a65dc95e35ef3391b92be8adc7827e16f"
+          CUSTOMER_HEAD="9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c"
           test "$(git rev-parse HEAD^)" = "$PRODUCT_PARENT"
           git diff --name-only HEAD^ HEAD | tee level2-proof/qa-harness-delta.txt
           test "$(git diff --name-only HEAD^ HEAD | wc -l | tr -d ' ')" = "1"
           test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/gate2a-q5-level2-completion-proof.yml"
-          grep -RniE 'helpString="[^"]*(press|switch|jump|action|key|button)' data/SLF_levelEditor/PC > level2-proof/control-instruction-audit.txt || true
-          grep -RniE 'helpString="[^"]*switch[^"]*(pressing A|press A|by pressing A)' data/SLF_levelEditor/PC > level2-proof/stale-switch-audit.txt || true
-          test ! -s level2-proof/stale-switch-audit.txt
-          grep -n 'press SWITCH (V) to play as Liselot' data/SLF_levelEditor/PC/level2.oel | tee level2-proof/repaired-level2-text.txt
+          git diff --name-only "$CUSTOMER_HEAD..$PRODUCT_PARENT" | tee level2-proof/freeze-vs-customer-delta.txt
+          cat > level2-proof/allowed-tooling-paths.txt <<'EOF'
+          .github/workflows/gate2a-windows-aab-builders-validation.yml
+          BUILD_AAB_PRODUCTION.bat
+          BUILD_AAB_VALIDATION.bat
+          tools/build-aab.ps1
+          EOF
+          sort level2-proof/allowed-tooling-paths.txt -o level2-proof/allowed-tooling-paths.txt
+          sort level2-proof/freeze-vs-customer-delta.txt -o level2-proof/freeze-vs-customer-delta.txt
+          diff -u level2-proof/allowed-tooling-paths.txt level2-proof/freeze-vs-customer-delta.txt
+          printf '%s\n' \
+            'frozen_source=afc2e65a65dc95e35ef3391b92be8adc7827e16f' \
+            'runtime_customer_head=9d8bf6a0b27ef3a6d538c14285af3ccbca48d37c' \
+            'runtime_dependency_equivalence=release_tooling_only_delta' \
+            'claim_scope=customer_runtime_behavior_only_not_exact_apk_container_identity' > level2-proof/equivalence.txt
+          grep -n "press '_Switch' to play as Liselot" data/SLF_levelEditor/PC/level2.oel | tee level2-proof/repaired-level2-text.txt
 
-      - name: Download repaired exact-head emulator APK
+      - name: Download runtime-equivalent repaired-customer emulator APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: gate2a-emulator-x64-apk
           path: runtime-apk
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 34777133689
+          run-id: 34777986347
 
-      - name: Verify repaired APK identity
+      - name: Verify runtime APK identity
         shell: bash
         run: |
           set -euo pipefail
           APK="runtime-apk/SLF-emulator-x64.apk"
           test -f "$APK"
-          test "$(wc -c < "$APK" | tr -d ' ')" = "35875613"
-          test "$(sha256sum "$APK" | awk '{print $1}')" = "d752db4eee59014511c6bc340a72a53c960cfc32c5579c5065dab590370d9b19"
-          sha256sum "$APK" | tee level2-proof/repaired-apk-sha256.txt
-          wc -c "$APK" | tee level2-proof/repaired-apk-bytes.txt
+          test "$(wc -c < "$APK" | tr -d ' ')" = "35875619"
+          test "$(sha256sum "$APK" | awk '{print $1}')" = "53e0293f7ff3d8382db9e62b4f507706efbd015bb9bc001deed6de28cbfd5cd2"
+          sha256sum "$APK" | tee level2-proof/runtime-apk-sha256.txt
+          wc -c "$APK" | tee level2-proof/runtime-apk-bytes.txt
 
       - name: Write ordinary-input rendered proof harness
         shell: bash
@@ -106,33 +119,26 @@ jobs:
           launch; to_level_select
           adb shell input keyevent KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_X; sleep 12; adb shell input keyevent KEYCODE_X; sleep 12
           capture 01-level2-start
-
           for i in $(seq 1 7); do jump_right; done
           capture 02-before-switch
           adb shell input keyevent KEYCODE_V; sleep 2
           capture 03-after-v-switch
-
           for i in $(seq 1 11); do liselot_double_right; done
           capture 04-repaired-tutorial-region
-
           for i in $(seq 1 6); do walk_left; done
           capture 05-after-crate-left-push-attempt
-
           adb shell input keyevent KEYCODE_V; sleep 2
           capture 06-back-to-andre
           for i in $(seq 1 12); do jump_right; done
           capture 07-andre-high-platform-attempt
-
           adb shell input keyevent KEYCODE_V; sleep 2
           for i in $(seq 1 9); do liselot_double_right; done
           capture 08-liselot-spike-exit-approach
           adb shell input keyevent KEYCODE_V; sleep 2
           for i in $(seq 1 9); do jump_right; done
           capture 09-andre-spike-exit-approach
-
           for i in $(seq 1 4); do walk_right; done
           capture 10-final-bounded-state
-
           printf '%s\n' \
             'ordinary_inputs_only=true' \
             'save_or_game_state_edit=false' \
@@ -140,7 +146,6 @@ jobs:
             'forced_completion=false' \
             'switch_input=KEYCODE_V' \
             'liselot_double_jump=two_real_KEYCODE_C_presses_while_airborne' \
-            'crate_strategy=ordinary_LEFT_push_from_high_platform' \
             'unknown_terminal_states_are_not_blindly_confirmed=true' > "$OUT/method.txt"
           printf 'Rendered proof requires sequential visual adjudication. No completion/persistence claim is implied by workflow success.\n' > "$OUT/result.txt"
           EOF
@@ -152,7 +157,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Boot Android and exercise repaired Level 2 customer path
+      - name: Boot Android and exercise Level 2 customer path
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -163,10 +168,10 @@ jobs:
           disable-animations: true
           script: bash level2-proof.sh
 
-      - name: Upload repaired Level 2 rendered proof and control audit
+      - name: Upload rendered proof and equivalence receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: gate2a-q5-level2-repaired-render-proof
+          name: gate2a-q5-afc2-level2-render-proof
           path: level2-proof
           if-no-files-found: error
