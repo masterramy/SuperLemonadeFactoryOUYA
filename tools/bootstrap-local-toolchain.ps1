@@ -3,7 +3,11 @@ Set-StrictMode -Version Latest
 $script:SlfAirVersion = '51.3.4.3'
 $script:SlfAndroidCmdlineVersion = '15859902'
 $script:SlfAndroidCmdlineSha256 = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
-$script:SlfToolchainRoot = Join-Path $env:LOCALAPPDATA 'SuperLemonadeFactory\toolchain'
+if (-not [string]::IsNullOrWhiteSpace($env:SLF_TOOLCHAIN_ROOT)) {
+  $script:SlfToolchainRoot = $env:SLF_TOOLCHAIN_ROOT
+} else {
+  $script:SlfToolchainRoot = Join-Path $env:LOCALAPPDATA 'SuperLemonadeFactory\toolchain'
+}
 $script:SlfReceipt = Join-Path $script:SlfToolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt'
 
 function Add-SlfPath([string]$Directory) {
@@ -20,7 +24,7 @@ function Write-SlfToolchainReceipt([string]$Line) {
 function Confirm-SlfLicense([string]$EnvName,[string]$Title,[string]$Url) {
   $accepted = [Environment]::GetEnvironmentVariable($EnvName)
   if ($accepted -eq '1') {
-    Write-Host "$Title: accepted by explicit $EnvName=1." -ForegroundColor DarkGray
+    Write-Host "${Title}: accepted by explicit $EnvName=1." -ForegroundColor DarkGray
     return
   }
   if ($env:CI -or $env:SLF_NO_PROMPTS -eq '1') {
@@ -34,13 +38,6 @@ function Confirm-SlfLicense([string]$EnvName,[string]$Title,[string]$Url) {
   if ($answer.Trim().ToUpperInvariant() -ne 'I AGREE') {
     throw "$Title was not accepted; no download was performed."
   }
-}
-
-function Get-SlfFirstChildDirectory([string]$Root,[string]$Marker) {
-  $markerFile = Get-ChildItem -LiteralPath $Root -Recurse -File -Filter $Marker -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($null -eq $markerFile) { return $null }
-  if ($Marker -ieq 'java.exe') { return Split-Path -Parent (Split-Path -Parent $markerFile.FullName) }
-  return $markerFile.Directory.Parent.FullName
 }
 
 function Initialize-SlfJava {
