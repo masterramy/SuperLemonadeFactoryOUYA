@@ -21,13 +21,9 @@ if errorlevel 1 (
   exit /b 2
 )
 
-call :bootstrap_tools
-if errorlevel 1 (
-  call :maybe_pause
-  exit /b 2
-)
-
 echo Building Super Lemonade Factory validation AAB...
+echo On first run, missing Java, AIR, or Android SDK tools will be installed for this user only.
+echo HARMAN AIR and Android SDK downloads require explicit license acceptance before download.
 echo This uses a disposable, non-production signing certificate.
 echo.
 pwsh.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\build-aab-entry.ps1" -Mode validation
@@ -50,26 +46,6 @@ echo Output: %~dp0dist\local-aab\SLF-validation.aab
 echo Proof:  %~dp0dist\local-aab\validation-proof\
 call :maybe_pause
 exit /b 0
-
-:bootstrap_tools
-if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" set "PATH=%JAVA_HOME%\bin;%PATH%"
-if defined AIR_HOME if exist "%AIR_HOME%\bin\amxmlc.bat" if exist "%AIR_HOME%\bin\adt.bat" set "PATH=%AIR_HOME%\bin;%PATH%"
-where amxmlc.bat >nul 2>&1
-if not errorlevel 1 (
-  where adt.bat >nul 2>&1
-  if not errorlevel 1 exit /b 0
-)
-for %%D in ("C:\AIR_SDK" "C:\AIRSDK" "%USERPROFILE%\AIR_SDK" "%USERPROFILE%\AIRSDK" "%LOCALAPPDATA%\AIR_SDK") do (
-  if exist "%%~D\bin\amxmlc.bat" if exist "%%~D\bin\adt.bat" (
-    set "AIR_HOME=%%~D"
-    set "PATH=%%~D\bin;%PATH%"
-    exit /b 0
-  )
-)
-echo ERROR: Adobe AIR SDK tools amxmlc/adt were not found.
-echo Set AIR_HOME to your extracted HARMAN AIR SDK 51.3.4.3 folder, then run this BAT again.
-call :record_error "Adobe AIR SDK tools amxmlc/adt were not found. Set AIR_HOME to the HARMAN AIR SDK 51.3.4.3 folder."
-exit /b 2
 
 :record_error
 if not exist "dist\local-aab" mkdir "dist\local-aab" >nul 2>&1
