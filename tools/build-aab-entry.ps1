@@ -39,6 +39,34 @@ function Get-GitBlobSha1([string]$Path) {
   }
 }
 
+function Get-GitBlobSha1AfterCrlfToLf([string]$Path) {
+  $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Path).Path)
+  $normalized = [IO.MemoryStream]::new()
+  try {
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+      if ($bytes[$i] -eq 13 -and ($i + 1) -lt $bytes.Length -and $bytes[$i + 1] -eq 10) {
+        $normalized.WriteByte(10)
+        $i++
+      } else {
+        $normalized.WriteByte($bytes[$i])
+      }
+    }
+    $payload = $normalized.ToArray()
+    $header = [Text.Encoding]::ASCII.GetBytes("blob $($payload.Length)`0")
+    $sha1 = [Security.Cryptography.SHA1]::Create()
+    try {
+      $combined = [byte[]]::new($header.Length + $payload.Length)
+      [Array]::Copy($header, 0, $combined, 0, $header.Length)
+      [Array]::Copy($payload, 0, $combined, $header.Length, $payload.Length)
+      return ([Convert]::ToHexString($sha1.ComputeHash($combined))).ToLowerInvariant()
+    } finally {
+      $sha1.Dispose()
+    }
+  } finally {
+    $normalized.Dispose()
+  }
+}
+
 function Verify-ArchiveSource {
   $treeUrl = "https://api.github.com/repos/$RepoFullName/git/trees/${FrozenTree}?recursive=1"
   try {
@@ -66,8 +94,16 @@ function Verify-ArchiveSource {
     if ($path -in $toolingDelta) { continue }
     $local = Join-Path $RepoRoot ($path -replace '/', [IO.Path]::DirectorySeparatorChar)
     if (-not (Test-Path -LiteralPath $local -PathType Leaf)) { throw "Downloaded archive is missing frozen source file: $path" }
-    $actual = Get-GitBlobSha1 $local
-    if ($actual -ne $expected[$path]) { throw "Downloaded archive source mismatch for $path. Expected Git blob $($expected[$path]), got $actual." }
+    $expectedBlob = $expected[$path]
+    $actualRaw = Get-GitBlobSha1 $local
+    if ($actualRaw -ne $expectedBlob) {
+      # Windows git archive / extraction can materialize text=auto files with CRLF.
+      # Accept only the exact frozen blob after the single reversible CRLF->LF normalization.
+      $actualLf = Get-GitBlobSha1AfterCrlfToLf $local
+      if ($actualLf -ne $expectedBlob) {
+        throw "Downloaded archive source mismatch for $path. Expected Git blob $expectedBlob, raw=$actualRaw, crlf_to_lf=$actualLf."
+      }
+    }
     $verified++
   }
 
