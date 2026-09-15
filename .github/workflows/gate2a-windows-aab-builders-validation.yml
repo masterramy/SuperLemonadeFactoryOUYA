@@ -111,10 +111,14 @@ jobs:
           $dirty = @(git status --porcelain=v1 --untracked-files=all)
           if ($dirty.Count -ne 0) { throw "Unexpected dirty checkout before provenance build:`n$($dirty -join "`n")" }
 
-      - name: Run checkout-mode one-click validation BAT
+      - name: Run checkout-mode one-click validation BAT with AIR tools removed from PATH
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:AIR_HOME)) { throw 'AIR_HOME fixture is unavailable.' }
+          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and ($_ -notlike "$($env:AIR_HOME)*") }) -join ';'
+          if (Get-Command amxmlc -ErrorAction SilentlyContinue) { throw 'Fixture failed: amxmlc is still on PATH before BAT bootstrap.' }
+          if (Get-Command adt -ErrorAction SilentlyContinue) { throw 'Fixture failed: adt is still on PATH before BAT bootstrap.' }
           & cmd.exe /d /c BUILD_AAB_VALIDATION.bat
           if ($LASTEXITCODE -ne 0) { throw "Checkout-mode validation BAT failed with exit $LASTEXITCODE" }
           $aab = 'dist/local-aab/SLF-validation.aab'
@@ -143,7 +147,7 @@ jobs:
           if ($item.Length -ne 1525) { throw "Restored provider byte count mismatch: $($item.Length)" }
           if ($sha -ne '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253') { throw "Restored provider hash mismatch: $sha" }
 
-      - name: Run extracted-archive mode with no .git directory
+      - name: Run extracted-archive mode with no .git and AIR tools removed from PATH
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -155,6 +159,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
           Expand-Archive -LiteralPath $archiveZip -DestinationPath $archiveRoot -Force
           if (Test-Path (Join-Path $archiveRoot '.git')) { throw 'Archive-mode fixture unexpectedly contains .git.' }
+          if ([string]::IsNullOrWhiteSpace($env:AIR_HOME)) { throw 'AIR_HOME fixture is unavailable.' }
+          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and ($_ -notlike "$($env:AIR_HOME)*") }) -join ';'
+          if (Get-Command amxmlc -ErrorAction SilentlyContinue) { throw 'Fixture failed: amxmlc is still on PATH before archive BAT bootstrap.' }
+          if (Get-Command adt -ErrorAction SilentlyContinue) { throw 'Fixture failed: adt is still on PATH before archive BAT bootstrap.' }
           Push-Location $archiveRoot
           try {
             & cmd.exe /d /c BUILD_AAB_VALIDATION.bat
