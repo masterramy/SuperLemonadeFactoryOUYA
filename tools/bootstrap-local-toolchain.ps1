@@ -57,9 +57,9 @@ function Initialize-SlfJava {
   $jdkContainer = Join-Path $script:SlfToolchainRoot 'jdk17'
   $existingJava = Get-ChildItem -LiteralPath $jdkContainer -Recurse -File -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($existingJava) {
-    $home = Split-Path -Parent (Split-Path -Parent $existingJava.FullName)
-    $env:JAVA_HOME = $home
-    Add-SlfPath (Join-Path $home 'bin')
+    $javaHome = Split-Path -Parent (Split-Path -Parent $existingJava.FullName)
+    $env:JAVA_HOME = $javaHome
+    Add-SlfPath (Join-Path $javaHome 'bin')
     return
   }
 
@@ -82,10 +82,10 @@ function Initialize-SlfJava {
     Expand-Archive -LiteralPath $zip -DestinationPath $jdkContainer -Force
     $existingJava = Get-ChildItem -LiteralPath $jdkContainer -Recurse -File -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $existingJava) { throw 'Portable Temurin JDK extraction produced no java.exe.' }
-    $home = Split-Path -Parent (Split-Path -Parent $existingJava.FullName)
-    if (-not (Test-Path (Join-Path $home 'bin\keytool.exe')) -or -not (Test-Path (Join-Path $home 'bin\jarsigner.exe'))) { throw 'Portable Temurin JDK is missing keytool or jarsigner.' }
-    $env:JAVA_HOME = $home
-    Add-SlfPath (Join-Path $home 'bin')
+    $javaHome = Split-Path -Parent (Split-Path -Parent $existingJava.FullName)
+    if (-not (Test-Path (Join-Path $javaHome 'bin\keytool.exe')) -or -not (Test-Path (Join-Path $javaHome 'bin\jarsigner.exe'))) { throw 'Portable Temurin JDK is missing keytool or jarsigner.' }
+    $env:JAVA_HOME = $javaHome
+    Add-SlfPath (Join-Path $javaHome 'bin')
     Write-SlfToolchainReceipt "temurin17_sha256=$actualSha"
     Write-SlfToolchainReceipt "temurin17_source=$downloadUrl"
   } finally {
