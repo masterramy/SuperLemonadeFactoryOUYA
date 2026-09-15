@@ -82,7 +82,7 @@ function Verify-ArchiveSource {
     'BUILD_AAB_PRODUCTION.bat',
     '.github/workflows/gate2a-windows-aab-builders-validation.yml'
   )
-  $allowedNew = @('tools/build-aab-entry.ps1')
+  $allowedNew = @('tools/build-aab-entry.ps1','tools/bootstrap-local-toolchain.ps1')
   $expected = @{}
   foreach ($entry in @($remote.tree)) {
     if ($entry.type -eq 'blob') { $expected[$entry.path] = ("$($entry.sha)").ToLowerInvariant() }
@@ -97,8 +97,6 @@ function Verify-ArchiveSource {
     $expectedBlob = $expected[$path]
     $actualRaw = Get-GitBlobSha1 $local
     if ($actualRaw -ne $expectedBlob) {
-      # Windows git archive / extraction can materialize text=auto files with CRLF.
-      # Accept only the exact frozen blob after the single reversible CRLF->LF normalization.
       $actualLf = Get-GitBlobSha1AfterCrlfToLf $local
       if ($actualLf -ne $expectedBlob) {
         throw "Downloaded archive source mismatch for $path. Expected Git blob $expectedBlob, raw=$actualRaw, crlf_to_lf=$actualLf."
@@ -159,6 +157,11 @@ try {
     New-FrozenGitShim $shimDir
     $env:PATH = "$shimDir;$oldPath"
   }
+
+  $bootstrapScript = Join-Path $ScriptDir 'bootstrap-local-toolchain.ps1'
+  if (-not (Test-Path -LiteralPath $bootstrapScript -PathType Leaf)) { throw "Local toolchain bootstrap is missing: $bootstrapScript" }
+  . $bootstrapScript
+  Initialize-SlfLocalToolchain
 
   $buildScript = Join-Path $ScriptDir 'build-aab.ps1'
   if (-not (Test-Path -LiteralPath $buildScript -PathType Leaf)) { throw "Core AAB builder is missing: $buildScript" }
