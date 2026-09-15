@@ -163,10 +163,10 @@ function Ensure-Android {
     $env:ANDROID_HOME = $root
     Add-LocalPath (Join-Path $cliRoot 'bin')
 
-    $answers = 1..64 | ForEach-Object { 'y' }
-    $answers | & $sdkManager "--sdk_root=$root" --licenses
-    if ($LASTEXITCODE -ne 0) { throw "sdkmanager --licenses failed with exit $LASTEXITCODE." }
-    & $sdkManager "--sdk_root=$root" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+    # Supply acceptance only to installation of the three requested Android SDK packages.
+    # Do not run `sdkmanager --licenses`, which would offer unrelated add-on terms.
+    $answers = 1..8 | ForEach-Object { 'y' }
+    $answers | & $sdkManager "--sdk_root=$root" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
     if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit $LASTEXITCODE." }
     Add-Receipt 'android_platform=android-36'
     Add-Receipt 'android_build_tools=36.0.0'
