@@ -20,12 +20,6 @@ if errorlevel 1 (
   exit /b 2
 )
 
-call :bootstrap_tools
-if errorlevel 1 (
-  call :maybe_pause
-  exit /b 2
-)
-
 if not defined SLF_ANDROID_KEYSTORE (
   echo ERROR: SLF_ANDROID_KEYSTORE is not set.
   echo Set it to the external PKCS#12 production keystore path.
@@ -49,6 +43,12 @@ if not defined SLF_ANDROID_EXPECTED_CERT_SHA256 (
   echo ERROR: SLF_ANDROID_EXPECTED_CERT_SHA256 is not set.
   echo The expected production signing certificate fingerprint is required.
   call :record_error "SLF_ANDROID_EXPECTED_CERT_SHA256 is not set."
+  call :maybe_pause
+  exit /b 2
+)
+
+call :bootstrap_tools
+if errorlevel 1 (
   call :maybe_pause
   exit /b 2
 )
