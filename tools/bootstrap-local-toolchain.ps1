@@ -1,241 +1,191 @@
 Set-StrictMode -Version Latest
 
-$script:SlfAirVersion = '51.3.4.3'
-$script:SlfAndroidCmdlineVersion = '15859902'
-$script:SlfAndroidCmdlineSha256 = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
-if (-not [string]::IsNullOrWhiteSpace($env:SLF_TOOLCHAIN_ROOT)) {
-  $script:SlfToolchainRoot = $env:SLF_TOOLCHAIN_ROOT
-} else {
-  $script:SlfToolchainRoot = Join-Path $env:LOCALAPPDATA 'SuperLemonadeFactory\toolchain'
-}
-$script:SlfReceipt = Join-Path $script:SlfToolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt'
+$script:AirVersion = '51.3.4.3'
+$script:AndroidCliVersion = '15859902'
+$script:AndroidCliSha256 = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+$script:ToolchainRoot = if ([string]::IsNullOrWhiteSpace($env:SLF_TOOLCHAIN_ROOT)) {
+  Join-Path $env:LOCALAPPDATA 'SuperLemonadeFactory\toolchain'
+} else { $env:SLF_TOOLCHAIN_ROOT }
+$script:Receipt = Join-Path $script:ToolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt'
 
-function Add-SlfPath([string]$Directory) {
-  if ([string]::IsNullOrWhiteSpace($Directory) -or -not (Test-Path -LiteralPath $Directory -PathType Container)) { return }
-  $parts = @($env:PATH -split ';')
-  if ($parts -notcontains $Directory) { $env:PATH = "$Directory;$env:PATH" }
+function Add-LocalPath([string]$Directory) {
+  if (-not [string]::IsNullOrWhiteSpace($Directory) -and (Test-Path -LiteralPath $Directory -PathType Container)) {
+    if (@($env:PATH -split ';') -notcontains $Directory) { $env:PATH = "$Directory;$env:PATH" }
+  }
 }
 
-function Write-SlfToolchainReceipt([string]$Line) {
-  New-Item -ItemType Directory -Force -Path $script:SlfToolchainRoot | Out-Null
-  $Line | Add-Content -LiteralPath $script:SlfReceipt -Encoding utf8
+function Add-Receipt([string]$Line) {
+  New-Item -ItemType Directory -Force -Path $script:ToolchainRoot | Out-Null
+  $Line | Add-Content -LiteralPath $script:Receipt -Encoding utf8
 }
 
-function Confirm-SlfLicense([string]$EnvName,[string]$Title,[string]$Url) {
-  $accepted = [Environment]::GetEnvironmentVariable($EnvName)
-  if ($accepted -eq '1') {
+function Confirm-License([string]$EnvName,[string]$Title,[string]$Url) {
+  if ([Environment]::GetEnvironmentVariable($EnvName) -eq '1') {
     Write-Host "${Title}: accepted by explicit $EnvName=1." -ForegroundColor DarkGray
     return
   }
   if ($env:CI -or $env:SLF_NO_PROMPTS -eq '1') {
-    throw "$Title must be explicitly accepted before automatic download. Set $EnvName=1 only after reviewing $Url."
+    throw "$Title must be explicitly accepted before download. Review $Url and set $EnvName=1 only if accepted."
   }
   Write-Host ''
   Write-Host $Title -ForegroundColor Yellow
   Write-Host $Url -ForegroundColor Cyan
-  Write-Host 'The required tool is not installed. It can be downloaded into your user profile without admin rights.'
-  $answer = Read-Host 'Type I AGREE to accept this license and continue, or anything else to stop'
-  if ($answer.Trim().ToUpperInvariant() -ne 'I AGREE') {
-    throw "$Title was not accepted; no download was performed."
-  }
+  Write-Host 'This tool is missing. The builder can install a private per-user copy without admin rights.'
+  $answer = Read-Host 'Type I AGREE to accept the license and continue, or anything else to stop'
+  if ($answer.Trim().ToUpperInvariant() -ne 'I AGREE') { throw "$Title was not accepted; no download was performed." }
 }
 
-function Initialize-SlfJava {
-  if ($env:JAVA_HOME) {
-    $bin = Join-Path $env:JAVA_HOME 'bin'
-    if ((Test-Path (Join-Path $bin 'java.exe')) -and (Test-Path (Join-Path $bin 'keytool.exe')) -and (Test-Path (Join-Path $bin 'jarsigner.exe'))) {
-      Add-SlfPath $bin
-      return
-    }
-  }
-
+function Test-Java17 {
   $java = Get-Command java.exe -ErrorAction SilentlyContinue
   $keytool = Get-Command keytool.exe -ErrorAction SilentlyContinue
   $jarsigner = Get-Command jarsigner.exe -ErrorAction SilentlyContinue
-  if ($java -and $keytool -and $jarsigner) { return }
-
-  $jdkContainer = Join-Path $script:SlfToolchainRoot 'jdk17'
-  $existingJava = Get-ChildItem -LiteralPath $jdkContainer -Recurse -File -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($existingJava) {
-    $javaHome = Split-Path -Parent (Split-Path -Parent $existingJava.FullName)
-    $env:JAVA_HOME = $javaHome
-    Add-SlfPath (Join-Path $javaHome 'bin')
-    return
-  }
-
-  Write-Host 'Java 17 JDK was not found. Downloading a portable Eclipse Temurin JDK 17...' -ForegroundColor Yellow
-  New-Item -ItemType Directory -Force -Path $jdkContainer | Out-Null
-  $assetUrl = 'https://api.adoptium.net/v3/assets/latest/17/hotspot?architecture=x64&heap_size=normal&image_type=jdk&jvm_impl=hotspot&os=windows&vendor=eclipse'
-  $assets = Invoke-RestMethod -Uri $assetUrl -Headers @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' }
-  $asset = @($assets)[0]
-  if ($null -eq $asset -or [string]::IsNullOrWhiteSpace("$($asset.binary.package.link)")) { throw 'Adoptium did not return a Windows x64 JDK 17 package.' }
-  $downloadUrl = "$($asset.binary.package.link)"
-  $expectedSha = ("$($asset.binary.package.checksum)").ToLowerInvariant()
-  if ($expectedSha.Length -ne 64) { throw 'Adoptium returned an invalid JDK package checksum.' }
-  $zip = Join-Path $env:TEMP ('slf-temurin17-' + [Guid]::NewGuid().ToString('N') + '.zip')
-  try {
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $zip
-    $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-    if ($actualSha -ne $expectedSha) { throw "Temurin JDK checksum mismatch. Expected $expectedSha, got $actualSha." }
-    Remove-Item -LiteralPath $jdkContainer -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $jdkContainer | Out-Null
-    Expand-Archive -LiteralPath $zip -DestinationPath $jdkContainer -Force
-    $existingJava = Get-ChildItem -LiteralPath $jdkContainer -Recurse -File -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $existingJava) { throw 'Portable Temurin JDK extraction produced no java.exe.' }
-    $javaHome = Split-Path -Parent (Split-Path -Parent $existingJava.FullName)
-    if (-not (Test-Path (Join-Path $javaHome 'bin\keytool.exe')) -or -not (Test-Path (Join-Path $javaHome 'bin\jarsigner.exe'))) { throw 'Portable Temurin JDK is missing keytool or jarsigner.' }
-    $env:JAVA_HOME = $javaHome
-    Add-SlfPath (Join-Path $javaHome 'bin')
-    Write-SlfToolchainReceipt "temurin17_sha256=$actualSha"
-    Write-SlfToolchainReceipt "temurin17_source=$downloadUrl"
-  } finally {
-    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-  }
+  if (-not $java -or -not $keytool -or -not $jarsigner) { return $false }
+  $text = (& $java.Source -version 2>&1 | Out-String)
+  return $text -match '(?m)(?:openjdk|java) version "17[\.]'
 }
 
-function Test-SlfAirHome([string]$Root) {
+function Ensure-Java17 {
+  if ($env:JAVA_HOME) { Add-LocalPath (Join-Path $env:JAVA_HOME 'bin') }
+  if (Test-Java17) { return }
+
+  $container = Join-Path $script:ToolchainRoot 'jdk17'
+  $javaExe = Get-ChildItem -LiteralPath $container -Recurse -File -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $javaExe) {
+    Write-Host 'Java 17 JDK was not found. Downloading portable Eclipse Temurin JDK 17...' -ForegroundColor Yellow
+    $api = 'https://api.adoptium.net/v3/assets/latest/17/hotspot?architecture=x64&heap_size=normal&image_type=jdk&jvm_impl=hotspot&os=windows&vendor=eclipse'
+    $asset = @(Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' })[0]
+    if ($null -eq $asset -or [string]::IsNullOrWhiteSpace("$($asset.binary.package.link)")) { throw 'Adoptium did not return a Windows x64 JDK 17 package.' }
+    $url = "$($asset.binary.package.link)"
+    $expected = ("$($asset.binary.package.checksum)").ToLowerInvariant()
+    if ($expected.Length -ne 64) { throw 'Adoptium returned an invalid JDK checksum.' }
+    $zip = Join-Path $env:TEMP ('slf-jdk17-' + [Guid]::NewGuid().ToString('N') + '.zip')
+    try {
+      Invoke-WebRequest -Uri $url -OutFile $zip
+      $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+      if ($actual -ne $expected) { throw "Temurin JDK checksum mismatch. Expected $expected, got $actual." }
+      Remove-Item $container -Recurse -Force -ErrorAction SilentlyContinue
+      New-Item -ItemType Directory -Force -Path $container | Out-Null
+      Expand-Archive -LiteralPath $zip -DestinationPath $container -Force
+      Add-Receipt "temurin17_sha256=$actual"
+      Add-Receipt "temurin17_source=$url"
+    } finally { Remove-Item $zip -Force -ErrorAction SilentlyContinue }
+    $javaExe = Get-ChildItem -LiteralPath $container -Recurse -File -Filter java.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+  }
+  if (-not $javaExe) { throw 'Portable Temurin JDK extraction produced no java.exe.' }
+  $javaHome = Split-Path -Parent (Split-Path -Parent $javaExe.FullName)
+  $env:JAVA_HOME = $javaHome
+  Add-LocalPath (Join-Path $javaHome 'bin')
+  if (-not (Test-Java17)) { throw 'Portable Java bootstrap completed, but Java 17/keytool/jarsigner are not usable.' }
+}
+
+function Test-Air([string]$Root) {
   if ([string]::IsNullOrWhiteSpace($Root) -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
-  return (Test-Path (Join-Path $Root 'bin\amxmlc.bat')) -and (Test-Path (Join-Path $Root 'bin\adt.bat'))
+  $adt = Join-Path $Root 'bin\adt.bat'
+  $amxmlc = Join-Path $Root 'bin\amxmlc.bat'
+  if (-not (Test-Path $adt) -or -not (Test-Path $amxmlc)) { return $false }
+  $text = (& $adt -version 2>&1 | Out-String)
+  return $text -match [regex]::Escape($script:AirVersion)
 }
 
-function Initialize-SlfAir {
-  if (Test-SlfAirHome $env:AIR_HOME) {
-    Add-SlfPath (Join-Path $env:AIR_HOME 'bin')
-    return
+function Ensure-Air {
+  if (Test-Air $env:AIR_HOME) { Add-LocalPath (Join-Path $env:AIR_HOME 'bin'); return }
+  $root = Join-Path $script:ToolchainRoot ('air-' + $script:AirVersion)
+  if (-not (Test-Air $root)) {
+    Confirm-License 'SLF_ACCEPT_HARMAN_AIR_LICENSE' 'HARMAN AIR SDK License Agreement' 'https://airsdk.harman.com/assets/pdfs/HARMAN%20AIR%20SDK%20License%20Agreement.pdf'
+    Write-Host "Downloading HARMAN AIR SDK $($script:AirVersion) directly from HARMAN..." -ForegroundColor Yellow
+    $api = "https://dcdu3ujoji.execute-api.us-east-1.amazonaws.com/production/releases/$($script:AirVersion)/urls"
+    $urls = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' }
+    $path = "$($urls.AIR_Win)"
+    if ([string]::IsNullOrWhiteSpace($path)) { throw "HARMAN did not return a Windows AIR SDK URL for $($script:AirVersion)." }
+    $url = "https://airsdk.harman.com${path}?license=accepted"
+    $zip = Join-Path $env:TEMP ('slf-air-' + [Guid]::NewGuid().ToString('N') + '.zip')
+    try {
+      Invoke-WebRequest -Uri $url -OutFile $zip
+      $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+      Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+      New-Item -ItemType Directory -Force -Path $root | Out-Null
+      Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+      Add-Receipt "air_version=$($script:AirVersion)"
+      Add-Receipt "air_archive_sha256=$sha"
+      Add-Receipt "air_source=$url"
+    } finally { Remove-Item $zip -Force -ErrorAction SilentlyContinue }
   }
-
-  $airRoot = Join-Path $script:SlfToolchainRoot ('air-' + $script:SlfAirVersion)
-  if (Test-SlfAirHome $airRoot) {
-    $env:AIR_HOME = $airRoot
-    Add-SlfPath (Join-Path $airRoot 'bin')
-    return
-  }
-
-  Confirm-SlfLicense 'SLF_ACCEPT_HARMAN_AIR_LICENSE' 'HARMAN AIR SDK License Agreement' 'https://airsdk.harman.com/assets/pdfs/HARMAN%20AIR%20SDK%20License%20Agreement.pdf'
-  Write-Host "Downloading HARMAN AIR SDK $($script:SlfAirVersion) directly from HARMAN..." -ForegroundColor Yellow
-  $urlsApi = "https://dcdu3ujoji.execute-api.us-east-1.amazonaws.com/production/releases/$($script:SlfAirVersion)/urls"
-  $urls = Invoke-RestMethod -Uri $urlsApi -Headers @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' }
-  $urlPath = "$($urls.AIR_Win)"
-  if ([string]::IsNullOrWhiteSpace($urlPath)) { throw "HARMAN did not return a Windows AIR SDK URL for $($script:SlfAirVersion)." }
-  $archiveUrl = "https://airsdk.harman.com${urlPath}?license=accepted"
-  $zip = Join-Path $env:TEMP ('slf-air-' + $script:SlfAirVersion + '-' + [Guid]::NewGuid().ToString('N') + '.zip')
-  try {
-    Invoke-WebRequest -Uri $archiveUrl -OutFile $zip
-    $downloadSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-    Remove-Item -LiteralPath $airRoot -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $airRoot | Out-Null
-    Expand-Archive -LiteralPath $zip -DestinationPath $airRoot -Force
-    if (-not (Test-SlfAirHome $airRoot)) { throw 'HARMAN AIR SDK extraction did not produce amxmlc.bat and adt.bat.' }
-    $env:AIR_HOME = $airRoot
-    Add-SlfPath (Join-Path $airRoot 'bin')
-    $versionText = (& (Join-Path $airRoot 'bin\adt.bat') -version 2>&1 | Out-String)
-    if ($versionText -notmatch [regex]::Escape($script:SlfAirVersion)) { throw "Installed AIR SDK does not report expected version $($script:SlfAirVersion). Output: $versionText" }
-    Write-SlfToolchainReceipt "air_version=$($script:SlfAirVersion)"
-    Write-SlfToolchainReceipt "air_archive_sha256=$downloadSha"
-    Write-SlfToolchainReceipt "air_source=$archiveUrl"
-  } finally {
-    Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-  }
+  if (-not (Test-Air $root)) { throw "Installed AIR SDK does not report expected version $($script:AirVersion)." }
+  $env:AIR_HOME = $root
+  Add-LocalPath (Join-Path $root 'bin')
 }
 
-function Test-SlfAndroidSdk([string]$Root) {
+function Test-Android([string]$Root) {
   if ([string]::IsNullOrWhiteSpace($Root) -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
   return (Test-Path (Join-Path $Root 'platforms\android-36\android.jar')) -and
-         (Test-Path (Join-Path $Root 'build-tools\36.0.0')) -and
-         (Test-Path (Join-Path $Root 'platform-tools'))
+    (Test-Path (Join-Path $Root 'build-tools\36.0.0')) -and
+    (Test-Path (Join-Path $Root 'platform-tools'))
 }
 
-function Invoke-SlfSdkManagerLicenses([string]$SdkManager,[string]$SdkRoot) {
-  $psi = [Diagnostics.ProcessStartInfo]::new()
-  $psi.FileName = $env:ComSpec
-  $psi.UseShellExecute = $false
-  $psi.RedirectStandardInput = $true
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $psi.ArgumentList.Add('/d')
-  $psi.ArgumentList.Add('/c')
-  $psi.ArgumentList.Add('"' + $SdkManager + '" --sdk_root="' + $SdkRoot + '" --licenses')
-  $process = [Diagnostics.Process]::new()
-  $process.StartInfo = $psi
-  if (-not $process.Start()) { throw 'Could not start sdkmanager --licenses.' }
-  for ($i = 0; $i -lt 64; $i++) { $process.StandardInput.WriteLine('y') }
-  $process.StandardInput.Close()
-  $stdout = $process.StandardOutput.ReadToEnd()
-  $stderr = $process.StandardError.ReadToEnd()
-  $process.WaitForExit()
-  if ($process.ExitCode -ne 0) { throw "sdkmanager --licenses failed with exit $($process.ExitCode).`n$stdout`n$stderr" }
-}
-
-function Initialize-SlfAndroid {
-  $existing = $env:ANDROID_SDK_ROOT
-  if ([string]::IsNullOrWhiteSpace($existing)) { $existing = $env:ANDROID_HOME }
-  if (Test-SlfAndroidSdk $existing) {
-    $env:ANDROID_SDK_ROOT = $existing
-    $env:ANDROID_HOME = $existing
-    Add-SlfPath (Join-Path $existing 'platform-tools')
+function Ensure-Android {
+  $existing = if ([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $env:ANDROID_HOME } else { $env:ANDROID_SDK_ROOT }
+  if (Test-Android $existing) {
+    $env:ANDROID_SDK_ROOT = $existing; $env:ANDROID_HOME = $existing
+    Add-LocalPath (Join-Path $existing 'platform-tools')
     return
   }
 
-  $sdkRoot = Join-Path $script:SlfToolchainRoot 'android-sdk'
-  if (Test-SlfAndroidSdk $sdkRoot) {
-    $env:ANDROID_SDK_ROOT = $sdkRoot
-    $env:ANDROID_HOME = $sdkRoot
-    Add-SlfPath (Join-Path $sdkRoot 'platform-tools')
-    return
-  }
-
-  Confirm-SlfLicense 'SLF_ACCEPT_ANDROID_SDK_LICENSE' 'Android Software Development Kit License Agreement' 'https://developer.android.com/studio/terms'
-  Write-Host 'Android SDK 36 toolchain was not found. Installing a portable per-user Android SDK...' -ForegroundColor Yellow
-  New-Item -ItemType Directory -Force -Path $sdkRoot | Out-Null
-  $cmdlineRoot = Join-Path $sdkRoot 'cmdline-tools\latest'
-  $sdkManager = Join-Path $cmdlineRoot 'bin\sdkmanager.bat'
-  if (-not (Test-Path $sdkManager)) {
-    $zipUrl = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
-    $zip = Join-Path $env:TEMP ('slf-android-cli-' + [Guid]::NewGuid().ToString('N') + '.zip')
-    $tempExtract = Join-Path $env:TEMP ('slf-android-cli-' + [Guid]::NewGuid().ToString('N'))
-    try {
-      Invoke-WebRequest -Uri $zipUrl -OutFile $zip
-      $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-      if ($actualSha -ne $script:SlfAndroidCmdlineSha256) { throw "Android command-line tools checksum mismatch. Expected $($script:SlfAndroidCmdlineSha256), got $actualSha." }
-      Expand-Archive -LiteralPath $zip -DestinationPath $tempExtract -Force
-      $source = Join-Path $tempExtract 'cmdline-tools'
-      if (-not (Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) { throw 'Android command-line tools archive layout was unexpected.' }
-      Remove-Item -LiteralPath $cmdlineRoot -Recurse -Force -ErrorAction SilentlyContinue
-      New-Item -ItemType Directory -Force -Path $cmdlineRoot | Out-Null
-      Copy-Item -Path (Join-Path $source '*') -Destination $cmdlineRoot -Recurse -Force
-      Write-SlfToolchainReceipt "android_cmdline_tools_version=$($script:SlfAndroidCmdlineVersion)"
-      Write-SlfToolchainReceipt "android_cmdline_tools_sha256=$actualSha"
-      Write-SlfToolchainReceipt "android_cmdline_tools_source=$zipUrl"
-    } finally {
-      Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-      Remove-Item -LiteralPath $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+  $root = Join-Path $script:ToolchainRoot 'android-sdk'
+  if (-not (Test-Android $root)) {
+    Confirm-License 'SLF_ACCEPT_ANDROID_SDK_LICENSE' 'Android Software Development Kit License Agreement' 'https://developer.android.com/studio/terms'
+    Write-Host 'Android SDK 36 was not found. Installing a portable per-user Android SDK...' -ForegroundColor Yellow
+    $cliRoot = Join-Path $root 'cmdline-tools\latest'
+    $sdkManager = Join-Path $cliRoot 'bin\sdkmanager.bat'
+    if (-not (Test-Path $sdkManager)) {
+      $url = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
+      $zip = Join-Path $env:TEMP ('slf-android-cli-' + [Guid]::NewGuid().ToString('N') + '.zip')
+      $tmp = Join-Path $env:TEMP ('slf-android-cli-' + [Guid]::NewGuid().ToString('N'))
+      try {
+        Invoke-WebRequest -Uri $url -OutFile $zip
+        $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+        if ($sha -ne $script:AndroidCliSha256) { throw "Android command-line tools checksum mismatch. Expected $($script:AndroidCliSha256), got $sha." }
+        Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+        $source = Join-Path $tmp 'cmdline-tools'
+        if (-not (Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) { throw 'Android command-line tools archive layout was unexpected.' }
+        Remove-Item $cliRoot -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $cliRoot | Out-Null
+        Copy-Item (Join-Path $source '*') -Destination $cliRoot -Recurse -Force
+        Add-Receipt "android_cmdline_tools_version=$($script:AndroidCliVersion)"
+        Add-Receipt "android_cmdline_tools_sha256=$sha"
+        Add-Receipt "android_cmdline_tools_source=$url"
+      } finally {
+        Remove-Item $zip -Force -ErrorAction SilentlyContinue
+        Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+      }
     }
-  }
-  if (-not (Test-Path $sdkManager)) { throw 'sdkmanager.bat is unavailable after Android command-line tools installation.' }
+    if (-not (Test-Path $sdkManager)) { throw 'sdkmanager.bat is unavailable after Android command-line tools installation.' }
+    $env:ANDROID_SDK_ROOT = $root
+    $env:ANDROID_HOME = $root
+    Add-LocalPath (Join-Path $cliRoot 'bin')
 
-  $env:ANDROID_SDK_ROOT = $sdkRoot
-  $env:ANDROID_HOME = $sdkRoot
-  Add-SlfPath (Join-Path $cmdlineRoot 'bin')
-  Invoke-SlfSdkManagerLicenses $sdkManager $sdkRoot
-  & $sdkManager "--sdk_root=$sdkRoot" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
-  if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit $LASTEXITCODE." }
-  if (-not (Test-SlfAndroidSdk $sdkRoot)) { throw 'Android SDK 36 installation did not produce the required platform/build-tools/platform-tools.' }
-  Add-SlfPath (Join-Path $sdkRoot 'platform-tools')
-  Write-SlfToolchainReceipt 'android_platform=android-36'
-  Write-SlfToolchainReceipt 'android_build_tools=36.0.0'
+    $answers = 1..64 | ForEach-Object { 'y' }
+    $answers | & $sdkManager "--sdk_root=$root" --licenses
+    if ($LASTEXITCODE -ne 0) { throw "sdkmanager --licenses failed with exit $LASTEXITCODE." }
+    & $sdkManager "--sdk_root=$root" 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+    if ($LASTEXITCODE -ne 0) { throw "Android SDK package installation failed with exit $LASTEXITCODE." }
+    Add-Receipt 'android_platform=android-36'
+    Add-Receipt 'android_build_tools=36.0.0'
+  }
+  if (-not (Test-Android $root)) { throw 'Android SDK 36 installation did not produce platform 36, build-tools 36.0.0, and platform-tools.' }
+  $env:ANDROID_SDK_ROOT = $root
+  $env:ANDROID_HOME = $root
+  Add-LocalPath (Join-Path $root 'platform-tools')
 }
 
 function Initialize-SlfLocalToolchain {
-  New-Item -ItemType Directory -Force -Path $script:SlfToolchainRoot | Out-Null
-  Initialize-SlfJava
-  Initialize-SlfAir
-  Initialize-SlfAndroid
-
-  $required = @('java.exe','keytool.exe','jarsigner.exe','amxmlc.bat','adt.bat')
-  foreach ($name in $required) {
-    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { throw "Local toolchain bootstrap completed but required command remains unavailable: $name" }
+  New-Item -ItemType Directory -Force -Path $script:ToolchainRoot | Out-Null
+  Ensure-Java17
+  Ensure-Air
+  Ensure-Android
+  foreach ($name in @('java.exe','keytool.exe','jarsigner.exe','amxmlc.bat','adt.bat')) {
+    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { throw "Toolchain bootstrap completed but required command is unavailable: $name" }
   }
-  if (-not (Test-SlfAndroidSdk $env:ANDROID_SDK_ROOT)) { throw 'Local toolchain bootstrap completed but Android SDK 36 is still incomplete.' }
+  if (-not (Test-Android $env:ANDROID_SDK_ROOT)) { throw 'Toolchain bootstrap completed but Android SDK 36 is incomplete.' }
   Write-Host ''
   Write-Host 'Local Android/AIR build toolchain is ready.' -ForegroundColor Green
   Write-Host "AIR_HOME=$env:AIR_HOME"
