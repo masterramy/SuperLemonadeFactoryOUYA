@@ -10,6 +10,7 @@ on:
       - BUILD_AAB_PRODUCTION.bat
       - tools/build-aab.ps1
       - tools/build-aab-entry.ps1
+      - tools/bootstrap-local-toolchain.ps1
       - .github/workflows/gate2a-windows-aab-builders-validation.yml
   workflow_dispatch:
 
@@ -38,6 +39,7 @@ jobs:
             'BUILD_AAB_VALIDATION.bat',
             'BUILD_AAB_PRODUCTION.bat',
             'tools/build-aab-entry.ps1',
+            'tools/bootstrap-local-toolchain.ps1',
             '.github/workflows/gate2a-windows-aab-builders-validation.yml'
           )
           $changed = @(git diff --name-only "$base..HEAD")
@@ -111,14 +113,10 @@ jobs:
           $dirty = @(git status --porcelain=v1 --untracked-files=all)
           if ($dirty.Count -ne 0) { throw "Unexpected dirty checkout before provenance build:`n$($dirty -join "`n")" }
 
-      - name: Run checkout-mode one-click validation BAT with AIR tools removed from PATH
+      - name: Run checkout-mode validation BAT
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ([string]::IsNullOrWhiteSpace($env:AIR_HOME)) { throw 'AIR_HOME fixture is unavailable.' }
-          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and ($_ -notlike "$($env:AIR_HOME)*") }) -join ';'
-          if (Get-Command amxmlc -ErrorAction SilentlyContinue) { throw 'Fixture failed: amxmlc is still on PATH before BAT bootstrap.' }
-          if (Get-Command adt -ErrorAction SilentlyContinue) { throw 'Fixture failed: adt is still on PATH before BAT bootstrap.' }
           & cmd.exe /d /c BUILD_AAB_VALIDATION.bat
           if ($LASTEXITCODE -ne 0) { throw "Checkout-mode validation BAT failed with exit $LASTEXITCODE" }
           $aab = 'dist/local-aab/SLF-validation.aab'
@@ -147,7 +145,7 @@ jobs:
           if ($item.Length -ne 1525) { throw "Restored provider byte count mismatch: $($item.Length)" }
           if ($sha -ne '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253') { throw "Restored provider hash mismatch: $sha" }
 
-      - name: Run extracted-archive mode with no .git and AIR tools removed from PATH
+      - name: Run extracted-archive mode with no .git directory
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -159,10 +157,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
           Expand-Archive -LiteralPath $archiveZip -DestinationPath $archiveRoot -Force
           if (Test-Path (Join-Path $archiveRoot '.git')) { throw 'Archive-mode fixture unexpectedly contains .git.' }
-          if ([string]::IsNullOrWhiteSpace($env:AIR_HOME)) { throw 'AIR_HOME fixture is unavailable.' }
-          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -and ($_ -notlike "$($env:AIR_HOME)*") }) -join ';'
-          if (Get-Command amxmlc -ErrorAction SilentlyContinue) { throw 'Fixture failed: amxmlc is still on PATH before archive BAT bootstrap.' }
-          if (Get-Command adt -ErrorAction SilentlyContinue) { throw 'Fixture failed: adt is still on PATH before archive BAT bootstrap.' }
           Push-Location $archiveRoot
           try {
             & cmd.exe /d /c BUILD_AAB_VALIDATION.bat
@@ -208,8 +202,84 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: gate2a-windows-aab-builder-validation-rev42
+          name: gate2a-windows-aab-builder-validation-rev43
           path: |
             dist/local-aab
             dist/archive-mode-local-aab
+          if-no-files-found: warn
+
+  validate-clean-machine-bootstrap:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      SLF_NO_PAUSE: '1'
+      SLF_NO_PROMPTS: '1'
+      SLF_ACCEPT_HARMAN_AIR_LICENSE: '1'
+      SLF_ACCEPT_ANDROID_SDK_LICENSE: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 64
+
+      - name: Build extracted ZIP from a clean local toolchain root
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archiveZip = Join-Path $env:RUNNER_TEMP 'slf-clean-source.zip'
+          $archiveRoot = Join-Path $env:RUNNER_TEMP 'slf-clean-source'
+          $toolchainRoot = Join-Path $env:RUNNER_TEMP 'slf-clean-toolchain'
+          Remove-Item $archiveZip -Force -ErrorAction SilentlyContinue
+          Remove-Item $archiveRoot,$toolchainRoot -Recurse -Force -ErrorAction SilentlyContinue
+          git archive --format=zip HEAD -o $archiveZip
+          if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
+          Expand-Archive -LiteralPath $archiveZip -DestinationPath $archiveRoot -Force
+          if (Test-Path (Join-Path $archiveRoot '.git')) { throw 'Clean archive fixture unexpectedly contains .git.' }
+
+          $pwshDir = Split-Path -Parent (Get-Command pwsh.exe).Source
+          $system32 = Join-Path $env:SystemRoot 'System32'
+          $env:PATH = "$pwshDir;$system32;$env:SystemRoot"
+          Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:AIR_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:ANDROID_SDK_ROOT -ErrorAction SilentlyContinue
+          Remove-Item Env:ANDROID_HOME -ErrorAction SilentlyContinue
+          $env:SLF_TOOLCHAIN_ROOT = $toolchainRoot
+
+          if (Get-Command java.exe -ErrorAction SilentlyContinue) { throw 'Clean bootstrap fixture failed: java is still available.' }
+          if (Get-Command amxmlc.bat -ErrorAction SilentlyContinue) { throw 'Clean bootstrap fixture failed: amxmlc is still available.' }
+          if (Get-Command sdkmanager.bat -ErrorAction SilentlyContinue) { throw 'Clean bootstrap fixture failed: sdkmanager is still available.' }
+
+          Push-Location $archiveRoot
+          try {
+            & cmd.exe /d /c BUILD_AAB_VALIDATION.bat
+            if ($LASTEXITCODE -ne 0) {
+              $log = Join-Path $archiveRoot 'dist/local-aab/LAST_BUILD_ERROR.txt'
+              if (Test-Path $log) { Get-Content -Raw $log | Write-Host }
+              throw "Clean-machine archive validation failed with exit $LASTEXITCODE"
+            }
+          } finally { Pop-Location }
+
+          $aab = Join-Path $archiveRoot 'dist/local-aab/SLF-validation.aab'
+          $meta = Join-Path $archiveRoot 'dist/local-aab/validation-proof/release-metadata.txt'
+          $prov = Join-Path $archiveRoot 'dist/local-aab/validation-proof/archive-source-verification.txt'
+          $receipt = Join-Path $toolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt'
+          foreach ($path in @($aab,$meta,$prov,$receipt)) { if (-not (Test-Path $path)) { throw "Clean-machine proof missing: $path" } }
+          $receiptText = Get-Content -Raw $receipt
+          if ($receiptText -notmatch 'temurin17_sha256=') { throw 'Clean bootstrap did not record downloaded Temurin JDK.' }
+          if ($receiptText -notmatch 'air_version=51\.3\.4\.3') { throw 'Clean bootstrap did not record AIR 51.3.4.3.' }
+          if ($receiptText -notmatch 'android_cmdline_tools_version=15859902') { throw 'Clean bootstrap did not record Android command-line tools.' }
+          if ($receiptText -notmatch 'android_platform=android-36') { throw 'Clean bootstrap did not install Android 36.' }
+          if ((Get-Content -Raw $prov) -notmatch 'provenance_mode=archive-frozen-tree') { throw 'Clean bootstrap archive provenance receipt missing.' }
+          Get-FileHash -Algorithm SHA256 $aab | Format-List
+
+          $copyTarget = 'dist/clean-machine-bootstrap'
+          New-Item -ItemType Directory -Force -Path $copyTarget | Out-Null
+          Copy-Item -LiteralPath (Join-Path $archiveRoot 'dist/local-aab') -Destination $copyTarget -Recurse -Force
+          Copy-Item -LiteralPath $receipt -Destination (Join-Path $copyTarget 'SLF_TOOLCHAIN_RECEIPT.txt') -Force
+
+      - name: Upload clean-machine bootstrap proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-clean-machine-bootstrap-rev43
+          path: dist/clean-machine-bootstrap
           if-no-files-found: warn
