@@ -40,7 +40,7 @@ function Get-GitBlobSha1([string]$Path) {
 }
 
 function Verify-ArchiveSource {
-  $treeUrl = "https://api.github.com/repos/$RepoFullName/git/trees/$FrozenTree?recursive=1"
+  $treeUrl = "https://api.github.com/repos/$RepoFullName/git/trees/${FrozenTree}?recursive=1"
   try {
     $remote = Invoke-RestMethod -Uri $treeUrl -Headers @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' }
   } catch {
