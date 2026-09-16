@@ -28,6 +28,10 @@ package
 		{
 			super(640, 360, PCIntroState, 3, 60, 30);
 
+			// Keep the original logo asset untouched on disk, but use the bounded
+			// Android-edition lime treatment everywhere Registry.ImgLogo is loaded.
+			Registry.ImgLogo = LimeLogo;
+
 			// Modern Android can resize the AIR stage while the app remains alive
 			// (for example when a foldable changes posture). Keep the legacy canvas
 			// aspect-fitted to the current stage on every resize.
