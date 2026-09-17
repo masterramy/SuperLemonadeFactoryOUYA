@@ -1,0 +1,104 @@
+name: Gate 2A Adaptive Touch Validation
+
+on:
+  push:
+    branches:
+      - gate2a-rev45-adaptive-touch-controls-ci
+
+permissions:
+  contents: read
+
+jobs:
+  compile-and-package:
+    runs-on: windows-2025
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout exact validation revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 16
+
+      - name: Prove runtime source matches adaptive-controls candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $candidate = '4255f0aae89ec9ef31ea16471858b1ec1c48d728'
+          git cat-file -e "$candidate^{commit}"
+          $runtimeDelta = @(git diff --name-only "$candidate..HEAD" -- src application.xml gate2a-flex-config.xml obj lib data icons)
+          if ($runtimeDelta.Count -ne 0) {
+            throw "Validation branch changed runtime/build inputs beyond the adaptive-controls candidate: $($runtimeDelta -join ', ')"
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          @(
+            "clean_candidate=$candidate"
+            "validation_head=$((& git rev-parse HEAD).Trim())"
+            "validation_tree=$((& git rev-parse 'HEAD^{tree}').Trim())"
+          ) | Set-Content dist/adaptive-touch-provenance.txt -Encoding utf8
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17.0.20+8"
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: "51.3.4.3"
+          accept-license: true
+
+      - name: Sanitize exact obsolete AIR OUYA drawable template
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = Join-Path $env:AIR_HOME 'lib/android/lib/resources/app_entry/res/drawable-xhdpi/ouya_icon.png'
+          if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Expected AIR provider template is missing: $target" }
+          $item = Get-Item -LiteralPath $target
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          $expectedHash = '58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253'
+          if ($item.Length -ne 1525 -or $hash -ne $expectedHash) {
+            throw "AIR provider template identity changed; refusing sanitation. bytes=$($item.Length) sha256=$hash"
+          }
+          Remove-Item -Force -LiteralPath $target
+
+      - name: Compile adaptive-controls candidate
+        shell: cmd
+        run: |
+          if not exist bin mkdir bin
+          if exist bin\SLFforOuya.swf del /f /q bin\SLFforOuya.swf
+          amxmlc -load-config+=obj\SLF_for_OuyaConfig.xml -output=bin\SLFforOuya.swf
+
+      - name: Create disposable validation certificate
+        shell: cmd
+        run: |
+          if exist gate2a-adaptive-validation.p12 del /f /q gate2a-adaptive-validation.p12
+          adt -certificate -validityPeriod 1 -cn "Gate2A Adaptive Touch Validation" 2048-RSA gate2a-adaptive-validation.p12 gate2a
+
+      - name: Package validation APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $androidSdk = $env:ANDROID_SDK_ROOT
+          if ([string]::IsNullOrWhiteSpace($androidSdk)) { $androidSdk = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($androidSdk) -or -not (Test-Path $androidSdk)) { throw 'Android SDK unavailable.' }
+          & adt -package -target apk -storetype pkcs12 -keystore gate2a-adaptive-validation.p12 -storepass gate2a dist/SLF-adaptive-touch-validation.apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $androidSdk
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sha = (Get-FileHash -Algorithm SHA256 dist/SLF-adaptive-touch-validation.apk).Hash.ToLowerInvariant()
+          $bytes = (Get-Item dist/SLF-adaptive-touch-validation.apk).Length
+          @(
+            "apk_bytes=$bytes"
+            "apk_sha256=$sha"
+            "clean_candidate=4255f0aae89ec9ef31ea16471858b1ec1c48d728"
+          ) | Set-Content dist/adaptive-touch-build-receipt.txt -Encoding utf8
+
+      - name: Upload adaptive touch validation artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-adaptive-touch-validation
+          path: |
+            dist/SLF-adaptive-touch-validation.apk
+            dist/adaptive-touch-build-receipt.txt
+            dist/adaptive-touch-provenance.txt
+          if-no-files-found: error
