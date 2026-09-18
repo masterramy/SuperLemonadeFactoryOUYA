@@ -1,0 +1,56 @@
+name: Gate 2A Rev46 Source Package Export
+
+on:
+  push:
+    branches:
+      - gate2a-rev46-source-package-ci
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper with candidate parent
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 2
+
+      - name: Export exact validated candidate source ZIP
+        shell: bash
+        env:
+          CANDIDATE_SHA: 4da53647a4e41646c3b23ab2a57e206482fc555e
+          CANDIDATE_TREE: cb4d1f3356aeb458d1e113b3a3d68217b7e42535
+          RUNTIME_SHA: 4255f0aae89ec9ef31ea16471858b1ec1c48d728
+          RUNTIME_TREE: 372a480318cb475e62fb2bbbfe10665d52b10a0c
+        run: |
+          set -euo pipefail
+          git cat-file -e "$CANDIDATE_SHA^{commit}"
+          actual_tree="$(git rev-parse "$CANDIDATE_SHA^{tree}")"
+          test "$actual_tree" = "$CANDIDATE_TREE"
+          mkdir -p out
+          zip_path="out/SuperLemonadeFactoryOUYA-adaptive-touch-full-builders-SOURCE.zip"
+          git archive --format=zip "$CANDIDATE_SHA" -o "$zip_path"
+          sha="$(sha256sum "$zip_path" | awk '{print $1}')"
+          bytes="$(stat -c '%s' "$zip_path")"
+          {
+            echo "candidate_commit=$CANDIDATE_SHA"
+            echo "candidate_tree=$CANDIDATE_TREE"
+            echo "runtime_commit=$RUNTIME_SHA"
+            echo "runtime_tree=$RUNTIME_TREE"
+            echo "source_zip_bytes=$bytes"
+            echo "source_zip_sha256=$sha"
+            echo "clean_machine_validation_run=35401983676"
+            echo "clean_machine_job=105783661211"
+            echo "builders=BUILD_ANDROID_VALIDATION.bat,BUILD_APK_VALIDATION.bat,BUILD_AAB_VALIDATION.bat,BUILD_ANDROID_PRODUCTION.bat,BUILD_APK_PRODUCTION.bat,BUILD_AAB_PRODUCTION.bat"
+          } > out/SOURCE_PACKAGE_IDENTITY.txt
+          unzip -t "$zip_path"
+          cat out/SOURCE_PACKAGE_IDENTITY.txt
+
+      - name: Upload exact source ZIP
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev46-source-package
+          path: out
+          if-no-files-found: error
