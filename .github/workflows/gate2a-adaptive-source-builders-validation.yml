@@ -1,0 +1,297 @@
+name: Gate 2A Adaptive Source Builders Validation
+
+on:
+  push:
+    branches:
+      - gate2a-rev46-adaptive-touch-full-builders
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUNTIME_COMMIT: 4255f0aae89ec9ef31ea16471858b1ec1c48d728
+  RUNTIME_TREE: 372a480318cb475e62fb2bbbfe10665d52b10a0c
+  SLF_NO_PAUSE: '1'
+
+jobs:
+  validate-builders:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source-package candidate
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 64
+
+      - name: Prove runtime bytes are unchanged from adaptive-touch candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git cat-file -e "$env:RUNTIME_COMMIT^{commit}"
+          $allowed = @(
+            '.github/workflows/gate2a-adaptive-source-builders-validation.yml',
+            'BUILD_ANDROID_PRODUCTION.bat',
+            'BUILD_ANDROID_VALIDATION.bat',
+            'BUILD_APK_PRODUCTION.bat',
+            'BUILD_APK_VALIDATION.bat',
+            'BUILD_WINDOWS_README.txt',
+            'tools/build-aab-entry.ps1',
+            'tools/build-apk.ps1'
+          )
+          $changed = @(git diff --name-only "$env:RUNTIME_COMMIT..HEAD")
+          $unexpected = @($changed | Where-Object { $_ -notin $allowed })
+          if ($unexpected.Count -ne 0) { throw "Unexpected runtime/product delta: $($unexpected -join ', ')" }
+          $runtimeDelta = @(git diff --name-only "$env:RUNTIME_COMMIT..HEAD" -- src data icons application.xml obj lib)
+          if ($runtimeDelta.Count -ne 0) { throw "Runtime/build-input delta detected: $($runtimeDelta -join ', ')" }
+          $tree = ((git rev-parse "$env:RUNTIME_COMMIT^{tree}") | Out-String).Trim()
+          if ($tree -ne $env:RUNTIME_TREE) { throw "Runtime tree mismatch: expected $env:RUNTIME_TREE got $tree" }
+
+      - name: Prove production BATs fail closed without signing inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item Env:SLF_ANDROID_KEYSTORE -ErrorAction SilentlyContinue
+          Remove-Item Env:SLF_ANDROID_KEYSTORE_PASSWORD -ErrorAction SilentlyContinue
+          Remove-Item Env:SLF_ANDROID_EXPECTED_CERT_SHA256 -ErrorAction SilentlyContinue
+          foreach ($bat in @('BUILD_APK_PRODUCTION.bat','BUILD_AAB_PRODUCTION.bat')) {
+            Remove-Item -Recurse -Force 'dist/local-apk','dist/local-aab' -ErrorAction SilentlyContinue
+            $oldNative = $PSNativeCommandUseErrorActionPreference
+            $oldPref = $ErrorActionPreference
+            try {
+              $PSNativeCommandUseErrorActionPreference = $false
+              $ErrorActionPreference = 'Continue'
+              $output = & cmd.exe /d /c $bat 2>&1
+              $rc = $LASTEXITCODE
+            } finally {
+              $PSNativeCommandUseErrorActionPreference = $oldNative
+              $ErrorActionPreference = $oldPref
+            }
+            $global:LASTEXITCODE = 0
+            $text = ($output | Out-String)
+            Write-Host $text
+            if ($rc -eq 0) { throw "$bat unexpectedly succeeded without external production signing inputs." }
+            if ($text -notmatch 'SLF_ANDROID_KEYSTORE is not set') { throw "$bat did not fail at the missing-keystore guard." }
+          }
+          Remove-Item -Recurse -Force 'dist/local-apk','dist/local-aab' -ErrorAction SilentlyContinue
+
+      - name: Set up Java 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+
+      - name: Set up AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+
+      - name: Ensure Android SDK 36 inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { throw 'Android SDK environment is unavailable.' }
+          $sdk = Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if ($null -eq $sdk) {
+            $candidate = Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat'
+            if (-not (Test-Path $candidate)) { throw 'sdkmanager.bat is unavailable.' }
+            $sdkPath = $candidate
+          } else { $sdkPath = $sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed.' }
+
+      - name: Remove setup-action checkout residue
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "Unexpected dirty checkout before provenance build: $($dirty -join ', ')" }
+
+      - name: Build BOTH validation APK and AAB from checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+          if ($LASTEXITCODE -ne 0) { throw "Combined checkout builder failed with exit $LASTEXITCODE" }
+          $required = @(
+            'dist/local-apk/SLF-validation.apk',
+            'dist/local-apk/validation-proof/release-metadata.txt',
+            'dist/local-apk/validation-proof/archive-source-verification.txt',
+            'dist/local-aab/SLF-validation.aab',
+            'dist/local-aab/validation-proof/release-metadata.txt',
+            'dist/local-aab/validation-proof/archive-source-verification.txt'
+          )
+          foreach ($path in $required) { if (-not (Test-Path $path)) { throw "Missing checkout build output: $path" } }
+          if ((Get-Content -Raw 'dist/local-apk/validation-proof/archive-source-verification.txt') -notmatch 'provenance_mode=git-checkout') { throw 'APK checkout provenance missing.' }
+          if ((Get-Content -Raw 'dist/local-aab/validation-proof/archive-source-verification.txt') -notmatch 'provenance_mode=git-checkout') { throw 'AAB checkout provenance missing.' }
+          Get-FileHash -Algorithm SHA256 'dist/local-apk/SLF-validation.apk' | Format-List
+          Get-FileHash -Algorithm SHA256 'dist/local-aab/SLF-validation.aab' | Format-List
+
+      - name: Build BOTH from extracted source ZIP with no git metadata
+        shell: pwsh
+        env:
+          SLF_ACCEPT_HARMAN_AIR_LICENSE: '1'
+          SLF_ACCEPT_ANDROID_SDK_LICENSE: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archiveZip = Join-Path $env:RUNNER_TEMP 'slf-source-fixture.zip'
+          $archiveRoot = Join-Path $env:RUNNER_TEMP 'slf-source-fixture'
+          Remove-Item $archiveZip -Force -ErrorAction SilentlyContinue
+          Remove-Item $archiveRoot -Recurse -Force -ErrorAction SilentlyContinue
+          git archive --format=zip HEAD -o $archiveZip
+          if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
+          Expand-Archive -LiteralPath $archiveZip -DestinationPath $archiveRoot -Force
+          if (Test-Path (Join-Path $archiveRoot '.git')) { throw 'Extracted source fixture unexpectedly contains .git.' }
+          Push-Location $archiveRoot
+          try {
+            & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+            if ($LASTEXITCODE -ne 0) {
+              foreach ($log in @('dist/local-apk/LAST_BUILD_ERROR.txt','dist/local-aab/LAST_BUILD_ERROR.txt')) {
+                if (Test-Path $log) { Get-Content -Raw $log | Write-Host }
+              }
+              throw "Extracted source ZIP combined builder failed with exit $LASTEXITCODE"
+            }
+            foreach ($path in @('dist/local-apk/SLF-validation.apk','dist/local-aab/SLF-validation.aab')) {
+              if (-not (Test-Path $path)) { throw "Extracted source ZIP missing output: $path" }
+            }
+            foreach ($prov in @('dist/local-apk/validation-proof/archive-source-verification.txt','dist/local-aab/validation-proof/archive-source-verification.txt')) {
+              $text = Get-Content -Raw $prov
+              if ($text -notmatch 'provenance_mode=archive-frozen-tree') { throw "Archive provenance classification missing: $prov" }
+              if ($text -notmatch "frozen_product_commit=$env:RUNTIME_COMMIT") { throw "Runtime commit provenance missing: $prov" }
+              if ($text -notmatch "frozen_product_tree=$env:RUNTIME_TREE") { throw "Runtime tree provenance missing: $prov" }
+            }
+          } finally { Pop-Location }
+          Remove-Item -Recurse -Force 'dist/extracted-source-proof' -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force 'dist/extracted-source-proof' | Out-Null
+          Copy-Item (Join-Path $archiveRoot 'dist/local-apk') 'dist/extracted-source-proof/local-apk' -Recurse -Force
+          Copy-Item (Join-Path $archiveRoot 'dist/local-aab') 'dist/extracted-source-proof/local-aab' -Recurse -Force
+
+      - name: Upload builder validation receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-adaptive-source-builders-proof
+          path: |
+            dist/local-apk
+            dist/local-aab
+            dist/extracted-source-proof
+          if-no-files-found: warn
+
+  validate-clean-machine-source-zip:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    env:
+      SLF_NO_PAUSE: '1'
+      SLF_NO_PROMPTS: '1'
+      SLF_ACCEPT_HARMAN_AIR_LICENSE: '1'
+      SLF_ACCEPT_ANDROID_SDK_LICENSE: '1'
+    steps:
+      - name: Checkout exact source-package candidate
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 1
+
+      - name: Prove clean extracted ZIP bootstraps toolchain and builds BOTH artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archiveZip = Join-Path $env:RUNNER_TEMP 'slf-clean-source.zip'
+          $archiveRoot = Join-Path $env:RUNNER_TEMP 'slf-clean-source'
+          $toolchainRoot = Join-Path $env:RUNNER_TEMP 'slf-clean-toolchain'
+          Remove-Item $archiveZip -Force -ErrorAction SilentlyContinue
+          Remove-Item $archiveRoot,$toolchainRoot -Recurse -Force -ErrorAction SilentlyContinue
+          git archive --format=zip HEAD -o $archiveZip
+          Expand-Archive -LiteralPath $archiveZip -DestinationPath $archiveRoot -Force
+
+          $pwshDir = Split-Path -Parent (Get-Command pwsh.exe).Source
+          $system32 = Join-Path $env:SystemRoot 'System32'
+          $env:PATH = "$pwshDir;$system32;$env:SystemRoot"
+          Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:AIR_HOME -ErrorAction SilentlyContinue
+          Remove-Item Env:ANDROID_SDK_ROOT -ErrorAction SilentlyContinue
+          Remove-Item Env:ANDROID_HOME -ErrorAction SilentlyContinue
+          $env:SLF_TOOLCHAIN_ROOT = $toolchainRoot
+
+          if (Get-Command java.exe -ErrorAction SilentlyContinue) { throw 'Clean fixture failed: java remains available.' }
+          if (Get-Command amxmlc.bat -ErrorAction SilentlyContinue) { throw 'Clean fixture failed: AIR compiler remains available.' }
+          if (Get-Command sdkmanager.bat -ErrorAction SilentlyContinue) { throw 'Clean fixture failed: Android SDK manager remains available.' }
+
+          Push-Location $archiveRoot
+          try {
+            & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+            if ($LASTEXITCODE -ne 0) {
+              foreach ($log in @('dist/local-apk/LAST_BUILD_ERROR.txt','dist/local-aab/LAST_BUILD_ERROR.txt')) {
+                if (Test-Path $log) { Get-Content -Raw $log | Write-Host }
+              }
+              throw "Clean-machine source ZIP build failed with exit $LASTEXITCODE"
+            }
+          } finally { Pop-Location }
+
+          foreach ($path in @(
+            (Join-Path $archiveRoot 'dist/local-apk/SLF-validation.apk'),
+            (Join-Path $archiveRoot 'dist/local-aab/SLF-validation.aab'),
+            (Join-Path $toolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt')
+          )) {
+            if (-not (Test-Path $path)) { throw "Clean-machine proof missing: $path" }
+          }
+          $receipt = Get-Content -Raw (Join-Path $toolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt')
+          if ($receipt -notmatch 'temurin17_sha256=') { throw 'Temurin bootstrap receipt missing.' }
+          if ($receipt -notmatch 'air_version=51\.3\.4\.3') { throw 'AIR bootstrap receipt missing.' }
+          if ($receipt -notmatch 'android_platform=android-36') { throw 'Android bootstrap receipt missing.' }
+
+          New-Item -ItemType Directory -Force 'dist/clean-machine-source-proof' | Out-Null
+          Copy-Item (Join-Path $archiveRoot 'dist/local-apk') 'dist/clean-machine-source-proof/local-apk' -Recurse -Force
+          Copy-Item (Join-Path $archiveRoot 'dist/local-aab') 'dist/clean-machine-source-proof/local-aab' -Recurse -Force
+          Copy-Item (Join-Path $toolchainRoot 'SLF_TOOLCHAIN_RECEIPT.txt') 'dist/clean-machine-source-proof/SLF_TOOLCHAIN_RECEIPT.txt' -Force
+
+      - name: Upload clean-machine proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-adaptive-source-clean-machine-proof
+          path: dist/clean-machine-source-proof
+          if-no-files-found: warn
+
+  package-source:
+    needs:
+      - validate-builders
+      - validate-clean-machine-source-zip
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact validated source-package candidate
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 1
+
+      - name: Create exact source ZIP and receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/source-package
+          zip_path="dist/source-package/SuperLemonadeFactoryOUYA-adaptive-touch-full-builders-SOURCE.zip"
+          git archive --format=zip HEAD -o "$zip_path"
+          sha="$(sha256sum "$zip_path" | awk '{print $1}')"
+          bytes="$(stat -c '%s' "$zip_path")"
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          {
+            echo "source_package_head=$head"
+            echo "source_package_tree=$tree"
+            echo "runtime_commit=$RUNTIME_COMMIT"
+            echo "runtime_tree=$RUNTIME_TREE"
+            echo "source_zip_bytes=$bytes"
+            echo "source_zip_sha256=$sha"
+            echo "builders=BUILD_ANDROID_VALIDATION.bat,BUILD_APK_VALIDATION.bat,BUILD_AAB_VALIDATION.bat,BUILD_ANDROID_PRODUCTION.bat,BUILD_APK_PRODUCTION.bat,BUILD_AAB_PRODUCTION.bat"
+          } > dist/source-package/SOURCE_PACKAGE_IDENTITY.txt
+          unzip -t "$zip_path"
+          cat dist/source-package/SOURCE_PACKAGE_IDENTITY.txt
+
+      - name: Upload exact source package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-adaptive-touch-full-source
+          path: dist/source-package
+          if-no-files-found: error
