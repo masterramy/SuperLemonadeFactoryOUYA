@@ -1,18 +1,21 @@
 param(
   [Parameter(Mandatory=$true)]
   [ValidateSet('validation','production')]
-  [string]$Mode
+  [string]$Mode,
+
+  [ValidateSet('aab','apk')]
+  [string]$Artifact = 'aab'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$FrozenCommit = 'afc2e65a65dc95e35ef3391b92be8adc7827e16f'
-$FrozenTree = '999b5c3392f8c75e501c32b009880bd88351f80f'
+$FrozenCommit = '4255f0aae89ec9ef31ea16471858b1ec1c48d728'
+$FrozenTree = '372a480318cb475e62fb2bbbfe10665d52b10a0c'
 $RepoFullName = 'masterramy/SuperLemonadeFactoryOUYA'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
-$OutRoot = Join-Path $RepoRoot 'dist/local-aab'
+$OutRoot = Join-Path $RepoRoot ("dist/local-" + $Artifact)
 $ErrorLog = Join-Path $OutRoot 'LAST_BUILD_ERROR.txt'
 $ProofDir = Join-Path $OutRoot "$Mode-proof"
 New-Item -ItemType Directory -Force -Path $OutRoot | Out-Null
@@ -80,9 +83,19 @@ function Verify-ArchiveSource {
   $toolingDelta = @(
     'BUILD_AAB_VALIDATION.bat',
     'BUILD_AAB_PRODUCTION.bat',
+    'tools/build-aab-entry.ps1',
+    'tools/bootstrap-local-toolchain.ps1',
     '.github/workflows/gate2a-windows-aab-builders-validation.yml'
   )
-  $allowedNew = @('tools/build-aab-entry.ps1','tools/bootstrap-local-toolchain.ps1')
+  $allowedNew = @(
+    'BUILD_APK_VALIDATION.bat',
+    'BUILD_APK_PRODUCTION.bat',
+    'BUILD_ANDROID_VALIDATION.bat',
+    'BUILD_ANDROID_PRODUCTION.bat',
+    'BUILD_WINDOWS_README.txt',
+    'tools/build-apk.ps1',
+    '.github/workflows/gate2a-adaptive-source-builders-validation.yml'
+  )
   $expected = @{}
   foreach ($entry in @($remote.tree)) {
     if ($entry.type -eq 'blob') { $expected[$entry.path] = ("$($entry.sha)").ToLowerInvariant() }
@@ -163,8 +176,9 @@ try {
   . $bootstrapScript
   Initialize-SlfLocalToolchain
 
-  $buildScript = Join-Path $ScriptDir 'build-aab.ps1'
-  if (-not (Test-Path -LiteralPath $buildScript -PathType Leaf)) { throw "Core AAB builder is missing: $buildScript" }
+  $buildName = if ($Artifact -eq 'apk') { 'build-apk.ps1' } else { 'build-aab.ps1' }
+  $buildScript = Join-Path $ScriptDir $buildName
+  if (-not (Test-Path -LiteralPath $buildScript -PathType Leaf)) { throw "Core $Artifact builder is missing: $buildScript" }
   & $buildScript -Mode $Mode
 
   New-Item -ItemType Directory -Force -Path $ProofDir | Out-Null
@@ -182,10 +196,11 @@ catch {
   @(
     "timestamp_utc=$([DateTime]::UtcNow.ToString('o'))",
     "mode=$Mode",
+    "artifact=$Artifact",
     "error=$message"
   ) | Set-Content -LiteralPath $ErrorLog -Encoding utf8
   Write-Host ''
-  Write-Host 'AAB BUILD FAILED' -ForegroundColor Red
+  Write-Host "$($Artifact.ToUpperInvariant()) BUILD FAILED" -ForegroundColor Red
   Write-Host $message -ForegroundColor Red
   Write-Host "Full error log: $ErrorLog" -ForegroundColor Yellow
   exit 1
