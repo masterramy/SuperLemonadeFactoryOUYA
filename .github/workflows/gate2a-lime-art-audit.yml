@@ -1,0 +1,100 @@
+name: Gate 2A Lime Visual Asset Audit
+
+on:
+  push:
+    branches:
+      - gate2a-rev47-super-limeade-release-ready
+    paths:
+      - .github/workflows/gate2a-lime-art-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Find yellow/lemon visual candidates and build review sheets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pillow==11.3.0
+          mkdir -p art-audit
+          cat > /tmp/audit.py <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          import colorsys, math, hashlib
+
+          roots=[Path("data"),Path("icons")]
+          rows=[]
+          for root in roots:
+              for p in root.rglob("*.png"):
+                  try:
+                      im=Image.open(p).convert("RGBA")
+                  except Exception:
+                      continue
+                  # Analyze a bounded thumbnail, ignoring transparent pixels.
+                  thumb=im.copy()
+                  thumb.thumbnail((256,256),Image.Resampling.NEAREST)
+                  total=yellow=green=0
+                  for r,g,b,a in thumb.getdata():
+                      if a < 32: continue
+                      total += 1
+                      mx=max(r,g,b); mn=min(r,g,b)
+                      if mx==0: continue
+                      h,s,v=colorsys.rgb_to_hsv(r/255,g/255,b/255)
+                      deg=h*360
+                      # Broad saturated yellow/orange range to catch lemon art.
+                      if 35 <= deg <= 75 and s >= .35 and v >= .35: yellow += 1
+                      if 75 < deg <= 165 and s >= .30 and v >= .30: green += 1
+                  if not total: continue
+                  yr=yellow/total
+                  gr=green/total
+                  name=p.as_posix().lower()
+                  semantic=any(k in name for k in ("lemon","lemonade","bottle","soda","drink","logo","crate","sign","fruit"))
+                  if yr >= .015 or semantic:
+                      rows.append((yr,gr,p.as_posix(),im.size,semantic))
+
+          rows.sort(reverse=True)
+          with open("art-audit/yellow-candidates.txt","w",encoding="utf-8") as f:
+              for yr,gr,path,size,semantic in rows:
+                  f.write(f"{yr:.5f}\t{gr:.5f}\t{size[0]}x{size[1]}\tsemantic={semantic}\t{path}\n")
+
+          # Contact sheets for the highest-signal candidates.
+          cellw,cellh=260,210
+          cols=4
+          font=ImageFont.load_default()
+          for batch_no,start in enumerate(range(0,min(len(rows),160),40),1):
+              batch=rows[start:start+40]
+              if not batch: break
+              sheet=Image.new("RGB",(cellw*cols,cellh*math.ceil(len(batch)/cols)),(245,245,245))
+              d=ImageDraw.Draw(sheet)
+              for idx,(yr,gr,path,size,semantic) in enumerate(batch):
+                  x=(idx%cols)*cellw; y=(idx//cols)*cellh
+                  try:
+                      im=Image.open(path).convert("RGBA")
+                      im.thumbnail((240,145),Image.Resampling.NEAREST)
+                      checker=Image.new("RGB",im.size,(220,220,220))
+                      checker.paste(im,(0,0),im)
+                      sheet.paste(checker,(x+10,y+5))
+                  except Exception:
+                      pass
+                  label=path if len(path)<=42 else "…"+path[-41:]
+                  d.text((x+8,y+154),label,fill=(0,0,0),font=font)
+                  d.text((x+8,y+169),f"yellow={yr:.1%} green={gr:.1%} {size[0]}x{size[1]}",fill=(0,0,0),font=font)
+                  d.text((x+8,y+184),f"semantic={semantic}",fill=(0,0,0),font=font)
+              sheet.save(f"art-audit/yellow-candidates-{batch_no:02d}.png",optimize=True)
+
+          print(f"candidates={len(rows)}")
+          PY
+          python /tmp/audit.py
+
+      - name: Upload visual audit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-lime-visual-asset-audit
+          path: art-audit
+          if-no-files-found: error
