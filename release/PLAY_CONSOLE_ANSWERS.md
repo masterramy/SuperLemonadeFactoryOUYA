@@ -88,3 +88,12 @@ Do not submit any form or release until:
 3. the live Console fields are reread and reconciled;
 4. the exact production-signed AAB has passed final cold audit;
 5. Ramy explicitly approves submission.
+
+
+## Current Google Play platform requirements — verified 2026-09-19
+
+- New phone/tablet apps and updates submitted after 2026-08-31 must target Android 16 / API 36 or higher. This candidate targets API 36.
+- After this developer account's transition to an organization account is complete, **wait at least 72 hours before submitting a new app** so Play systems can finish synchronizing the account-type change.
+- Effective 2026-09-30, Play package-name registration is part of Android developer verification requirements. Before submission, confirm that `com.ramybaheeg.slfport` is registered or auto-registered in the live Console and complete any package-ownership proof Google actually requests.
+- New apps use Play App Signing. Current Google documentation says new apps are automatically enrolled in quantum-ready hybrid signing with Google-generated app-signing keys; Ramy retains the upload key used to sign the AAB submitted to Play.
+- Before submission, re-open **App content > Needs attention** and reconcile every live declaration. Do not assume this dossier's field names are still identical to the Console UI.
