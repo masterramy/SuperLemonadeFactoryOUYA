@@ -1,3 +1,4 @@
+// Modified for the independent Super Limeade Factory Android restoration by Ramy Baheeg, 2026.
 package
 {
 	import flash.external.ExternalInterface;
