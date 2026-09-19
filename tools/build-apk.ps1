@@ -72,6 +72,8 @@ $SourceReceipt = Join-Path $ProofDir 'source-provenance.txt'
 $RequiredNotices = @(
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
+  'MODIFICATIONS.md',
+  'SOURCE_DISCLOSURE.md',
   'third_party/licenses/flixel-2.55-MIT.txt',
   'third_party/licenses/flixel-power-tools-Simplified-BSD.txt',
   'third_party/licenses/as3-controller-input-MIT.txt'
@@ -138,7 +140,7 @@ try {
     $SigningMode = 'disposable-validation'
   }
 
-  & adt -package -target apk -storetype pkcs12 -keystore $KeyPath -storepass $StorePass $Apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $AndroidSdk
+  & adt -package -target apk -storetype pkcs12 -keystore $KeyPath -storepass $StorePass $Apk application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md MODIFICATIONS.md SOURCE_DISCLOSURE.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $AndroidSdk
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $Apk -PathType Leaf)) { Fail 'ADT APK packaging failed.' }
 
   $ApkItem = Get-Item -LiteralPath $Apk
@@ -151,6 +153,8 @@ try {
     $required = @(
       'assets/LICENSE',
       'assets/THIRD_PARTY_NOTICES.md',
+      'assets/MODIFICATIONS.md',
+      'assets/SOURCE_DISCLOSURE.md',
       'assets/third_party/licenses/flixel-2.55-MIT.txt',
       'assets/third_party/licenses/flixel-power-tools-Simplified-BSD.txt',
       'assets/third_party/licenses/as3-controller-input-MIT.txt'
