@@ -5,7 +5,8 @@ These answers are release-candidate declarations. Binary-derived answers must be
 ## Identity
 - App name: **Super Limeade Factory**
 - Package: **com.ramybaheeg.slfport**
-- Publisher shown publicly: **Ramy Baheeg**
+- Planned publisher identity: **Ramy Baheeg**
+- Final public Play developer/entity display: **reconcile from the live Console after the personal-to-organization account transition; do not guess or overwrite the live account identity**
 - Category: **Game — Puzzle**
 - Original-work attribution: Super Lemonade Factory by Shane Brouwer / Initials Video Games
 - Affiliation statement: independent Android restoration/modification; not produced, sponsored, or endorsed by the original developer
@@ -51,8 +52,15 @@ Expected effective Android permissions: **none**.
 The release build must fail certification if any unexpected `uses-permission` appears, including `android.permission.INTERNET`.
 
 ## Target audience
-Intended audience for the Play declaration: **ages 13–17 and 18+**.
-The game is not designed primarily for children and should not be opted into child-directed/Families treatment merely to broaden availability.
+**Owner decision required in the live Play Console. Do not preselect this field autonomously.**
+
+Evidence for Ramy's decision:
+- the game is a retro puzzle-platformer, not designed primarily for children;
+- it has no ads, accounts, social features, purchases, or data collection;
+- it contains mild non-graphic platforming peril / character death and military/factory story references;
+- current Play audience controls may present separate age buckets rather than one combined range.
+
+Ramy must choose the intended audience buckets after reviewing the live Console wording. Do not opt into child-directed/Families treatment merely to broaden availability, and do not infer an age selection from this dossier.
 
 ## Content-rating questionnaire evidence
 Answer from the actual game content, not from branding:
