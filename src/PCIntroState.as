@@ -74,9 +74,9 @@ package
 			FlxG.bgColor = 0xffd3bdb2;
 			
 			logo = new FlxSprite(0, 0, Registry.ImgLogo);
-			add(logo);
 			logo.x = FlxG.width / 2 - logo.width / 2;
-			logo.y = FlxG.height / 2 - logo.height / 2;
+			// Keep the public edition title clear of the legacy character entrance art.
+			logo.y = 12;
 			
 			andre = new FlxSprite(FlxG.width+200, 0, Registry.ImgAndre);
 			add(andre);
@@ -101,6 +101,10 @@ package
 			army.y = FlxG.height - army.height + 60;
 			army.drag.x = 2000;
 			//army.velocity.x = 1630;
+			
+			// Draw the edition mark after the character sprites so its title text
+			// remains legible throughout the entrance animation.
+			add(logo);
 			
 			pressStart = new FlxText(60, FlxG.height - 60, FlxG.width, "", true);
 			pressStart.size = 16;
