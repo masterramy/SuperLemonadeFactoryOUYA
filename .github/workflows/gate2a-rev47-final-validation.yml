@@ -1,4 +1,4 @@
-# Rev47 exact-candidate validation after adaptive Limeade icon alias verification repair.
+# Rev47 exact-candidate validation; shipping APK/AAB plus x64-only rendered-QA package.
 name: Gate 2A Rev47 Limeade Final Validation
 
 on:
@@ -152,6 +152,19 @@ jobs:
           Get-FileHash -Algorithm SHA256 'dist/local-apk/SLF-validation.apk' | Format-List
           Get-FileHash -Algorithm SHA256 'dist/local-aab/SLF-validation.aab' | Format-List
 
+      - name: Build exact-head x64 emulator QA APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & pwsh -NoProfile -File tools/build-emulator-apk.ps1
+          if ($LASTEXITCODE -ne 0) { throw "x64 emulator QA APK build failed with exit $LASTEXITCODE" }
+          foreach ($path in @(
+            'dist/emulator-qa/SLF-emulator-x64.apk',
+            'dist/emulator-qa/proof/emulator-identity.txt'
+          )) { if (-not (Test-Path $path)) { throw "Missing emulator QA output: $path" } }
+          Get-Content -Raw 'dist/emulator-qa/proof/emulator-identity.txt' | Write-Host
+          Get-FileHash -Algorithm SHA256 'dist/emulator-qa/SLF-emulator-x64.apk' | Format-List
+
       - name: Upload exact-head validation artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -159,6 +172,7 @@ jobs:
           path: |
             dist/local-apk
             dist/local-aab
+            dist/emulator-qa
           if-no-files-found: error
 
   rendered-runtime:
@@ -182,7 +196,7 @@ jobs:
           cat > rendered-qa.sh <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
-          APK="validation/local-apk/SLF-validation.apk"
+          APK="validation/emulator-qa/SLF-emulator-x64.apk"
           PACKAGE="com.ramybaheeg.slfport"
           OUT="rendered-qa"
           mkdir -p "$OUT/phone" "$OUT/level2" "$OUT/large-screen"
