@@ -252,7 +252,7 @@
   <characters>
     
     
-    <player andreInitialFlip="0" followHeight="640" followWidth="960" levelName="Edge of the Ledge" liselotInitialFlip="0" movementType="1" speed="40" startsFirst="1" talkString="One does not simply walk into a Lemonade Factory." x="10" y="330">
+    <player andreInitialFlip="0" followHeight="640" followWidth="960" levelName="Edge of the Ledge" liselotInitialFlip="0" movementType="1" speed="40" startsFirst="1" talkString="One does not simply walk into a Limeade Factory." x="10" y="330">
       
       
       <node x="30" y="330"/>
