@@ -1,4 +1,4 @@
-# Rev47 exact-candidate validation: do not mutate release bytes after the passing run without rerunning this workflow.
+# Rev47 exact-candidate validation after adaptive Limeade icon alias verification repair.
 name: Gate 2A Rev47 Limeade Final Validation
 
 on:
