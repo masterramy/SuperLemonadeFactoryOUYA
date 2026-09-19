@@ -1,3 +1,4 @@
+// Modified for the independent Super Limeade Factory Android restoration by Ramy Baheeg, 2026.
 /*
  * Copyright (c) 2009 Initials Video Games
  *
@@ -28,11 +29,11 @@ package
 	public class PCCreditsState extends FlxState
 	{
 		public var portInfoStr:String =
-			"SUPER LEMONADE FACTORY PORT\n\n" +
-			"Independent Android port published by Ramy Baheeg\n" +
-			"Based on the GPLv3-released OUYA source\n" +
-			"Original game by Shane Brouwer / Initials\n" +
-			"Not an official Initials publication or endorsement.\n" +
+			"SUPER LIMEADE FACTORY\n\n" +
+			"Independent Android restoration/modification published by Ramy Baheeg\n" +
+			"Based on the GPLv3-released OUYA source of Super Lemonade Factory\n" +
+			"Original game by Shane Brouwer / Initials Video Games\n" +
+			"Not produced, sponsored, or endorsed by Shane Brouwer or Initials Video Games.\n" +
 			"Source: github.com/masterramy/SuperLemonadeFactoryOUYA";
 
 		public var creditsStr:String =
