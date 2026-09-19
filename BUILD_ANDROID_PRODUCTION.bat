@@ -7,7 +7,7 @@ set "OLD_SLF_NO_PAUSE=%SLF_NO_PAUSE%"
 set "SLF_NO_PAUSE=1"
 
 echo ============================================================
-echo Super Lemonade Factory - build BOTH production APK and AAB
+echo Super Limeade Factory - build BOTH production APK and AAB
 echo ============================================================
 echo Requires external production signing environment variables.
 echo.
