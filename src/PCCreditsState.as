@@ -30,10 +30,10 @@ package
 	{
 		public var portInfoStr:String =
 			"SUPER LIMEADE FACTORY\n\n" +
-			"Independent Android restoration/modification published by Ramy Baheeg\n" +
-			"Based on the GPLv3-released OUYA source of Super Lemonade Factory\n" +
-			"Original game by Shane Brouwer / Initials Video Games\n" +
-			"Not produced, sponsored, or endorsed by Shane Brouwer or Initials Video Games.\n" +
+			"Independent Android restoration/modification published by Ramy Baheeg\n\n" +
+			"Based on the GPLv3-released OUYA source of Super Lemonade Factory\n\n" +
+			"Original game by Shane Brouwer / Initials Video Games\n\n" +
+			"Not produced, sponsored, or endorsed by Shane Brouwer or Initials Video Games.\n\n" +
 			"Source: github.com/masterramy/SuperLemonadeFactoryOUYA";
 
 		public var creditsStr:String =
@@ -54,16 +54,16 @@ package
 
 			// Draw the moving credits first so the fixed port-information panel
 			// remains an opaque readability layer while credits scroll behind it.
-			creditsText = new FlxText(20, 190, FlxG.width - 40, creditsStr, true);
+			creditsText = new FlxText(20, 220, FlxG.width - 40, creditsStr, true);
 			creditsText.setFormat("commodore", 8, 0xff7725a1, "center");
 			creditsText.velocity.y = -18;
 			add(creditsText);
 
 			var portPanel:FlxSprite = new FlxSprite(20, 30);
-			portPanel.makeGraphic(FlxG.width - 40, 128, 0xffeeeccd);
+			portPanel.makeGraphic(FlxG.width - 40, 176, 0xffeeeccd);
 			add(portPanel);
 
-			portInfoText = new FlxText(30, 50, FlxG.width - 60, portInfoStr, true);
+			portInfoText = new FlxText(30, 42, FlxG.width - 60, portInfoStr, true);
 			portInfoText.setFormat("commodore", 8, 0xff7725a1, "center");
 			add(portInfoText);
 
