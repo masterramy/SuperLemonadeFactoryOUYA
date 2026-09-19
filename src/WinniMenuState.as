@@ -201,7 +201,7 @@ package
 			
 			add(player2Text);
 			
-			var presentsText:FlxText = new FlxText(0,28,FlxG.width,"Initials Video Games Presents");
+			var presentsText:FlxText = new FlxText(0,28,FlxG.width,"Super Limeade Factory - Independent Android Restoration");
 			presentsText.size = 8;
 			presentsText.alignment = "center";
 			presentsText.color = 0x8000FF;
