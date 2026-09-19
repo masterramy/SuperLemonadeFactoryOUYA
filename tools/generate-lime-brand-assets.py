@@ -64,4 +64,4 @@ scaled = icon.convert("RGB").resize((500,500), Image.Resampling.LANCZOS)
 feature.paste(scaled, ((1024-500)//2,0))
 feature.save(STORE / "feature-graphic-1024x500.png", optimize=True)
 
-print("generated Super Limeade Factory brand assets")
+print("generated and dimension-checked Super Limeade Factory brand assets")
