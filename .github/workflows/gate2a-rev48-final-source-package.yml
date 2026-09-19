@@ -35,7 +35,12 @@ jobs:
           $tree=((git rev-parse "$env:PRODUCT_COMMIT^{tree}")|Out-String).Trim()
           if($tree -ne $env:PRODUCT_TREE){ throw "Frozen product tree mismatch: $tree" }
           $changed=@(git diff --name-only "$env:PRODUCT_COMMIT..HEAD")
-          $allowed=@('tools/build-aab-entry.ps1','.github/workflows/gate2a-rev48-final-source-package.yml')
+          $allowed=@(
+            'tools/build-aab-entry.ps1',
+            '.github/workflows/gate2a-rev48-final-source-package.yml',
+            'release/PLAY_CONSOLE_ANSWERS.md',
+            'release/BRANDING_AUDIT.md'
+          )
           $unexpected=@($changed|Where-Object { $_ -notin $allowed })
           if($unexpected.Count){ throw "Unexpected Rev48 delta: $($unexpected -join ', ')" }
           $runtime=@(git diff --name-only "$env:PRODUCT_COMMIT..HEAD" -- src data icons application.xml obj lib)
