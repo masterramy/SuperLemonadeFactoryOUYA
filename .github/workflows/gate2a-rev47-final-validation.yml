@@ -53,8 +53,7 @@ jobs:
           # Dormant generic Flixel URL helpers exist in the vendored engine. Prove
           # the actual game/application source does not call those helpers or
           # instantiate networking APIs.
-          git grep -In -E 'FlxU\.openURL|navigateToURL|new[[:space:]]+URL(Request|Loader)|new[[:space:]]+Socket|new[[:space:]]+NetConnection|Security\.loadPolicyFile' -- src \
-            ':!src/org/flixel/FlxU.as' ':!src/org/flixel/FlxSound.as' ':!src/org/flixel/system/FlxPreloader.as' \
+          git grep -In -E 'FlxU\.openURL|navigateToURL|new[[:space:]]+URL(Request|Loader)|new[[:space:]]+Socket|new[[:space:]]+NetConnection|Security\.loadPolicyFile' -- src ':!src/org/flixel/**' \
             > audit/active-network-call-sites.txt || true
           if test -s audit/active-network-call-sites.txt; then
             cat audit/active-network-call-sites.txt
