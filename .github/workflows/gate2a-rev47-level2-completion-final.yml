@@ -59,8 +59,11 @@ jobs:
           & pwsh -NoProfile -File tools/build-emulator-apk.ps1
           if($LASTEXITCODE -ne 0){ throw "Emulator package build failed: $LASTEXITCODE" }
           $id=Get-Content -Raw 'dist/emulator-qa/proof/emulator-identity.txt'
-          if($id -notmatch "commit=$env:RELEASE_HEAD"){ throw 'Emulator identity is not tied to release parent.' }
+          $qaHead=((git rev-parse HEAD)|Out-String).Trim()
+          if($id -notmatch "commit=$qaHead"){ throw "Emulator identity does not match QA checkout: $qaHead" }
           if($id -notmatch 'effective_permissions=none'){ throw 'Unexpected emulator permissions.' }
+          "release_parent=$env:RELEASE_HEAD" | Add-Content 'dist/emulator-qa/proof/emulator-identity.txt'
+          'qa_only_workflow_delta=true' | Add-Content 'dist/emulator-qa/proof/emulator-identity.txt'
           Get-FileHash -Algorithm SHA256 'dist/emulator-qa/SLF-emulator-x64.apk' | Format-List
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
