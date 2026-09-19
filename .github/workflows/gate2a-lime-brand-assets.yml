@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           git config user.name "Gate 2A Release Builder"
           git config user.email "actions@users.noreply.github.com"
-          git add data/logo_limeade.png icons/android/icons release/store-assets/app-icon-512.png release/store-assets/feature-graphic-1024x500.png
+          git add data/logo_limeade.png icons/android/icons icons/android/adaptive release/store-assets/app-icon-512.png release/store-assets/feature-graphic-1024x500.png release/store-assets/adaptive-icon-circle-preview-512.png
           if git diff --cached --quiet; then
             echo "No asset delta."
             exit 0
