@@ -59,8 +59,11 @@ The exact-head release audit scans runtime source/data and fails if **Super Lemo
 
 It separately fails on legacy public-presentation phrases such as **“Initials Video Games Presents”** or **“Super Lemonade Factory Port.”**
 
-## Result at Rev47 release-audit Run 35428117541
+## Final frozen-product result
 
-The static branding audit passed for source head `e2b60a72608bb58a08d10a435fa9067dea69c019` / tree `505408c21bc24a0f0092634695ca00906ab10608`.
+The exact-head maximal release validation **Run 35432481886** passed static branding/policy audit, Windows APK/AAB build, and rendered runtime review for the frozen product:
 
-Later release-source mutations must rerun this audit before a READY TO PUBLISH claim.
+- commit: `079a68ba800af3d15e97f140cc5ab1df7ce38332`
+- tree: `bf7ab61aa895310285b8d3aaf19c73786d664b0b`
+
+The Rev48 corresponding-source/package layer is restricted to release documentation, archive-provenance tooling, and its validation workflow; its CI proves there is no runtime/build-input delta from that frozen product.
