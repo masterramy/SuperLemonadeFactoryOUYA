@@ -385,7 +385,7 @@ package
 			"If you see any problems, I can help.\n \n", //Worker - 12
 			
 			"The management office is on the top floor of the building. The views over the harbor are impressive.\n \n", // - Notepad (Narrator) - 13
-			"Making it to the end will earn\nyou the right to own the\nSuper Lemonade Factory.\n \n",// - Notepad (Narrator) - 14
+			"Making it to the end will earn\nyou the right to own the\nSuper Limeade Factory.\n \n",// - Notepad (Narrator) - 14
 			"We have drawn up contracts for you to supply the army. Will you accept?\n \n", // Army General - 15
 			"One... uhh... speck of ... dirt.\n \n", //Inspector - 17
 			"The durian soft drink flavor has been a success!\n \n", // Chef - 16
