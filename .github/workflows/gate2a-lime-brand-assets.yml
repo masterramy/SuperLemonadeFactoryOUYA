@@ -1,0 +1,42 @@
+name: Gate 2A Generate Limeade Brand Assets
+
+on:
+  push:
+    branches:
+      - gate2a-rev47-super-limeade-release-ready
+    paths:
+      - tools/generate-lime-brand-assets.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 2
+      - name: Generate exact brand assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pillow==11.3.0
+          python tools/generate-lime-brand-assets.py
+          file data/logo_limeade.png release/store-assets/app-icon-512.png release/store-assets/feature-graphic-1024x500.png
+          test "$(identify -format '%wx%h' release/store-assets/app-icon-512.png)" = "512x512"
+          test "$(identify -format '%wx%h' release/store-assets/feature-graphic-1024x500.png)" = "1024x500"
+      - name: Commit generated binary assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Gate 2A Release Builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/logo_limeade.png icons/android/icons release/store-assets/app-icon-512.png release/store-assets/feature-graphic-1024x500.png
+          if git diff --cached --quiet; then
+            echo "No asset delta."
+            exit 0
+          fi
+          git commit -m "release: generate Super Limeade Factory brand assets"
+          git push origin HEAD:gate2a-rev47-super-limeade-release-ready
