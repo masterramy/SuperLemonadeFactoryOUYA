@@ -40,7 +40,7 @@ The AAB output is:
 The production builder verifies package name, version metadata, SDK levels, effective permission policy, archive contents, JAR signature validity, and exact signer SHA-256 fingerprint. A signer mismatch is a hard failure.
 
 ## Play App Signing
-For a new Play app, use Play App Signing in the Console. Keep the **upload key** under Ramy's control and let Google manage the app-signing key used for APKs delivered to users.
+For a new Play app, use Play App Signing in the Console. Current Google documentation says new apps are automatically enrolled in quantum-ready hybrid signing with Google-generated app-signing keys (with the applicable classical compatibility keying for older Android versions). Keep the **upload key** under Ramy's control; it authenticates uploads, while Google manages the app-signing keys used for APKs delivered to users.
 
 Do not assume the Console's exact enrollment screen or key state in advance. After the developer-account transition settling period:
 1. open the live app/signing setup;
@@ -54,3 +54,12 @@ If Google requires package-ownership or upload-key proof, follow the live Consol
 
 ## Publication boundary
 Uploading/submitting/reviewing/starting a rollout is a separate human release gate. This procedure does not authorize any publication action.
+
+
+## Account-transition and package-registration hold
+
+Do not submit a new app immediately after the developer account finishes transitioning to an organization account. Google currently instructs developers to wait **at least 72 hours after the transition completes** before submitting new apps.
+
+Also confirm the package-registration state for `com.ramybaheeg.slfport` in the live Play Console. Google states that, effective **2026-09-30**, Play packages must be registered under Android developer verification requirements; eligible Play apps may be auto-registered, but the live Console is authoritative.
+
+These are pre-submission checks, not authorization to upload or publish.
