@@ -364,7 +364,7 @@ package
 			"Our handyman still brings in socialist libertarian pamphlets.",
 			"The food inspector was taking bribes and is now in jail.",
 			"We'll see you next time in the sequel.",
-			"Super Lemonade Factory II: Assembly Line Simulator.");
+			"Super Limeade Factory II: Assembly Line Simulator.");
 
 
 			
