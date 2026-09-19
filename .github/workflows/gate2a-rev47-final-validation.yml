@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
 
-          git grep -In -E 'Initials Video Games Presents|Super Lemonade Factory Port' -- src data application.xml privacy.html release > audit/legacy-public-presentation.txt || true
+          git grep -In -E 'Initials Video Games Presents|Super Lemonade Factory Port' -- src data application.xml privacy.html release/STORE_LISTING.md release/PLAY_CONSOLE_ANSWERS.md > audit/legacy-public-presentation.txt || true
           if test -s audit/legacy-public-presentation.txt; then
             cat audit/legacy-public-presentation.txt
             exit 1
