@@ -21,7 +21,7 @@ if errorlevel 1 (
   exit /b 2
 )
 
-echo Building Super Lemonade Factory validation AAB...
+echo Building Super Limeade Factory validation AAB...
 echo On first run, missing Java, AIR, or Android SDK tools will be installed for this user only.
 echo HARMAN AIR and Android SDK downloads require explicit license acceptance before download.
 echo This uses a disposable, non-production signing certificate.
