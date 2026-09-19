@@ -1,9 +1,9 @@
-# Super Lemonade Factory Port
+# Super Limeade Factory
 
-Super Lemonade Factory Port is an independent Android restoration/port of Super
-Lemonade Factory built from the GPLv3-released OUYA source. This repository is the
-public corresponding-source route for the Android port. It is not presented as an
-official Initials publication or endorsement.
+Super Limeade Factory is an independent Android restoration/modification based on the
+GPLv3-released OUYA source of Super Lemonade Factory. This repository is the public
+corresponding-source route for this Android edition. It is published by Ramy Baheeg and
+is not produced, sponsored, or endorsed by Shane Brouwer or Initials Video Games.
 
 ## Modification notice
 
@@ -16,9 +16,9 @@ game remains credited to **Shane Brouwer / Initials**.
 ## License, credits, and source access
 
 The source is distributed under **GNU GPL v3**; see `LICENSE`. The in-game Credits /
-Port Info screen preserves the original credits, identifies this as an independent
-Android port published by Ramy Baheeg, credits Shane Brouwer / Initials, and disclaims
-official Initials publication or endorsement.
+Port Info screen preserves the original credits, identifies this as an independent Android restoration/modification published by Ramy
+Baheeg, credits Shane Brouwer / Initials Video Games, and explicitly disclaims production,
+sponsorship, or endorsement by the original developer.
 
 Public source repository:
 `https://github.com/masterramy/SuperLemonadeFactoryOUYA`
@@ -29,7 +29,7 @@ archive route, and record the generated AAB SHA-256 so recipients can map the di
 artifact to its exact corresponding source. Private signing keys/passwords are not
 committed to the public source repository.
 
-The Android privacy disclosure is in `privacy.html`.
+The Android privacy disclosure is in `privacy.html`. Release modifications are documented in `MODIFICATIONS.md`, and exact corresponding-source guidance is in `SOURCE_DISCLOSURE.md`.
 
 ## Reproducing the Android build
 
