@@ -258,7 +258,7 @@
   <characters>
     
     
-    <player andreInitialFlip="0" followHeight="640" followWidth="1300" levelName="It's All About Timing" liselotInitialFlip="1" movementType="1" speed="40" startsFirst="0" talkString="There's always money in the Lemonade Factory, except when there is lemons." x="10" y="520">
+    <player andreInitialFlip="0" followHeight="640" followWidth="1300" levelName="It's All About Timing" liselotInitialFlip="1" movementType="1" speed="40" startsFirst="0" talkString="There's always money in the Limeade Factory, except when there is lemons." x="10" y="520">
       
       
       <node x="70" y="520"/>
