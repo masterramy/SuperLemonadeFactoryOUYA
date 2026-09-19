@@ -285,7 +285,7 @@
     </chef>
     
     
-    <inspector movementType="1" speed="40" talkString="I will turn over every corner of this so called Super Lemonade Factory until I find some dirt." x="590" y="90">
+    <inspector movementType="1" speed="40" talkString="I will turn over every corner of this so called Super Limeade Factory until I find some dirt." x="590" y="90">
       
       
       <node x="840" y="90"/>
