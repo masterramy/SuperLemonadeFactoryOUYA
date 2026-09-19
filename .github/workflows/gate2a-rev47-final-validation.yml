@@ -49,6 +49,17 @@ jobs:
           git grep -In -E 'URLLoader|URLRequest|navigateToURL|Socket|NetConnection|Security\.loadPolicyFile|analytics|firebase|admob|advertis' -- src application.xml > audit/network-analytics-symbols.txt || true
           git grep -In -E 'android\.permission\.|uses-permission' -- application.xml src > audit/source-permission-references.txt || true
 
+          # Dormant generic Flixel URL helpers exist in the vendored engine. Prove
+          # the actual game/application source does not call those helpers or
+          # instantiate networking APIs.
+          git grep -In -E 'FlxU\.openURL|navigateToURL|new[[:space:]]+URL(Request|Loader)|new[[:space:]]+Socket|new[[:space:]]+NetConnection|Security\.loadPolicyFile' -- src \
+            ':!src/org/flixel/FlxU.as' ':!src/org/flixel/FlxSound.as' ':!src/org/flixel/system/FlxPreloader.as' \
+            > audit/active-network-call-sites.txt || true
+          if test -s audit/active-network-call-sites.txt; then
+            cat audit/active-network-call-sites.txt
+            exit 1
+          fi
+
           test -f data/logo_limeade.png
           test -f release/store-assets/app-icon-512.png
           test -f release/store-assets/feature-graphic-1024x500.png
@@ -174,7 +185,7 @@ jobs:
           APK="validation/local-apk/SLF-validation.apk"
           PACKAGE="com.ramybaheeg.slfport"
           OUT="rendered-qa"
-          mkdir -p "$OUT/phone" "$OUT/level2"
+          mkdir -p "$OUT/phone" "$OUT/level2" "$OUT/large-screen"
 
           dismiss_system_ui(){
             for _ in 1 2 3 4; do
@@ -303,6 +314,28 @@ jobs:
           adb shell input keyevent KEYCODE_X; sleep 6
           adb shell input keyevent KEYCODE_X; sleep 5
           capture "$OUT/level2/08-cold-level-select.png"
+
+          # Separate large-screen rendered pass. Set the 2560x1440 surface before
+          # a cold launch so AIR lays out against the intended viewport from boot.
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell wm size 2560x1440
+          adb shell wm density 420
+          adb shell pm clear "$PACKAGE" > "$OUT/large-screen/clear-data.txt" 2>&1
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/large-screen/launch.txt" 2>&1
+          sleep 6
+          dismiss_system_ui
+          capture "$OUT/large-screen/01-title-2560x1440.png"
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 6
+          capture "$OUT/large-screen/02-main-menu-2560x1440.png"
+          adb shell input keyevent KEYCODE_X; sleep 5
+          capture "$OUT/large-screen/03-level-select-2560x1440.png"
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+          adb shell input keyevent KEYCODE_X
+          sleep 10
+          capture "$OUT/large-screen/04-level2-gameplay-2560x1440.png"
 
           adb logcat -d > "$OUT/logcat-final.txt" 2>&1
           ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-final.txt" > "$OUT/fatal.txt"
