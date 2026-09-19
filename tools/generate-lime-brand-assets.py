@@ -57,11 +57,13 @@ for size in (48,57,72,96,114,128,144,192,512):
 # Play listing icon is exactly 512x512, 32-bit PNG with alpha.
 icon.save(STORE / "app-icon-512.png", optimize=True)
 
-# Feature graphic: 1024x500, no alpha, uses the same artwork family without
-# added claims, badges, prices, rankings, or third-party branding.
+# Feature graphic: 1024x500, no alpha. Use the canonical pixel-art sign
+# itself rather than enlarging the square launcher canvas. This keeps the
+# original visual language intact, reads cleanly at Play-store sizes, and adds
+# no badges, rankings, pricing, or affiliation claims.
 feature = Image.new("RGB", (1024,500), (214,195,184))
-scaled = icon.convert("RGB").resize((500,500), Image.Resampling.LANCZOS)
-feature.paste(scaled, ((1024-500)//2,0))
+feature_logo = logo.resize((820,417), Image.Resampling.NEAREST)
+feature.paste(feature_logo.convert("RGB"), ((1024-820)//2, (500-417)//2), feature_logo)
 feature.save(STORE / "feature-graphic-1024x500.png", optimize=True)
 
 print("generated and dimension-checked Super Limeade Factory brand assets")
