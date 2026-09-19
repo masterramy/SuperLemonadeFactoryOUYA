@@ -1,10 +1,11 @@
+// Modified for the independent Super Limeade Factory Android restoration by Ramy Baheeg, 2026.
 package
 {
 	import flash.display.Bitmap;
 	import flash.display.BitmapData;
 
 	/**
-	 * Android-edition logo treatment. Only the embedded Super Lemonade Factory
+	 * Android-edition logo treatment. Only the embedded Super Limeade Factory
 	 * logo is processed; no shared level/UI palettes are touched.
 	 *
 	 * The source PNG remains unchanged in the repository. Warm lemon-yellow
