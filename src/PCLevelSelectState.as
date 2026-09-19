@@ -624,7 +624,7 @@ package
 			speechText.alignment = "left";
 			speechText.size = 16;
 			speechText.color = 0xFF000000;
-			speechText.text = "Purchase the game from the main menu to unlock all the levels.\n\nPress O to continue.";
+			speechText.text = "This level is not unlocked yet.\nComplete the preceding level to continue.\n\nPress O to continue.";
 			add(speechText);
 			speechText.visible = false;
 				
