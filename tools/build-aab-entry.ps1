@@ -95,7 +95,9 @@ function Verify-ArchiveSource {
     'BUILD_WINDOWS_README.txt',
     'tools/build-apk.ps1',
     '.github/workflows/gate2a-adaptive-source-builders-validation.yml',
-    '.github/workflows/gate2a-rev48-final-source-package.yml'
+    '.github/workflows/gate2a-rev48-final-source-package.yml',
+    'release/PLAY_CONSOLE_ANSWERS.md',
+    'release/BRANDING_AUDIT.md'
   )
   $expected = @{}
   foreach ($entry in @($remote.tree)) {
