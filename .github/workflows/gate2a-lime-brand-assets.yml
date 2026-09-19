@@ -6,6 +6,7 @@ on:
       - gate2a-rev47-super-limeade-release-ready
     paths:
       - tools/generate-lime-brand-assets.py
+      - .github/workflows/gate2a-lime-brand-assets.yml
   workflow_dispatch:
 
 permissions:
