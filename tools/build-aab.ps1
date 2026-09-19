@@ -100,7 +100,7 @@ if (@($BuildToolRoots).Count -eq 0) { Fail 'No Android build-tools revisions are
 foreach($bt in $BuildToolRoots){ Write-TreeReceipt $bt.FullName ('build-tools-'+($bt.Name -replace '[^A-Za-z0-9._-]','_')) $ProofDir $EnvironmentFile }
 Write-TreeReceipt (Join-Path $AndroidSdk 'platform-tools') 'platform-tools' $ProofDir $EnvironmentFile
 
-$RequiredNotices=@('LICENSE','THIRD_PARTY_NOTICES.md','third_party/licenses/flixel-2.55-MIT.txt','third_party/licenses/flixel-power-tools-Simplified-BSD.txt','third_party/licenses/as3-controller-input-MIT.txt')
+$RequiredNotices=@('LICENSE','THIRD_PARTY_NOTICES.md','MODIFICATIONS.md','SOURCE_DISCLOSURE.md','third_party/licenses/flixel-2.55-MIT.txt','third_party/licenses/flixel-power-tools-Simplified-BSD.txt','third_party/licenses/as3-controller-input-MIT.txt')
 foreach($notice in $RequiredNotices){ if(-not(Test-Path -LiteralPath $notice -PathType Leaf)){ Fail "Required release notice missing: $notice" } }
 $ExpectedNoticeBlobs=@{
   'third_party/licenses/flixel-2.55-MIT.txt'='5fcbbbdf0d8c043114dbf485b1f0fd7f776dd086'
@@ -156,7 +156,7 @@ try {
     $SigningMode='disposable-validation'
   }
 
-  & adt -package -target aab -storetype pkcs12 -keystore $KeyPath -storepass $StorePass $Aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $AndroidSdk
+  & adt -package -target aab -storetype pkcs12 -keystore $KeyPath -storepass $StorePass $Aab application.xml -C bin SLFforOuya.swf -C icons/android icons/icon_48.png icons/icon_57.png icons/icon_72.png icons/icon_96.png icons/icon_114.png icons/icon_144.png icons/icon_192.png -C . LICENSE THIRD_PARTY_NOTICES.md MODIFICATIONS.md SOURCE_DISCLOSURE.md third_party/licenses/flixel-2.55-MIT.txt third_party/licenses/flixel-power-tools-Simplified-BSD.txt third_party/licenses/as3-controller-input-MIT.txt -platformsdk $AndroidSdk
   if($LASTEXITCODE -ne 0 -or -not(Test-Path -LiteralPath $Aab -PathType Leaf)){ Fail 'ADT AAB packaging failed.' }
   $AabItem=Get-Item -LiteralPath $Aab
   if($AabItem.Length -le 0){ Fail 'Produced AAB is empty.' }
@@ -165,7 +165,7 @@ try {
   $zip=[IO.Compression.ZipFile]::OpenRead($AabItem.FullName)
   try {
     $entries=@($zip.Entries | ForEach-Object FullName)
-    $required=@('base/assets/LICENSE','base/assets/THIRD_PARTY_NOTICES.md','base/assets/third_party/licenses/flixel-2.55-MIT.txt','base/assets/third_party/licenses/flixel-power-tools-Simplified-BSD.txt','base/assets/third_party/licenses/as3-controller-input-MIT.txt')
+    $required=@('base/assets/LICENSE','base/assets/THIRD_PARTY_NOTICES.md','base/assets/MODIFICATIONS.md','base/assets/SOURCE_DISCLOSURE.md','base/assets/third_party/licenses/flixel-2.55-MIT.txt','base/assets/third_party/licenses/flixel-power-tools-Simplified-BSD.txt','base/assets/third_party/licenses/as3-controller-input-MIT.txt')
     foreach($entry in $required){ if($entries -notcontains $entry){ Fail "Required notice missing from AAB: $entry" } }
     $ouya=@($entries | Where-Object { $_ -match '(?i)ouya' })
     $allowed=@('base/assets/SLFforOuya.swf','base/res/mipmap-xhdpi-v4/ouya_icon.png')
