@@ -173,7 +173,20 @@ try {
     if($unexpected.Count -ne 0){ Fail "Unexpected OUYA-named AAB entries: $($unexpected -join ', ')" }
     foreach($entry in $allowed){ if($entries -notcontains $entry){ Fail "Expected compatibility entry missing from AAB: $entry" } }
     $compatAlias=$zip.GetEntry('base/res/mipmap-xhdpi-v4/ouya_icon.png')
-    if($null -eq $compatAlias -or $compatAlias.Length -ne 49049){ Fail 'ADT 412 compatibility alias identity drifted in AAB.' }
+    $canonical192=$zip.GetEntry('base/res/mipmap-xxxhdpi-v4/icon.png')
+    if($null -eq $compatAlias -or $null -eq $canonical192){ Fail 'ADT compatibility alias or canonical xxxhdpi launcher icon missing in AAB.' }
+    if($compatAlias.Length -le 0 -or $compatAlias.Length -ne $canonical192.Length){ Fail 'ADT compatibility alias no longer matches canonical xxxhdpi launcher icon length.' }
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try {
+      $aliasStream=$compatAlias.Open()
+      try { $aliasHash=([BitConverter]::ToString($sha.ComputeHash($aliasStream))).Replace('-','').ToLowerInvariant() }
+      finally { $aliasStream.Dispose() }
+      $canonicalStream=$canonical192.Open()
+      try { $canonicalHash=([BitConverter]::ToString($sha.ComputeHash($canonicalStream))).Replace('-','').ToLowerInvariant() }
+      finally { $canonicalStream.Dispose() }
+    } finally { $sha.Dispose() }
+    if($aliasHash -ne $canonicalHash){ Fail "ADT compatibility alias does not match canonical xxxhdpi launcher icon. alias=$aliasHash canonical=$canonicalHash" }
+    @("compat_alias=base/res/mipmap-xhdpi-v4/ouya_icon.png","canonical_icon=base/res/mipmap-xxxhdpi-v4/icon.png","compat_alias_bytes=$($compatAlias.Length)","compat_alias_sha256=$aliasHash") | Set-Content -LiteralPath (Join-Path $ProofDir 'compatibility-alias-evidence.txt') -Encoding utf8
     if($entries -contains 'base/res/drawable-xhdpi-v4/ouya_icon.png'){ Fail 'Obsolete AIR OUYA drawable survived provider sanitation in AAB.' }
     @($required,'flixel-2.55-MIT.txt blob=5fcbbbdf0d8c043114dbf485b1f0fd7f776dd086','flixel-power-tools-Simplified-BSD.txt blob=eb85c14d618e818c2bec2bba6ec4a82e5dea7b84','as3-controller-input-MIT.txt blob=21e3babda57413417549e308c61b9597bd0aa6e1') | Set-Content -LiteralPath (Join-Path $ProofDir 'notice-package-evidence.txt') -Encoding utf8
   } finally { $zip.Dispose() }
