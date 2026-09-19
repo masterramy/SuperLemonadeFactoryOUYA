@@ -1,5 +1,6 @@
+// Modified for the independent Super Limeade Factory Android restoration by Ramy Baheeg, 2026.
 /*
- * Super Lemonade Factory Port - privacy/about surface
+ * Super Limeade Factory - privacy/about surface
  * Android port publication work by Ramy Baheeg, 2026.
  * Original game by Shane Brouwer / Initials.
  * This file is distributed with the project under GPLv3.
@@ -13,10 +14,11 @@ package
 	public class PCPrivacyState extends FlxState
 	{
 		public var policyStr:String =
-			"SUPER LEMONADE FACTORY PORT\n\n" +
-			"Independent Android port published by Ramy Baheeg.\n" +
-			"Original game by Shane Brouwer / Initials. Built from the GPLv3-released OUYA source.\n" +
-			"This is not an official Initials publication or endorsement.\n\n" +
+			"SUPER LIMEADE FACTORY\n\n" +
+			"Independent Android restoration/modification published by Ramy Baheeg.\n" +
+			"Based on the GPLv3-released OUYA source of Super Lemonade Factory.\n" +
+			"Original game by Shane Brouwer / Initials Video Games.\n" +
+			"This Android edition is not produced, sponsored, or endorsed by Shane Brouwer or Initials Video Games.\n\n" +
 			"PRIVACY POLICY\n" +
 			"Developer: Ramy Baheeg\n" +
 			"Privacy contact: ramy.baheeg@gmail.com\n\n" +
