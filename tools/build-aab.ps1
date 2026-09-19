@@ -117,6 +117,17 @@ $ProviderTarget=Join-Path $AirHome 'lib/android/lib/resources/app_entry/res/draw
 $ProviderBackup=Join-Path $env:TEMP ('slf-ouya-provider-'+[Guid]::NewGuid().ToString('N')+'.png')
 $ProviderExpected='58d4af4a730200aacdb84a8c768d344b463428f6df9ecd4d7dca2e1cabf0e253'
 $ProviderWasSanitized=$false
+$AdaptiveSourceRoot=Join-Path $RepoRoot 'icons/android/adaptive'
+$AdaptiveDestRoot=Join-Path $AirHome 'lib/android/lib/resources/app_entry/res'
+$AdaptiveInjected=@()
+$AdaptiveRelativeFiles=@(
+  'mipmap-anydpi-v26/icon.xml',
+  'mipmap-mdpi/slf_icon_background.png','mipmap-mdpi/slf_icon_foreground.png',
+  'mipmap-hdpi/slf_icon_background.png','mipmap-hdpi/slf_icon_foreground.png',
+  'mipmap-xhdpi/slf_icon_background.png','mipmap-xhdpi/slf_icon_foreground.png',
+  'mipmap-xxhdpi/slf_icon_background.png','mipmap-xxhdpi/slf_icon_foreground.png',
+  'mipmap-xxxhdpi/slf_icon_background.png','mipmap-xxxhdpi/slf_icon_foreground.png'
+)
 $ValidationKey=Join-Path $ProofDir 'validation-signing.p12'
 $Bundletool=Join-Path $ProofDir 'bundletool-all-1.18.3.jar'
 $BundletoolExpected='a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'
@@ -130,6 +141,23 @@ try {
   Remove-Item -LiteralPath $ProviderTarget -Force
   $ProviderWasSanitized=$true
   @('classification=INFRA_TOOLCHAIN_PROVIDER_DEFECT','action=temporarily_removed_local_provider_template',"path=$ProviderTarget",'original_bytes=1525',"original_sha256=$ProviderExpected",'restore_required=true') | Set-Content -LiteralPath (Join-Path $ProofDir 'air-provider-template-sanitization.txt') -Encoding utf8
+  $AdaptiveReceipt=Join-Path $ProofDir 'adaptive-icon-injection.txt'
+  'adaptive_icon_injection=begin' | Set-Content -LiteralPath $AdaptiveReceipt -Encoding utf8
+  foreach($rel in $AdaptiveRelativeFiles){
+    $source=Join-Path $AdaptiveSourceRoot $rel
+    if(-not(Test-Path -LiteralPath $source -PathType Leaf)){ Fail "Adaptive icon source missing: $rel" }
+    $dest=Join-Path $AdaptiveDestRoot $rel
+    if(Test-Path -LiteralPath $dest){ Fail "AIR SDK unexpectedly already contains adaptive icon target: $dest" }
+    $AdaptiveInjected += $dest
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $dest -Force
+    $srcHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
+    $dstHash=(Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToLowerInvariant()
+    if($srcHash -ne $dstHash){ Fail "Adaptive icon injection hash mismatch: $rel" }
+    $bytes=(Get-Item -LiteralPath $source).Length
+    "$rel bytes=$bytes sha256=$srcHash" | Add-Content -LiteralPath $AdaptiveReceipt
+  }
+  'adaptive_icon_injection=verified' | Add-Content -LiteralPath $AdaptiveReceipt
 
   $Swf=Join-Path $RepoRoot 'bin/SLFforOuya.swf'
   Remove-Item -Force -ErrorAction SilentlyContinue $Swf
@@ -269,6 +297,8 @@ try {
   "build_status=verified" | Add-Content -LiteralPath $MetadataFile
 }
 finally {
+  foreach($path in @($AdaptiveInjected)){ if(Test-Path -LiteralPath $path){ Remove-Item -LiteralPath $path -Force } }
+  if(Test-Path -LiteralPath (Join-Path $ProofDir 'adaptive-icon-injection.txt')){ 'adaptive_icon_cleanup=true' | Add-Content -LiteralPath (Join-Path $ProofDir 'adaptive-icon-injection.txt') }
   Remove-Item -Force -ErrorAction SilentlyContinue $Bundletool
   if($Mode -eq 'validation'){ Remove-Item -Force -ErrorAction SilentlyContinue $ValidationKey }
   if($ProviderWasSanitized){
