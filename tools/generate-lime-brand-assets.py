@@ -5,7 +5,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 ICON_DIR = ROOT / "icons" / "android" / "icons"
 STORE = ROOT / "release" / "store-assets"
+ADAPTIVE = ROOT / "icons" / "android" / "adaptive"
 STORE.mkdir(parents=True, exist_ok=True)
+ADAPTIVE.mkdir(parents=True, exist_ok=True)
 
 FONT = DATA / "C64.ttf"
 LIME = (103, 181, 47, 255)
@@ -56,6 +58,61 @@ for size in (48,57,72,96,114,128,144,192,512):
 
 # Play listing icon is exactly 512x512, 32-bit PNG with alpha.
 icon.save(STORE / "app-icon-512.png", optimize=True)
+
+
+# Android 8+ adaptive launcher icon resources. AIR does not synthesize these
+# automatically, so release builders inject this deterministic resource set
+# into AIR's temporary Android resource tree and restore the SDK afterward.
+# Keep the public sign inside the adaptive safe center and preserve the same
+# warm factory-paper background used by the legacy launcher icon.
+adaptive_sizes = {
+    "mdpi": 108,
+    "hdpi": 162,
+    "xhdpi": 216,
+    "xxhdpi": 324,
+    "xxxhdpi": 432,
+}
+bg_rgb = icon.convert("RGB").getpixel((0, 0))
+for density, size in adaptive_sizes.items():
+    out_dir = ADAPTIVE / f"mipmap-{density}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    background = Image.new("RGB", (size, size), bg_rgb)
+    background.save(out_dir / "slf_icon_background.png", optimize=True)
+
+    foreground = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    sign = logo.copy()
+    target_w = max(1, round(size * 0.64))
+    target_h = max(1, round(sign.height * target_w / sign.width))
+    sign = sign.resize((target_w, target_h), Image.Resampling.NEAREST)
+    foreground.alpha_composite(sign, ((size - target_w)//2, (size - target_h)//2))
+    foreground.save(out_dir / "slf_icon_foreground.png", optimize=True)
+
+xml_dir = ADAPTIVE / "mipmap-anydpi-v26"
+xml_dir.mkdir(parents=True, exist_ok=True)
+(xml_dir / "icon.xml").write_text(
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+    '    <background android:drawable="@mipmap/slf_icon_background"/>\n'
+    '    <foreground android:drawable="@mipmap/slf_icon_foreground"/>\n'
+    '</adaptive-icon>\n',
+    encoding="utf-8",
+)
+
+# Human-review preview using a circular mask, representative rather than a
+# replacement for device-rendered launcher verification.
+preview_size = 512
+preview_bg = Image.new("RGBA", (preview_size, preview_size), bg_rgb + (255,))
+preview_sign = logo.copy()
+preview_w = round(preview_size * 0.64)
+preview_h = round(preview_sign.height * preview_w / preview_sign.width)
+preview_sign = preview_sign.resize((preview_w, preview_h), Image.Resampling.NEAREST)
+preview_bg.alpha_composite(preview_sign, ((preview_size-preview_w)//2, (preview_size-preview_h)//2))
+mask = Image.new("L", (preview_size, preview_size), 0)
+ImageDraw.Draw(mask).ellipse((0, 0, preview_size-1, preview_size-1), fill=255)
+preview = Image.new("RGBA", (preview_size, preview_size), (0,0,0,0))
+preview.paste(preview_bg, (0,0), mask)
+preview.save(STORE / "adaptive-icon-circle-preview-512.png", optimize=True)
 
 # Feature graphic: 1024x500, no alpha. Use the canonical pixel-art sign
 # itself rather than enlarging the square launcher canvas. This keeps the
