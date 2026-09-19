@@ -50,7 +50,7 @@
     <liselot x="580" y="470" speed="40" movementType="1" talkString="Just say yes.">
       <node x="630" y="470"/>
     </liselot>
-    <worker x="1170" y="480" speed="40" movementType="1" talkString="The government is blaming The Super Lemonade Factory for all the broken glass on the road. Can't anyone take some responsibility for themselves.">
+    <worker x="1170" y="480" speed="40" movementType="1" talkString="The government is blaming The Super Limeade Factory for all the broken glass on the road. Can't anyone take some responsibility for themselves.">
       <node x="1290" y="480"/>
     </worker>
   </characters>
