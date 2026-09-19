@@ -96,5 +96,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gate2a-lime-visual-asset-audit
-          path: art-audit
+          path: |
+            art-audit
+            release/store-assets/app-icon-512.png
+            release/store-assets/feature-graphic-1024x500.png
+            data/logo_limeade.png
           if-no-files-found: error
