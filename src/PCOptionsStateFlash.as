@@ -108,7 +108,7 @@ package
 		private var fr:FileReference;
 
 		//File types which we want the user to open
-		private static const FILE_TYPES:Array = [new FileFilter("Super Lemonade Factory Save File", "*.slf")];
+		private static const FILE_TYPES:Array = [new FileFilter("Super Limeade Factory Save File", "*.slf")];
 		
 		
 		override public function create():void
