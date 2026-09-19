@@ -31,8 +31,10 @@ jobs:
           git grep -In -E 'Super Lemonade Factory|Lemonade Factory' -- src data/SLF_levelEditor/PC application.xml > audit/runtime-original-name-references.txt || true
 
           # In reachable runtime content the original full title is allowed only in
-          # explicit attribution/disclaimer surfaces. Other public branding residue fails.
-          grep -v -E '^(src/PCCreditsState\.as|src/PCPrivacyState\.as):' audit/runtime-original-name-references.txt > audit/unacceptable-runtime-brand-residue.txt || true
+          # explicit attribution/disclaimer surfaces. Source-only logo documentation and the
+          # historical Ogmo project-name file are classified as non-public development history.
+          # Other public branding residue fails.
+          grep -v -E '^(src/PCCreditsState\.as|src/PCPrivacyState\.as|src/LimeLogo\.as|data/SLF_levelEditor/PC/_SuperLemonadeFactoryPC\.oep):' audit/runtime-original-name-references.txt > audit/unacceptable-runtime-brand-residue.txt || true
           if test -s audit/unacceptable-runtime-brand-residue.txt; then
             cat audit/unacceptable-runtime-brand-residue.txt
             exit 1
