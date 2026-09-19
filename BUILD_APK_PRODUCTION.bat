@@ -46,7 +46,7 @@ if not defined SLF_ANDROID_EXPECTED_CERT_SHA256 (
   exit /b 2
 )
 
-echo Building Super Lemonade Factory production APK...
+echo Building Super Limeade Factory production APK...
 echo The builder will fail closed unless the produced signer fingerprint matches the expected fingerprint.
 echo No signing secret is stored by this BAT or written to proof metadata.
 echo.
