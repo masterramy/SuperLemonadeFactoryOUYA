@@ -100,11 +100,23 @@ jobs:
 
           capture(){
             tag="$1"
+            pid=""
+            focus=""
+            # Hosted Android occasionally exposes the launcher/its transient ANR as
+            # mCurrentFocus for a few seconds after our activity is already alive.
+            # Wait boundedly for the shipping package to own focus; this changes
+            # only evidence timing, never game state or gameplay input.
+            for attempt in $(seq 1 20); do
+              adb shell dumpsys window > "$OUT/$tag.window.txt" 2>&1
+              pid="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+              focus="$(grep -m1 'mCurrentFocus=' "$OUT/$tag.window.txt" || true)"
+              if test -n "$pid" && echo "$focus" | grep -q "$PACKAGE"; then
+                break
+              fi
+              sleep 1
+            done
             adb exec-out screencap -p > "$OUT/$tag.png"
-            adb shell dumpsys window > "$OUT/$tag.window.txt" 2>&1
             adb logcat -d > "$OUT/$tag.logcat.txt" 2>&1
-            pid="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
-            focus="$(grep -m1 'mCurrentFocus=' "$OUT/$tag.window.txt" || true)"
             printf 'tag=%s\npid=%s\nfocus=%s\n' "$tag" "$pid" "$focus" > "$OUT/$tag.state.txt"
             test -n "$pid"
             echo "$focus" | grep -q "$PACKAGE"
