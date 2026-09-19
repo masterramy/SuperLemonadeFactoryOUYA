@@ -1,4 +1,4 @@
-# Rev47 exact-candidate validation; shipping APK/AAB plus x64-only rendered-QA package.
+# Rev47 exact-candidate validation; shipping APK/AAB plus x64 rendered QA and adaptive-icon packaging proof.
 name: Gate 2A Rev47 Limeade Final Validation
 
 on:
