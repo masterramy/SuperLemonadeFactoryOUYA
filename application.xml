@@ -3,8 +3,8 @@
   <id>com.ramybaheeg.slfport</id>
   <versionNumber>1.9</versionNumber>
   <supportedProfiles>mobileDevice</supportedProfiles>
-  <filename>Super Lemonade Factory Port</filename>
-  <name>Super Lemonade Factory Port</name>
+  <filename>Super Limeade Factory</filename>
+  <name>Super Limeade Factory</name>
   <android>
     <addAirToAppID>false</addAirToAppID>
     <manifestAdditions><![CDATA[<manifest android:installLocation="auto">
@@ -40,7 +40,7 @@
     <requestedDisplayResolution>high</requestedDisplayResolution>
   </iPhone>
   <initialWindow>
-    <title>Super Lemonade Factory Port</title>
+    <title>Super Limeade Factory</title>
     <content>SLFforOuya.swf</content>
     <visible>true</visible>
     <fullScreen>true</fullScreen>
