@@ -28,11 +28,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $parent=((git rev-parse HEAD^) | Out-String).Trim()
-          if($parent -ne $env:RELEASE_HEAD){ throw "QA parent mismatch: $parent" }
-          $changed=@(git diff --name-only HEAD^ HEAD)
+          git cat-file -e "$env:RELEASE_HEAD^{commit}"
+          $base=((git merge-base HEAD $env:RELEASE_HEAD)|Out-String).Trim()
+          if($base -ne $env:RELEASE_HEAD){ throw "Release head is not the QA branch base: $base" }
+          $changed=@(git diff --name-only "$env:RELEASE_HEAD..HEAD")
           if($changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/gate2a-rev47-level2-completion-final.yml'){ throw "Unexpected QA branch delta: $($changed -join ', ')" }
-          $runtime=@(git diff --name-only HEAD^ HEAD -- src data icons application.xml obj lib tools)
+          $runtime=@(git diff --name-only "$env:RELEASE_HEAD..HEAD" -- src data icons application.xml obj lib tools)
           if($runtime.Count -ne 0){ throw "QA workflow changed runtime/build inputs: $($runtime -join ', ')" }
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
