@@ -279,7 +279,32 @@ jobs:
             if is_complete "$OUT/41-completion-candidate-b.png"; then complete=1; fi
           fi
 
-          printf 'completion_proven=%s\nordinary_shipping_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nforced_completion=false\n' "$complete" > "$OUT/result.txt"
+          # Final source-grounded exhaustion pass. Source inspection proves the
+          # shipping completion condition requires BOTH characters to overlap the
+          # exit at x=1320 while remaining within 100 units. Alternate control and
+          # repeatedly advance each character right using only shipping movement
+          # actions, checking after every bounded pair. This is intentionally the
+          # last autonomous emulator route before classifying the residual external.
+          if test "$complete" = 0; then
+            for round in $(seq 1 12); do
+              # current character: use a mixed jump/right sweep to traverse ledges
+              for i in $(seq 1 4); do liselot_spike; done
+              right_hold 1.2
+              adb shell input keyevent KEYCODE_V; sleep .7
+              for i in $(seq 1 6); do andre_jump_dash; done
+              right_hold 1.2
+              adb shell input keyevent KEYCODE_V; sleep .7
+              sleep 1
+              tag="$(printf '42-exhaust-%02d' "$round")"
+              capture "$tag"
+              if is_complete "$OUT/$tag.png"; then
+                complete=1
+                break
+              fi
+            done
+          fi
+
+          printf 'completion_proven=%s\nordinary_shipping_inputs_only=true\nsave_or_game_state_edit=false\nteleport=false\nforced_completion=false\nsource_grounded_exit_x=1320\nsource_grounded_both_players_required=true\nfinal_exhaustion_rounds=12\n' "$complete" > "$OUT/result.txt"
 
           if test "$complete" = 1; then
             # Wait for the completion UI to settle, then use its ordinary Next
