@@ -7,7 +7,7 @@ set "OLD_SLF_NO_PAUSE=%SLF_NO_PAUSE%"
 set "SLF_NO_PAUSE=1"
 
 echo ============================================================
-echo Super Lemonade Factory - build BOTH validation APK and AAB
+echo Super Limeade Factory - build BOTH validation APK and AAB
 echo ============================================================
 echo.
 call "%~dp0BUILD_APK_VALIDATION.bat"
