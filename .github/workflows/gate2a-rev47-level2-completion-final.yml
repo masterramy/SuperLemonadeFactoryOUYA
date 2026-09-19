@@ -28,7 +28,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
+          # The QA branch has accumulated multiple workflow-only harness commits,
+          # so a shallow branch checkout may no longer contain the exact release
+          # parent. Fetch that immutable commit explicitly before provenance checks.
+          git fetch --no-tags --depth=1 origin $env:RELEASE_HEAD
+          if($LASTEXITCODE -ne 0){ throw "Unable to fetch release parent $env:RELEASE_HEAD" }
           git cat-file -e "$env:RELEASE_HEAD^{commit}"
+          if($LASTEXITCODE -ne 0){ throw "Release parent commit is unavailable: $env:RELEASE_HEAD" }
           $base=((git merge-base HEAD $env:RELEASE_HEAD)|Out-String).Trim()
           if($base -ne $env:RELEASE_HEAD){ throw "Release head is not the QA branch base: $base" }
           $changed=@(git diff --name-only "$env:RELEASE_HEAD..HEAD")
