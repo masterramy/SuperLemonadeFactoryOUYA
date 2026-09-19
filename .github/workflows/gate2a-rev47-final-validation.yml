@@ -1,0 +1,344 @@
+name: Gate 2A Rev47 Limeade Final Validation
+
+on:
+  push:
+    branches:
+      - gate2a-rev47-super-limeade-release-ready
+    paths:
+      - .github/workflows/gate2a-rev47-final-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  static-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 2
+
+      - name: Audit release identity and policy-sensitive source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          printf 'head=%s\ntree=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')" > audit/source-identity.txt
+
+          git grep -In -E 'Super Lemonade Factory|Lemonade Factory' -- ':!*.swf' > audit/all-original-name-references.txt || true
+          git grep -In -E 'Super Lemonade Factory|Lemonade Factory' -- src data/SLF_levelEditor/PC application.xml > audit/runtime-original-name-references.txt || true
+
+          # In reachable runtime content the original full title is allowed only in
+          # explicit attribution/disclaimer surfaces. Other public branding residue fails.
+          grep -v -E '^(src/PCCreditsState\.as|src/PCPrivacyState\.as):' audit/runtime-original-name-references.txt > audit/unacceptable-runtime-brand-residue.txt || true
+          if test -s audit/unacceptable-runtime-brand-residue.txt; then
+            cat audit/unacceptable-runtime-brand-residue.txt
+            exit 1
+          fi
+
+          git grep -In -E 'Initials Video Games Presents|Super Lemonade Factory Port' -- src data application.xml privacy.html release > audit/legacy-public-presentation.txt || true
+          if test -s audit/legacy-public-presentation.txt; then
+            cat audit/legacy-public-presentation.txt
+            exit 1
+          fi
+
+          git grep -In -E 'URLLoader|URLRequest|navigateToURL|Socket|NetConnection|Security\.loadPolicyFile|analytics|firebase|admob|advertis' -- src application.xml > audit/network-analytics-symbols.txt || true
+          git grep -In -E 'android\.permission\.|uses-permission' -- application.xml src > audit/source-permission-references.txt || true
+
+          test -f data/logo_limeade.png
+          test -f release/store-assets/app-icon-512.png
+          test -f release/store-assets/feature-graphic-1024x500.png
+          test -f LICENSE
+          test -f MODIFICATIONS.md
+          test -f SOURCE_DISCLOSURE.md
+          test -f THIRD_PARTY_NOTICES.md
+          grep -q '<name>Super Limeade Factory</name>' application.xml
+          grep -q '<id>com.ramybaheeg.slfport</id>' application.xml
+          grep -q 'android:targetSdkVersion="36"' application.xml
+          ! grep -q '<uses-permission' application.xml
+
+      - name: Upload static audit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev47-static-release-audit
+          path: audit
+          if-no-files-found: error
+
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      SLF_NO_PAUSE: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 64
+
+      - name: Set up Java 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+
+      - name: Set up AIR SDK 51.3.4.3
+        uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+
+      - name: Ensure Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME }
+          if ([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { throw 'Android SDK environment unavailable.' }
+          $sdk = Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if ($null -eq $sdk) {
+            $candidate = Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat'
+            if (-not (Test-Path $candidate)) { throw 'sdkmanager.bat unavailable.' }
+            $sdkPath = $candidate
+          } else { $sdkPath = $sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK 36 package installation failed.' }
+
+      - name: Clean setup residue and prove source clean
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($dirty.Count -ne 0) { throw "Dirty checkout before build: $($dirty -join ', ')" }
+
+      - name: Build exact-head validation APK and AAB
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+          if ($LASTEXITCODE -ne 0) {
+            foreach ($log in @('dist/local-apk/LAST_BUILD_ERROR.txt','dist/local-aab/LAST_BUILD_ERROR.txt')) {
+              if (Test-Path $log) { Get-Content -Raw $log | Write-Host }
+            }
+            throw "Combined Android validation build failed with exit $LASTEXITCODE"
+          }
+          foreach ($path in @(
+            'dist/local-apk/SLF-validation.apk',
+            'dist/local-aab/SLF-validation.aab',
+            'dist/local-apk/validation-proof/release-metadata.txt',
+            'dist/local-aab/validation-proof/release-metadata.txt'
+          )) { if (-not (Test-Path $path)) { throw "Missing output: $path" } }
+
+          $apkMeta = Get-Content -Raw 'dist/local-apk/validation-proof/release-metadata.txt'
+          $aabMeta = Get-Content -Raw 'dist/local-aab/validation-proof/release-metadata.txt'
+          foreach ($meta in @($apkMeta,$aabMeta)) {
+            if ($meta -notmatch 'manifest_package_verified=com\.ramybaheeg\.slfport') { throw 'Package verification missing.' }
+            if ($meta -notmatch 'manifest_target_sdk_verified=36') { throw 'targetSdk verification missing.' }
+            if ($meta -notmatch 'manifest_min_sdk_verified=21') { throw 'minSdk verification missing.' }
+            if ($meta -notmatch 'manifest_effective_permissions_verified=none') { throw 'No-permissions verification missing.' }
+          }
+          Get-FileHash -Algorithm SHA256 'dist/local-apk/SLF-validation.apk' | Format-List
+          Get-FileHash -Algorithm SHA256 'dist/local-aab/SLF-validation.aab' | Format-List
+
+      - name: Upload exact-head validation artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev47-exact-head-android-validation
+          path: |
+            dist/local-apk
+            dist/local-aab
+          if-no-files-found: error
+
+  rendered-runtime:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 1
+
+      - name: Download exact-head APK
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev47-exact-head-android-validation
+          path: validation
+
+      - name: Prepare rendered QA harness
+        shell: bash
+        run: |
+          cat > rendered-qa.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="validation/local-apk/SLF-validation.apk"
+          PACKAGE="com.ramybaheeg.slfport"
+          OUT="rendered-qa"
+          mkdir -p "$OUT/phone" "$OUT/level2"
+
+          dismiss_system_ui(){
+            for _ in 1 2 3 4; do
+              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+              adb pull /sdcard/window.xml "$OUT/window.xml" >/dev/null 2>&1 || true
+              python3 - "$OUT/window.xml" <<'PY' > "$OUT/taps.txt" || true
+          import re,sys,xml.etree.ElementTree as ET
+          try: root=ET.parse(sys.argv[1]).getroot()
+          except Exception: raise SystemExit
+          for n in root.iter('node'):
+              if n.attrib.get('text') in ('Got it','Wait','OK','Continue'):
+                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+                  if m:
+                      a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2)
+          PY
+              while read -r x y; do test -z "${x:-}" || adb shell input tap "$x" "$y" >/dev/null 2>&1 || true; done < "$OUT/taps.txt"
+              sleep 1
+            done
+          }
+
+          capture(){
+            f="$1"
+            adb exec-out screencap -p > "$f"
+            test -s "$f"
+            adb shell dumpsys window > "$f.window.txt" 2>&1
+            pid="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+            focus="$(grep -m1 'mCurrentFocus=' "$f.window.txt" || true)"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+          }
+
+          launch(){
+            adb logcat -c
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
+            sleep 5
+            dismiss_system_ui
+            sleep 5
+          }
+
+          # Use an actual 16:9 rendered surface suitable for Play phone screenshots.
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+          launch
+          capture "$OUT/phone/01-title.png"
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 6
+          capture "$OUT/phone/02-main-menu.png"
+
+          # Credits / independent-port disclosure.
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          adb shell input keyevent KEYCODE_X
+          sleep 4
+          capture "$OUT/phone/03-credits-port-info.png"
+          adb shell input keyevent KEYCODE_X; sleep 4
+
+          # Help then Privacy / About.
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          adb shell input keyevent KEYCODE_X
+          sleep 4
+          capture "$OUT/phone/04-help.png"
+          adb shell input keyevent KEYCODE_DPAD_DOWN
+          sleep 3
+          capture "$OUT/phone/05-privacy-about.png"
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 4
+
+          # Main menu -> Play -> Level Select.
+          adb shell input keyevent KEYCODE_X
+          sleep 5
+          capture "$OUT/phone/06-level-select.png"
+
+          # Historical strongest ordinary-input Level 2 route; never edits saves,
+          # teleports, or forces completion.
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          adb shell input keyevent KEYCODE_X
+          sleep 12
+          adb shell input keyevent KEYCODE_X
+          sleep 10
+          capture "$OUT/phone/07-level2-gameplay.png"
+          capture "$OUT/level2/01-level2-start.png"
+
+          jump_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true; wait "$p" || true; sleep .20; }
+          liselot_double_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 & p=$!; sleep .05; adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true; sleep .16; adb shell input keyevent KEYCODE_C >/dev/null 2>&1 || true; wait "$p" || true; sleep .20; }
+          walk_left(){ adb shell input keyevent --longpress KEYCODE_DPAD_LEFT >/dev/null 2>&1 || true; sleep .25; }
+          walk_right(){ adb shell input keyevent --longpress KEYCODE_DPAD_RIGHT >/dev/null 2>&1 || true; sleep .25; }
+
+          for i in $(seq 1 7); do jump_right; done
+          capture "$OUT/level2/02-before-switch.png"
+          adb shell input keyevent KEYCODE_V; sleep 2
+          for i in $(seq 1 11); do liselot_double_right; done
+          capture "$OUT/level2/03-liselot-route.png"
+          for i in $(seq 1 6); do walk_left; done
+          adb shell input keyevent KEYCODE_V; sleep 2
+          for i in $(seq 1 12); do jump_right; done
+          capture "$OUT/level2/04-andre-high-route.png"
+          adb shell input keyevent KEYCODE_V; sleep 2
+          for i in $(seq 1 9); do liselot_double_right; done
+          capture "$OUT/level2/05-liselot-exit-approach.png"
+          adb shell input keyevent KEYCODE_V; sleep 2
+          for i in $(seq 1 9); do jump_right; done
+          for i in $(seq 1 4); do walk_right; done
+          sleep 4
+          capture "$OUT/level2/06-final-bounded-state.png"
+
+          # Do not assume completion. Give the natural game a chance to settle, then
+          # cold relaunch and capture level select for persistence adjudication.
+          sleep 5
+          capture "$OUT/level2/07-post-settle.png"
+          adb shell am force-stop "$PACKAGE"; sleep 2
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/relaunch.txt" 2>&1
+          sleep 6
+          dismiss_system_ui
+          adb shell input keyevent KEYCODE_X; sleep 2
+          adb shell input keyevent KEYCODE_X; sleep 6
+          adb shell input keyevent KEYCODE_X; sleep 5
+          capture "$OUT/level2/08-cold-level-select.png"
+
+          adb logcat -d > "$OUT/logcat-final.txt" 2>&1
+          ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-final.txt" > "$OUT/fatal.txt"
+
+          cat > "$OUT/method.txt" <<'METHOD'
+          exact_candidate_apk=true
+          ordinary_inputs_only=true
+          save_or_game_state_edit=false
+          teleport=false
+          forced_completion=false
+          completion_claim_requires_visual_adjudication=true
+          cold_level3_unlock_claim_requires_visual_adjudication=true
+          METHOD
+          EOF
+          chmod +x rendered-qa.sh
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Android and exercise exact candidate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash rendered-qa.sh
+
+      - name: Upload rendered QA and Play screenshot candidates
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev47-rendered-runtime-and-store-screens
+          path: rendered-qa
+          if-no-files-found: error
