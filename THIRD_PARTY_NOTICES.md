@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Super Lemonade Factory Port retains third-party source components whose license grants are reproduced below by reference to exact vendored license files.
+Super Limeade Factory retains third-party source components whose license grants are reproduced below by reference to exact vendored license files.
 
 ## Flixel 2.55
 
@@ -28,6 +28,6 @@ Super Lemonade Factory Port retains third-party source components whose license 
 
 ## Project license and removed legacy material
 
-The Super Lemonade Factory Port source distribution remains subject to the project `LICENSE` (GNU GPL v3). The obsolete Gaslight/Fast-Loris OUYA native/IAP development and test material is intentionally removed from the publication branch rather than assigned an unverified redistribution license.
+The Super Limeade Factory source distribution remains subject to the project `LICENSE` (GNU GPL v3). The obsolete Gaslight/Fast-Loris OUYA native/IAP development and test material is intentionally removed from the publication branch rather than assigned an unverified redistribution license.
 
 These notices and exact grant files are intended to be included with the Android distribution and remain available in the public corresponding-source repository.
