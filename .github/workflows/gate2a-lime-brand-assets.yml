@@ -26,8 +26,11 @@ jobs:
           python -m pip install --disable-pip-version-check pillow==11.3.0
           python tools/generate-lime-brand-assets.py
           file data/logo_limeade.png release/store-assets/app-icon-512.png release/store-assets/feature-graphic-1024x500.png
-          test "$(identify -format '%wx%h' release/store-assets/app-icon-512.png)" = "512x512"
-          test "$(identify -format '%wx%h' release/store-assets/feature-graphic-1024x500.png)" = "1024x500"
+          python - <<'PY'
+          from PIL import Image
+          assert Image.open("release/store-assets/app-icon-512.png").size == (512, 512)
+          assert Image.open("release/store-assets/feature-graphic-1024x500.png").size == (1024, 500)
+          PY
       - name: Commit generated binary assets
         shell: bash
         run: |
