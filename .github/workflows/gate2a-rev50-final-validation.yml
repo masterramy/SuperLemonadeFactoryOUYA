@@ -267,47 +267,48 @@ jobs:
           launch
           capture "$OUT/phone/01-title.png"
 
-          # Title -> main menu. The first action advances the intro animation;
-          # the second enters the menu after the game's own debounce interval.
-          adb shell input keyevent KEYCODE_X
-          sleep 2
-          adb shell input keyevent KEYCODE_X
-          sleep 6
+          # Real Android title tap. MobileControls special-cases PCIntroState:
+          # one tap emits X, then a second X 180 ms later if still in the intro,
+          # which is the app's native mobile path into PCMenuState.
+          adb shell input tap 960 810
+          sleep 5
           capture "$OUT/phone/02-main-menu.png"
 
-          # Fresh main-menu default is Factory Floor. Go directly to Level Select;
-          # do not replay Credits/Help or depend on their retained menu selection.
-          adb shell input keyevent KEYCODE_X
-          sleep 6
+          # Main-menu default is Factory Floor. A navigation tap maps to X/action.
+          adb shell input tap 960 500
+          sleep 5
           capture "$OUT/phone/03-level-select-fresh.png"
 
-          # Levels 1-2 are initially available; Level 3 is legitimately locked.
-          # Pace directional inputs so no menu event can be dropped.
+          # Fresh progression starts at Level 1 with Levels 1-2 available.
+          # Move explicitly to Level 3 and capture the pre-modal selection.
           adb shell input keyevent KEYCODE_DPAD_RIGHT
           sleep 1
           adb shell input keyevent KEYCODE_DPAD_RIGHT
           sleep 1
+          capture "$OUT/phone/04-level3-selected.png"
+
           adb shell input keyevent KEYCODE_X
           sleep 3
-          capture "$OUT/phone/04-level3-lock.png"
+          capture "$OUT/phone/05-level3-lock.png"
 
-          # Decisive Rev50 regression: use a real Android touch event. MobileControls
-          # maps a navigation tap to X/action; the repaired modal must accept it.
+          # Decisive Rev50 regression: a real Android touch event is converted
+          # by MobileControls to X/action. The repaired modal must dismiss.
           adb shell input tap 960 900
           sleep 3
-          capture "$OUT/phone/05-lock-dismissed-by-touch.png"
+          capture "$OUT/phone/06-lock-dismissed-by-touch.png"
 
-          # Return to Level 2 and launch it through ordinary inputs only.
+          # Return to the immediately preceding available level and launch it.
           adb shell input keyevent KEYCODE_DPAD_LEFT
           sleep 1
           adb shell input keyevent KEYCODE_X
-          sleep 8
-          capture "$OUT/phone/06-level2-cutscene.png"
+          sleep 7
+          capture "$OUT/phone/07-level2-cutscene.png"
 
-          # The game advertises Y as the ordinary cutscene-skip action.
-          adb shell input keyevent KEYCODE_Y
-          sleep 8
-          capture "$OUT/phone/07-level2-after-cutscene-skip.png"
+          # Exercise the app's real mobile cinematic skip target (top-right 28%
+          # by width, top 18% by height) instead of a keyboard proxy.
+          adb shell input tap 1600 70
+          sleep 7
+          capture "$OUT/phone/08-level2-gameplay-after-touch-skip.png"
 
           adb logcat -d > "$OUT/logcat-final.txt" 2>&1
           ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-final.txt" > "$OUT/fatal.txt"
@@ -320,8 +321,9 @@ jobs:
           forced_completion=false
           lock_modal_touch_dismissal_target=true
           level2_launch_after_touch_dismissal_target=true
-          cutscene_skip_uses_ordinary_Y_input=true
+          cutscene_skip_uses_real_android_touch_target=true
           visual_adjudication_required=true
+          boot_navigation_uses_real_android_taps=true
           completion_proven=false
           level3_unlock_after_completion_proven=false
           level2_completion_residual=UNPROVEN_PRIOR_AUTONOMOUS_QA_EXHAUSTED
