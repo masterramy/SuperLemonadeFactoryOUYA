@@ -624,7 +624,7 @@ package
 			speechText.alignment = "left";
 			speechText.size = 16;
 			speechText.color = 0xFF000000;
-			speechText.text = "This level is not unlocked yet.\nComplete the preceding level to continue.\n\nPress O to continue.";
+			speechText.text = "This level is not unlocked yet.\nComplete the preceding level to continue.\n\nTap or press a button to continue.";
 			add(speechText);
 			speechText.visible = false;
 				
@@ -644,7 +644,14 @@ package
 			}
 			if (speechBlock.visible  )
 			{
-				if (FlxG.ouyaController.o.pressed && timeOnScreen > 1.0) {
+				// Android touch navigation synthesizes the same X/action input used
+				// by ordinary Level Select activation. Keep OUYA O support, but do
+				// not strand touch/keyboard/controller users behind an O-only modal.
+				if ((FlxG.keys.justPressed(Registry.p1Action) ||
+					 FlxG.keys.justPressed(Registry.p1Switch) ||
+					 FlxG.keys.justPressed(Registry.p1Jump) ||
+					 FlxG.joystick.j1ButtonAJustPressed ||
+					 FlxG.ouyaController.o.pressed) && timeOnScreen > 1.0) {
 					speechBlock.visible = false;
 					speechText.visible = false;
 					FlxG.ouyaController.o.reset();
