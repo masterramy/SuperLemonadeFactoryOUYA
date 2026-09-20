@@ -1,0 +1,263 @@
+name: Gate 2A Rev51 Final Limeade Source Package
+
+on:
+  push:
+    branches:
+      - gate2a-rev51-rev50-final-source-package
+    paths:
+      - tools/build-aab-entry.ps1
+      - .github/workflows/gate2a-rev51-final-source-package.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCT_COMMIT: 354e354809d240811cd2bc50aea3b4017ca7b3e4
+  PRODUCT_TREE: d449ddcd75e53ed701defc455ede5d63489df505
+  SLF_NO_PAUSE: '1'
+
+jobs:
+  validate-source-package:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 8
+
+      - name: Prove Rev51 is packaging-only over frozen Rev50 product
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git fetch --no-tags --depth=1 origin $env:PRODUCT_COMMIT
+          git cat-file -e "$env:PRODUCT_COMMIT^{commit}"
+          $tree=((git rev-parse "$env:PRODUCT_COMMIT^{tree}")|Out-String).Trim()
+          if($tree -ne $env:PRODUCT_TREE){ throw "Frozen product tree mismatch: $tree" }
+          $changed=@(git diff --name-only "$env:PRODUCT_COMMIT..HEAD")
+          $allowed=@('tools/build-aab-entry.ps1','.github/workflows/gate2a-rev51-final-source-package.yml')
+          $unexpected=@($changed|Where-Object { $_ -notin $allowed })
+          if($unexpected.Count){ throw "Unexpected Rev51 delta: $($unexpected -join ', ')" }
+          $runtime=@(git diff --name-only "$env:PRODUCT_COMMIT..HEAD" -- src data icons application.xml obj lib)
+          if($runtime.Count){ throw "Runtime/build-input delta detected: $($runtime -join ', ')" }
+
+      - name: Prove production builders fail closed without secrets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Remove-Item Env:SLF_ANDROID_KEYSTORE -ErrorAction SilentlyContinue
+          Remove-Item Env:SLF_ANDROID_KEYSTORE_PASSWORD -ErrorAction SilentlyContinue
+          Remove-Item Env:SLF_ANDROID_EXPECTED_CERT_SHA256 -ErrorAction SilentlyContinue
+          foreach($bat in @('BUILD_APK_PRODUCTION.bat','BUILD_AAB_PRODUCTION.bat')){
+            $oldNative=$PSNativeCommandUseErrorActionPreference
+            $oldPref=$ErrorActionPreference
+            try{
+              $PSNativeCommandUseErrorActionPreference=$false
+              $ErrorActionPreference='Continue'
+              $out=& cmd.exe /d /c $bat 2>&1
+              $rc=$LASTEXITCODE
+            } finally {
+              $PSNativeCommandUseErrorActionPreference=$oldNative
+              $ErrorActionPreference=$oldPref
+            }
+            $global:LASTEXITCODE=0
+            $txt=($out|Out-String); Write-Host $txt
+            if($rc -eq 0){ throw "$bat unexpectedly succeeded without production signing inputs." }
+            if($txt -notmatch 'SLF_ANDROID_KEYSTORE is not set'){ throw "$bat did not fail at missing-keystore guard." }
+          }
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+
+      - name: Ensure Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME }
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($null -eq $sdk){ $sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat' } else { $sdkPath=$sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){ throw 'Android SDK setup failed.' }
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+
+      - name: Build validation APK and AAB from Rev51 checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dirty=@(git status --porcelain=v1 --untracked-files=all)
+          if($dirty.Count){ throw "Dirty checkout: $($dirty -join ', ')" }
+          & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+          if($LASTEXITCODE -ne 0){ throw "Checkout build failed: $LASTEXITCODE" }
+          foreach($p in @('dist/local-apk/SLF-validation.apk','dist/local-aab/SLF-validation.aab')){
+            if(-not(Test-Path $p)){ throw "Missing $p" }
+            Get-FileHash -Algorithm SHA256 $p | Format-List
+          }
+
+      - name: Build from exact extracted Rev51 source ZIP with no git metadata
+        shell: pwsh
+        env:
+          SLF_ACCEPT_HARMAN_AIR_LICENSE: '1'
+          SLF_ACCEPT_ANDROID_SDK_LICENSE: '1'
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Join-Path $env:RUNNER_TEMP 'SuperLimeadeFactory-Rev51-source.zip'
+          $root=Join-Path $env:RUNNER_TEMP 'SuperLimeadeFactory-Rev51-source'
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          git archive --format=zip HEAD -o $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+          if(Test-Path (Join-Path $root '.git')){ throw 'Extracted source unexpectedly contains .git.' }
+          Push-Location $root
+          try{
+            & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+            if($LASTEXITCODE -ne 0){
+              foreach($log in @('dist/local-apk/LAST_BUILD_ERROR.txt','dist/local-aab/LAST_BUILD_ERROR.txt')){
+                if(Test-Path $log){ Get-Content -Raw $log | Write-Host }
+              }
+              throw "Extracted source build failed: $LASTEXITCODE"
+            }
+            foreach($prov in @('dist/local-apk/validation-proof/archive-source-verification.txt','dist/local-aab/validation-proof/archive-source-verification.txt')){
+              $t=Get-Content -Raw $prov
+              if($t -notmatch 'provenance_mode=archive-frozen-tree'){ throw "Archive mode missing: $prov" }
+              if($t -notmatch "frozen_product_commit=$env:PRODUCT_COMMIT"){ throw "Frozen commit missing: $prov" }
+              if($t -notmatch "frozen_product_tree=$env:PRODUCT_TREE"){ throw "Frozen tree missing: $prov" }
+            }
+          } finally { Pop-Location }
+          New-Item -ItemType Directory -Force 'dist/extracted-source-proof' | Out-Null
+          Copy-Item (Join-Path $root 'dist/local-apk') 'dist/extracted-source-proof/local-apk' -Recurse -Force
+          Copy-Item (Join-Path $root 'dist/local-aab') 'dist/extracted-source-proof/local-aab' -Recurse -Force
+          Copy-Item $zip 'dist/extracted-source-proof/SuperLimeadeFactory-Rev51-source.zip' -Force
+          Get-FileHash -Algorithm SHA256 'dist/extracted-source-proof/SuperLimeadeFactory-Rev51-source.zip' | Format-List
+
+      - name: Upload validation and extracted-source proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev51-final-source-proof
+          path: |
+            dist/local-apk
+            dist/local-aab
+            dist/extracted-source-proof
+          if-no-files-found: warn
+
+  clean-machine:
+    runs-on: windows-2025
+    timeout-minutes: 65
+    env:
+      SLF_NO_PAUSE: '1'
+      SLF_NO_PROMPTS: '1'
+      SLF_ACCEPT_HARMAN_AIR_LICENSE: '1'
+      SLF_ACCEPT_ANDROID_SDK_LICENSE: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 1
+
+      - name: Prove fresh extracted source bootstraps its own toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Join-Path $env:RUNNER_TEMP 'slf-clean-source.zip'
+          $root=Join-Path $env:RUNNER_TEMP 'slf-clean-source'
+          $tools=Join-Path $env:RUNNER_TEMP 'slf-clean-toolchain'
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Remove-Item $root,$tools -Recurse -Force -ErrorAction SilentlyContinue
+          git archive --format=zip HEAD -o $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+          $pwshDir=Split-Path -Parent (Get-Command pwsh.exe).Source
+          $system32=Join-Path $env:SystemRoot 'System32'
+          $env:PATH="$pwshDir;$system32;$env:SystemRoot"
+          Remove-Item Env:JAVA_HOME,Env:AIR_HOME,Env:ANDROID_SDK_ROOT,Env:ANDROID_HOME -ErrorAction SilentlyContinue
+          $env:SLF_TOOLCHAIN_ROOT=$tools
+          if(Get-Command java.exe -ErrorAction SilentlyContinue){ throw 'java remains available' }
+          if(Get-Command amxmlc.bat -ErrorAction SilentlyContinue){ throw 'AIR remains available' }
+          if(Get-Command sdkmanager.bat -ErrorAction SilentlyContinue){ throw 'Android SDK remains available' }
+          Push-Location $root
+          try{
+            & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+            if($LASTEXITCODE -ne 0){
+              foreach($log in @('dist/local-apk/LAST_BUILD_ERROR.txt','dist/local-aab/LAST_BUILD_ERROR.txt')){
+                if(Test-Path $log){ Get-Content -Raw $log | Write-Host }
+              }
+              throw "Clean machine build failed: $LASTEXITCODE"
+            }
+          } finally { Pop-Location }
+          foreach($p in @((Join-Path $root 'dist/local-apk/SLF-validation.apk'),(Join-Path $root 'dist/local-aab/SLF-validation.aab'),(Join-Path $tools 'SLF_TOOLCHAIN_RECEIPT.txt'))){
+            if(-not(Test-Path $p)){ throw "Clean-machine proof missing: $p" }
+          }
+          New-Item -ItemType Directory -Force 'dist/clean-machine-proof' | Out-Null
+          Copy-Item (Join-Path $root 'dist/local-apk') 'dist/clean-machine-proof/local-apk' -Recurse -Force
+          Copy-Item (Join-Path $root 'dist/local-aab') 'dist/clean-machine-proof/local-aab' -Recurse -Force
+          Copy-Item (Join-Path $tools 'SLF_TOOLCHAIN_RECEIPT.txt') 'dist/clean-machine-proof/SLF_TOOLCHAIN_RECEIPT.txt' -Force
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev51-clean-machine-proof
+          path: dist/clean-machine-proof
+          if-no-files-found: error
+
+  package:
+    needs: [validate-source-package, clean-machine]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 1
+      - name: Create immutable exact source ZIP and receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/source-package
+          zip=dist/source-package/SuperLimeadeFactory-Android-Release-Source.zip
+          git archive --format=zip HEAD -o "$zip"
+          sha="$(sha256sum "$zip"|awk '{print $1}')"
+          bytes="$(stat -c '%s' "$zip")"
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          {
+            echo "source_package_head=$head"
+            echo "source_package_tree=$tree"
+            echo "frozen_product_commit=$PRODUCT_COMMIT"
+            echo "frozen_product_tree=$PRODUCT_TREE"
+            echo "source_zip_bytes=$bytes"
+            echo "source_zip_sha256=$sha"
+            echo "package=com.ramybaheeg.slfport"
+            echo "identity=Super Limeade Factory"
+          } > dist/source-package/SOURCE_PACKAGE_IDENTITY.txt
+          python3 - "$zip" <<'PY'
+          import hashlib, sys, zipfile
+          from pathlib import Path
+          p=Path(sys.argv[1])
+          manifest=Path("dist/source-package/SOURCE_ZIP_CRC32.txt")
+          integrity=Path("dist/source-package/SOURCE_ZIP_INTEGRITY.txt")
+          with zipfile.ZipFile(p) as z:
+              bad=z.testzip()
+              if bad is not None:
+                  raise SystemExit(f"CRC failure: {bad}")
+              infos=z.infolist()
+              lines=["crc32\tuncompressed_bytes\tcompressed_bytes\tpath"]
+              for i in infos:
+                  lines.append(f"{i.CRC:08x}\t{i.file_size}\t{i.compress_size}\t{i.filename}")
+          manifest.write_text("\n".join(lines)+"\n", encoding="utf-8")
+          msha=hashlib.sha256(manifest.read_bytes()).hexdigest()
+          integrity.write_text(
+              f"source_zip_entry_count={len(infos)}\n"
+              "source_zip_crc_test=PASS\n"
+              f"source_zip_crc_manifest_sha256={msha}\n",
+              encoding="utf-8")
+          PY
+          unzip -t "$zip"
+          cat dist/source-package/SOURCE_ZIP_INTEGRITY.txt >> dist/source-package/SOURCE_PACKAGE_IDENTITY.txt
+          cat dist/source-package/SOURCE_PACKAGE_IDENTITY.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev51-final-source-package
+          path: dist/source-package
+          if-no-files-found: error
