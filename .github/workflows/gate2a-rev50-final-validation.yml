@@ -251,8 +251,10 @@ jobs:
             sleep 5
           }
 
-          # Use an actual 16:9 rendered surface suitable for Play phone screenshots.
+          # Bounded Rev50 regression proof only. Start from explicitly cleared app
+          # data so menu selection/progression state cannot leak across attempts.
           adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell pm clear "$PACKAGE" > "$OUT/clear-data.txt" 2>&1
           adb shell wm size 1920x1080
           adb shell wm density 420
           adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
@@ -264,63 +266,48 @@ jobs:
 
           launch
           capture "$OUT/phone/01-title.png"
-          adb shell input keyevent KEYCODE_X; sleep 2
-          adb shell input keyevent KEYCODE_X; sleep 6
-          capture "$OUT/phone/02-main-menu.png"
 
-          # Credits / independent-port disclosure.
-          adb shell input keyevent KEYCODE_DPAD_DOWN
-          adb shell input keyevent KEYCODE_DPAD_DOWN
-          adb shell input keyevent KEYCODE_DPAD_DOWN
-          adb shell input keyevent KEYCODE_X
-          sleep 4
-          capture "$OUT/phone/03-credits-port-info.png"
-          adb shell input keyevent KEYCODE_X; sleep 4
-
-          # Help then Privacy / About.
-          adb shell input keyevent KEYCODE_DPAD_DOWN
-          adb shell input keyevent KEYCODE_DPAD_DOWN
-          adb shell input keyevent KEYCODE_X
-          sleep 4
-          capture "$OUT/phone/04-help.png"
-          adb shell input keyevent KEYCODE_DPAD_DOWN
-          sleep 3
-          capture "$OUT/phone/05-privacy-about.png"
-          adb shell input keyevent KEYCODE_X; sleep 2
-          adb shell input keyevent KEYCODE_X; sleep 4
-
-          # Main menu -> Play -> Level Select.
-          adb shell input keyevent KEYCODE_X
-          sleep 5
-          capture "$OUT/phone/06-level-select.png"
-
-          # Fresh-install progression-lock regression. Levels 1-2 are available;
-          # Level 3 is legitimately locked. Capture the truthful lock, dismiss it
-          # through the same X/action event synthesized by Android tap navigation,
-          # then launch Level 2 to prove the modal no longer strands ordinary input.
-          adb shell input keyevent KEYCODE_DPAD_RIGHT
-          adb shell input keyevent KEYCODE_DPAD_RIGHT
-          adb shell input keyevent KEYCODE_X
-          sleep 3
-          capture "$OUT/phone/06b-locked-level3.png"
-
-          # Rev50 regression target: ordinary action/X dismisses the lock modal.
+          # Title -> main menu. The first action advances the intro animation;
+          # the second enters the menu after the game's own debounce interval.
           adb shell input keyevent KEYCODE_X
           sleep 2
-          capture "$OUT/phone/06c-lock-dismissed.png"
+          adb shell input keyevent KEYCODE_X
+          sleep 6
+          capture "$OUT/phone/02-main-menu.png"
 
-          # Return one slot to Level 2 and launch it. This is intentionally NOT a
-          # completion campaign: prior maximal ordinary-input Level-2 completion
-          # proof is exhausted and remains UNPROVEN.
+          # Fresh main-menu default is Factory Floor. Go directly to Level Select;
+          # do not replay Credits/Help or depend on their retained menu selection.
+          adb shell input keyevent KEYCODE_X
+          sleep 6
+          capture "$OUT/phone/03-level-select-fresh.png"
+
+          # Levels 1-2 are initially available; Level 3 is legitimately locked.
+          # Pace directional inputs so no menu event can be dropped.
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_DPAD_RIGHT
+          sleep 1
+          adb shell input keyevent KEYCODE_X
+          sleep 3
+          capture "$OUT/phone/04-level3-lock.png"
+
+          # Decisive Rev50 regression: use a real Android touch event. MobileControls
+          # maps a navigation tap to X/action; the repaired modal must accept it.
+          adb shell input tap 960 900
+          sleep 3
+          capture "$OUT/phone/05-lock-dismissed-by-touch.png"
+
+          # Return to Level 2 and launch it through ordinary inputs only.
           adb shell input keyevent KEYCODE_DPAD_LEFT
+          sleep 1
           adb shell input keyevent KEYCODE_X
-          sleep 12
-          adb shell input keyevent KEYCODE_X
-          sleep 10
-          capture "$OUT/phone/07-level2-gameplay.png"
+          sleep 8
+          capture "$OUT/phone/06-level2-cutscene.png"
 
-          # Rev49's independently accepted title/Credits visual set remains
-          # authoritative for unchanged surfaces; do not replay accepted work here.
+          # The game advertises Y as the ordinary cutscene-skip action.
+          adb shell input keyevent KEYCODE_Y
+          sleep 8
+          capture "$OUT/phone/07-level2-after-cutscene-skip.png"
 
           adb logcat -d > "$OUT/logcat-final.txt" 2>&1
           ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat-final.txt" > "$OUT/fatal.txt"
@@ -331,8 +318,10 @@ jobs:
           save_or_game_state_edit=false
           teleport=false
           forced_completion=false
-          lock_modal_action_dismissal_target=true
-          level2_launch_after_lock_dismissal_target=true
+          lock_modal_touch_dismissal_target=true
+          level2_launch_after_touch_dismissal_target=true
+          cutscene_skip_uses_ordinary_Y_input=true
+          visual_adjudication_required=true
           completion_proven=false
           level3_unlock_after_completion_proven=false
           level2_completion_residual=UNPROVEN_PRIOR_AUTONOMOUS_QA_EXHAUSTED
