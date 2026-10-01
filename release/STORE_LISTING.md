@@ -20,7 +20,7 @@ Corresponding source and license information:
 https://github.com/masterramy/SuperLemonadeFactoryOUYA
 
 ## Release notes
-Initial Google Play release of the independent Super Limeade Factory Android restoration, with modern Android packaging, touch controls, foldable-aware layout handling, preserved original-game credits, and GPLv3 corresponding-source access.
+Initial Google Play release of the independent Super Limeade Factory Android restoration, with modern Android packaging, touch controls, modern display handling, preserved original-game credits, and GPLv3 corresponding-source access.
 
 ## Support / contact
 Publisher: Ramy Baheeg
@@ -31,5 +31,5 @@ Source: https://github.com/masterramy/SuperLemonadeFactoryOUYA
 - Play app icon: 512×512 PNG, lime sign treatment.
 - Feature graphic: 1024×500 PNG, lime visual family, no ranking/price/promotional claims.
 - Phone/game screenshots: at least 3 landscape 1920×1080 captures from the exact release candidate.
-- Large-screen/foldable screenshots: at least 4 landscape 1920×1080-or-higher captures when exact rendered evidence is available.
+- Large-screen/foldable screenshots: use only exact release-candidate captures after the remaining real-device/large-screen acceptance evidence is available; do not imply physical Fold validation before it is performed.
 - Screenshots must be actual in-game captures from the final candidate; no device frames or misleading simulated UI.
