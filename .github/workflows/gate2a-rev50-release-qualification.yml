@@ -25,7 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --exit-code 354e354809d240811cd2bc50aea3b4017ca7b3e4 --             src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools             release/store-assets
+          git diff --exit-code 354e354809d240811cd2bc50aea3b4017ca7b3e4 -- \
+            src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools \
+            release/store-assets
           printf 'shipping_source_delta=none\nrev50=354e354809d240811cd2bc50aea3b4017ca7b3e4\n' > qualification-source.txt
 
       - name: Download exact promoted Rev50 validation artifact
@@ -48,7 +50,7 @@ jobs:
           printf 'expected=%s\nactual=%s\n' "$expected" "$actual" | tee qualification-apk-sha256.txt
           test "$actual" = "$expected"
 
-      - name: Prepare bounded exact-APK qualification harness
+      - name: Prepare exact-APK touch-navigation qualification harness
         shell: bash
         run: |
           cat > qualify.sh <<'EOF'
@@ -57,7 +59,8 @@ jobs:
           APK="validation/emulator-qa/SLF-emulator-x64.apk"
           PACKAGE="com.ramybaheeg.slfport"
           OUT="qualification"
-          mkdir -p "$OUT"
+          DIR="$OUT/touch-navigation"
+          mkdir -p "$DIR"
 
           dismiss_system_ui(){
             for _ in 1 2 3; do
@@ -73,7 +76,9 @@ jobs:
                   if m:
                       a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2)
           PY
-              while read -r tx ty; do test -z "${tx:-}" || adb shell input tap "$tx" "$ty" >/dev/null 2>&1 || true; done < "$OUT/taps.txt"
+              while read -r tx ty; do
+                test -z "${tx:-}" || adb shell input tap "$tx" "$ty" >/dev/null 2>&1 || true
+              done < "$OUT/taps.txt"
               sleep 1
             done
           }
@@ -90,26 +95,6 @@ jobs:
             echo "$focus" | grep -q "$PACKAGE"
           }
 
-          fresh_to_level_select(){
-            local dir="$1"
-            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-            adb shell pm clear "$PACKAGE" > "$dir/clear-data.txt" 2>&1
-            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$dir/launch.txt" 2>&1
-            sleep 5
-            dismiss_system_ui
-            sleep 4
-
-            # Ordinary Android navigation: intro tap -> X/action semantics.
-            adb shell input tap 960 540
-            sleep 3
-            capture "$dir/00-main-menu.png"
-
-            # Main menu defaults to FACTORY. A normal tap activates it.
-            adb shell input tap 960 540
-            sleep 4
-            capture "$dir/01-level-select-baseline.png"
-          }
-
           swipe_right(){
             adb shell input swipe 700 540 1250 540 250
             sleep 1
@@ -120,40 +105,65 @@ jobs:
             sleep 1
           }
 
-          dir="$OUT/touch-navigation"
-          mkdir -p "$dir"
-          fresh_to_level_select "$dir"
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
-          # Fresh Level Select highlights Level 1 (currentButton=3). Two real
-          # touchscreen swipes right move to Level 3 using MobileControls'
-          # navigation semantics; a tap then attempts the locked level.
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell pm clear "$PACKAGE" > "$DIR/clear-data.txt" 2>&1
+          grep -q '^Success' "$DIR/clear-data.txt"
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$DIR/launch.txt" 2>&1
+          sleep 5
+          dismiss_system_ui
+          sleep 4
+
+          # PCIntroState: a single real touch is converted by MobileControls
+          # to the established two-step X/action intro advance.
+          adb shell input tap 960 540
+          sleep 5
+          capture "$DIR/00-main-menu.png"
+
+          # Main menu defaults to FACTORY. A real tap generates ordinary X/action.
+          adb shell input tap 960 540
+          sleep 4
+          capture "$DIR/01-level-select-baseline.png"
+
+          # Fresh Level Select highlights Level 1. Two real horizontal swipes
+          # generate RIGHT navigation pulses and select Level 3.
           swipe_right
           swipe_right
-          capture "$dir/02-level3-highlighted.png"
+          capture "$DIR/02-level3-highlighted.png"
+
           adb logcat -c
           adb shell input tap 960 540
           sleep 3
-          capture "$dir/03-level3-lock-dialog.png"
-          adb logcat -d > "$dir/03-lock-logcat.txt" 2>&1
-          grep -F "Level 3 is not available" "$dir/03-lock-logcat.txt" > "$dir/03-lock-proof.txt"
+          capture "$DIR/03-level3-lock-dialog.png"
+          adb logcat -d > "$DIR/03-lock-logcat.txt" 2>&1
+          grep -F "Level 3 is not available" "$DIR/03-lock-logcat.txt" > "$DIR/03-lock-proof.txt"
 
-          # The Rev50 repair under test: one ordinary Android tap generates the
-          # same action input and dismisses the modal after its debounce window.
+          # Rev50 behavior under test: ordinary Android touch/action dismisses
+          # the lock modal after the modal's debounce interval.
           adb shell input tap 960 540
           sleep 3
-          capture "$dir/04-after-dismiss-touch.png"
+          capture "$DIR/04-after-dismiss-touch.png"
 
-          # Move from Level 3 to Level 2 with one real touchscreen swipe left,
-          # then activate Level 2 with one real tap. Level 2 has no cinematic;
-          # a successful transition therefore reaches gameplay directly.
+          # Return selection from Level 3 to Level 2 with a real left swipe and
+          # activate it with a real tap. Source logic sends Level 2 directly
+          # to PCPlayState, so the final frame must be gameplay, not cinematic.
           swipe_left
-          capture "$dir/05-level2-highlighted.png"
+          capture "$DIR/05-level2-highlighted.png"
           adb shell input tap 960 540
           sleep 8
-          capture "$dir/06-level2-gameplay.png"
+          capture "$DIR/06-level2-gameplay.png"
 
-          adb logcat -d > "$dir/final-logcat.txt" 2>&1
-          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$dir/final-logcat.txt" > "$dir/fatal.txt"; then
+          adb logcat -d > "$DIR/final-logcat.txt" 2>&1
+          if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$DIR/final-logcat.txt" > "$DIR/fatal.txt"; then
             echo "fatal runtime evidence" >&2
             exit 1
           fi
@@ -169,19 +179,6 @@ jobs:
           level2_completion_campaign_replayed=false
           purpose=locked-level-modal-dismissal-and-level2-launch-via-real-touch-navigation
           lock_log_required=Level 3 is not available
-          visual_adjudication_required=true
-          METHOD
-
-          cat > "$OUT/method.txt" <<'METHOD'
-          exact_rev50_x64_apk=true
-          exact_rev50_x64_apk_sha256=90fde292caacbeb5cb68aa0d56c9672808e0aadd55c719c3b1b65e688440998c
-          shipping_source_delta=false
-          save_or_game_state_edit=false
-          teleport=false
-          forced_completion=false
-          level2_completion_campaign_replayed=false
-          purpose=lock-modal-touch-dismissal-and-level2-launch-evidence-only
-          note=Level 2 transitions directly to gameplay; it has no cinematic by source logic.
           visual_adjudication_required=true
           METHOD
           EOF
