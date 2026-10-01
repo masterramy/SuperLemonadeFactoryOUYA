@@ -27,6 +27,53 @@ jobs:
           set -euo pipefail
           git diff --exit-code 354e354809d240811cd2bc50aea3b4017ca7b3e4 --             src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools             release/store-assets
 
+      - name: Prove Level 2 completion-to-Level 3 unlock source invariant
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          play=Path("src/PCPlayState.as").read_text(errors="replace")
+          select=Path("src/PCLevelSelectState.as").read_text(errors="replace")
+          registry=Path("src/Registry.as").read_text(errors="replace")
+          save=Path("src/org/flixel/FlxSave.as").read_text(errors="replace")
+
+          # Fresh normal progress defaults Levels 1 and 2 to unlocked.
+          assert 'result[i] = (unlockFirstTwo && i <= 2) ? "1" : "0";' in registry
+
+          # Genuine normal Warehouse completion writes the *next* level's slot.
+          assert 'c[Registry.levelNumber+1] = "1";' in play
+          assert 'save.data.warehouseLevelsComplete = c;' in play
+          assert 'save.close();' in play
+
+          # FlxSave.close is not a no-op: it delegates to SharedObject.flush().
+          assert 'return flush(MinFileSize,OnComplete);' in save
+          assert '_sharedObject.flush(MinFileSize)' in save
+
+          # Level Select reloads that same persistent array and gates launch on it.
+          assert '_wh = save.data.warehouseLevelsComplete;' in select
+          assert 'if (_wh[l] == "1")' in select
+          assert 'Registry.levelNumber = 3;' in select
+          assert 'Registry.level = XML(new Registry.Level3)' in select
+
+          out=Path("play-static-preflight/progression-invariant.txt")
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_text(
+              "scope=STATIC_SOURCE_INVARIANT_ONLY\n"
+              "fresh_level1_unlocked=true\n"
+              "fresh_level2_unlocked=true\n"
+              "level2_completion_writes_level3_slot=true\n"
+              "completion_save_close_flushes_shared_object=true\n"
+              "level_select_reloads_same_progress_array=true\n"
+              "level3_gate_reads_written_slot=true\n"
+              "level3_loader_present=true\n"
+              "genuine_level2_completion_runtime_proven=false\n"
+              "classification=STATICALLY_COHERENT_RUNTIME_COMPLETION_RESIDUAL_UNPROVEN\n"
+          )
+          print(out.read_text())
+          PY
+
       - name: Download exact promoted Rev50 build evidence
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
