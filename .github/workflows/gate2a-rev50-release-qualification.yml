@@ -140,12 +140,18 @@ jobs:
           swipe_right
           capture "$DIR/02-level3-highlighted.png"
 
-          adb logcat -c
           adb shell input tap 960 540
           sleep 3
           capture "$DIR/03-level3-lock-dialog.png"
-          adb logcat -d > "$DIR/03-lock-logcat.txt" 2>&1
-          grep -F "Level 3 is not available" "$DIR/03-lock-logcat.txt" > "$DIR/03-lock-proof.txt"
+
+          # Do not use FlxG.log as a release assertion: AIR does not guarantee
+          # those traces are surfaced in Android logcat. Preserve the rendered
+          # frame as the semantic proof surface and ensure activation changed
+          # the rendered state before continuing.
+          if cmp -s "$DIR/02-level3-highlighted.png" "$DIR/03-level3-lock-dialog.png"; then
+            echo "Level 3 activation produced no rendered change" >&2
+            exit 1
+          fi
 
           # Rev50 behavior under test: ordinary Android touch/action dismisses
           # the lock modal after the modal's debounce interval.
@@ -178,7 +184,7 @@ jobs:
           forced_completion=false
           level2_completion_campaign_replayed=false
           purpose=locked-level-modal-dismissal-and-level2-launch-via-real-touch-navigation
-          lock_log_required=Level 3 is not available
+          lock_log_required=false
           visual_adjudication_required=true
           METHOD
           EOF
