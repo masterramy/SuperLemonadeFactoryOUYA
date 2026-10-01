@@ -98,18 +98,22 @@ jobs:
             sleep 5
             dismiss_system_ui
             sleep 4
+
+            # Leave the title screen and wait for the main menu.
             adb shell input tap 960 810
             sleep 4
-            adb shell input tap 960 500
-            sleep 4
-            adb shell input keyevent KEYCODE_DPAD_RIGHT
-            sleep 1
-            adb shell input keyevent KEYCODE_DPAD_RIGHT
-            sleep 1
-            capture "$dir/01-level3-selected.png"
+
+            # Main menu defaults to FACTORY. Keyboard X is the ordinary action
+            # binding and deterministically opens Factory Level Select.
             adb shell input keyevent KEYCODE_X
+            sleep 4
+            capture "$dir/01-level-select-baseline.png"
+
+            # Tap the locked Level 3 button directly. Fresh progress exposes
+            # Levels 1-2 and leaves Level 3 locked.
+            adb shell input tap 1395 335
             sleep 3
-            capture "$dir/02-lock-dialog.png"
+            capture "$dir/02-level3-lock-dialog.png"
           }
 
           run_trial(){
@@ -118,19 +122,18 @@ jobs:
             mkdir -p "$dir"
             fresh_to_lock "$dir"
 
-            # One ordinary Android touchscreen tap while the lock modal is visible.
+            # Exactly one ordinary Android touchscreen tap while the lock modal
+            # is visible. The coordinate varies per trial.
             adb shell input tap "$x" "$y"
             sleep 3
-            capture "$dir/03-after-one-touch.png"
+            capture "$dir/03-after-one-dismiss-touch.png"
 
-            # If that touch dismissed the modal, LEFT selects the already-available
-            # Level 2 and X launches it. If it did not, these inputs remain bounded
-            # and the resulting screenshot will honestly show the residual modal.
-            adb shell input keyevent KEYCODE_DPAD_LEFT
-            sleep 1
-            adb shell input keyevent KEYCODE_X
+            # Launch already-unlocked Level 2 by direct touchscreen selection.
+            # If the modal did not dismiss, the modal will remain and the
+            # resulting screenshot will expose that failure honestly.
+            adb shell input tap 970 335
             sleep 8
-            capture "$dir/04-after-left-and-select.png"
+            capture "$dir/04-after-level2-touch.png"
 
             adb logcat -d > "$dir/logcat.txt" 2>&1
             if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$dir/logcat.txt" > "$dir/fatal.txt"; then
@@ -149,7 +152,7 @@ jobs:
           adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
           adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 
-          # Original failing coordinate plus two independent in-bounds positions.
+          # Three independent in-bounds modal-dismissal coordinates.
           run_trial "trial-a-original-coordinate" 960 900
           run_trial "trial-b-center" 960 540
           run_trial "trial-c-upper-right" 1600 120
