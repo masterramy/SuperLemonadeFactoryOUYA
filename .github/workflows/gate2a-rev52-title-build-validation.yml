@@ -31,10 +31,12 @@ jobs:
           from PIL import Image
           im=Image.open("data/logo_limeade.png").convert("RGBA")
           assert im.size==(228,116), im.size
-          def ink_span(y0,y1):
+          def ink_span(y0,y1,x0=20,x1=208):
+              # Restrict to the sign interior so the white border is not
+              # misclassified as title ink.
               pts=[]
               for y in range(y0,y1):
-                  for x in range(im.width):
+                  for x in range(x0,x1):
                       r,g,b,a=im.getpixel((x,y))
                       if a>0 and r>=245 and g>=245 and b>=245:
                           pts.append((x,y))
@@ -47,8 +49,8 @@ jobs:
           print("LIMEADE",lime)
           print("FACTORY",factory)
           assert abs(lime[2]-factory[2]) <= 2, (lime,factory)
-          assert abs(lime[0]-factory[0]) <= 4, (lime,factory)
-          assert abs(lime[1]-factory[1]) <= 4, (lime,factory)
+          assert abs(lime[0]-factory[0]) <= 2, (lime,factory)
+          assert abs(lime[1]-factory[1]) <= 2, (lime,factory)
           with open("title-audit/asset-geometry.txt","w") as f:
               f.write(f"limeade={lime}\nfactory={factory}\nstatus=PASS\n")
           PY
@@ -175,7 +177,7 @@ jobs:
           python - <<'PY'
           from PIL import Image
           im=Image.open('title-render/01-title-1920x1080.png').convert('RGB')
-          def span(y0,y1,x0=650,x1=1250):
+          def span(y0,y1,x0=680,x1=1240):
               pts=[]
               for y in range(y0,y1):
                   for x in range(x0,x1):
