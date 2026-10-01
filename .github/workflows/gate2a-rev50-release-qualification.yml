@@ -99,12 +99,16 @@ jobs:
             dismiss_system_ui
             sleep 4
 
-            # Leave the title screen and wait for the main menu.
-            adb shell input tap 960 810
-            sleep 4
+            # Advance the intro twice using the ordinary action binding.
+            # This exact sequence is already established by the prior privacy-route QA.
+            adb shell input keyevent KEYCODE_X
+            sleep 2
+            adb shell input keyevent KEYCODE_X
+            sleep 6
+            capture "$dir/00-main-menu.png"
 
-            # Main menu defaults to FACTORY. Keyboard X is the ordinary action
-            # binding and deterministically opens Factory Level Select.
+            # Main menu defaults to FACTORY. One more ordinary action opens
+            # Factory Level Select.
             adb shell input keyevent KEYCODE_X
             sleep 4
             capture "$dir/01-level-select-baseline.png"
