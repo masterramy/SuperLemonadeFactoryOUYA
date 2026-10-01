@@ -35,7 +35,7 @@ def centered_text(draw, canvas_w, y, text, font):
     w = box[2] - box[0]
     draw.text(((canvas_w - w)//2, y), text, font=font, fill=WHITE)
 
-def centered_tracked_text(draw, canvas_w, y, text, font, target_ink_width):
+def centered_tracked_text(draw, canvas_w, y, text, font, target_ink_width, target_center_x=None):
     """Draw the word with original-logo style tracking.
 
     The original sign's FACTORY line is seven letters and spans 140 source
@@ -57,7 +57,9 @@ def centered_tracked_text(draw, canvas_w, y, text, font, target_ink_width):
         gap_base, gap_remainder = divmod(extra, gaps)
 
     actual_width = base + gap_base * gaps + gap_remainder
-    x = (canvas_w - actual_width) // 2
+    if target_center_x is None:
+        target_center_x = canvas_w / 2
+    x = round(target_center_x - actual_width / 2)
     for i, (ch, box, width) in enumerate(glyphs):
         draw.text((x - box[0], y), ch, font=font, fill=WHITE)
         x += width
@@ -69,7 +71,8 @@ def centered_tracked_text(draw, canvas_w, y, text, font, target_ink_width):
 logo = recolor_purple(Image.open(DATA / "logo.png"))
 ld = ImageDraw.Draw(logo)
 ld.rectangle([25, 40, 203, 68], fill=(105,176,46,255))
-centered_tracked_text(ld, logo.width, 43, "LIMEADE", ImageFont.truetype(str(FONT), 16), 140)
+# Match FACTORY's visible 140-pixel span and its original optical center.
+centered_tracked_text(ld, logo.width, 43, "LIMEADE", ImageFont.truetype(str(FONT), 16), 142, 118)
 logo.save(DATA / "logo_limeade.png", optimize=True)
 
 # Launcher/Play icon: preserve the original sign composition, recolor it, and
@@ -78,7 +81,7 @@ icon = recolor_purple(Image.open(ICON_DIR / "icon512.png"))
 idraw = ImageDraw.Draw(icon)
 fill = icon.getpixel((260,250))
 idraw.rectangle([54, 215, 464, 302], fill=fill)
-centered_tracked_text(idraw, icon.width, 225, "LIMEADE", ImageFont.truetype(str(FONT), 62), round(140 * icon.width / 228))
+centered_tracked_text(idraw, icon.width, 225, "LIMEADE", ImageFont.truetype(str(FONT), 62), round(142 * icon.width / 228), round(118 * icon.width / 228))
 
 for size in (16,29,32,36):
     icon.resize((size,size), Image.Resampling.LANCZOS).save(ICON_DIR / f"icon{size}.png", optimize=True)
