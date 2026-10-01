@@ -35,12 +35,41 @@ def centered_text(draw, canvas_w, y, text, font):
     w = box[2] - box[0]
     draw.text(((canvas_w - w)//2, y), text, font=font, fill=WHITE)
 
+def centered_tracked_text(draw, canvas_w, y, text, font, target_ink_width):
+    """Draw the word with original-logo style tracking.
+
+    The original sign's FACTORY line is seven letters and spans 140 source
+    pixels of visible white ink. LIMEADE is also seven letters, so its visible
+    ink span should match that line rather than Pillow's tightly-kerned default.
+    """
+    glyphs = []
+    for ch in text:
+        box = draw.textbbox((0, 0), ch, font=font)
+        glyphs.append((ch, box, box[2] - box[0]))
+    base = sum(width for _, _, width in glyphs)
+    gaps = max(0, len(glyphs) - 1)
+    if gaps == 0:
+        extra = 0
+        gap_base = 0
+        gap_remainder = 0
+    else:
+        extra = max(0, target_ink_width - base)
+        gap_base, gap_remainder = divmod(extra, gaps)
+
+    actual_width = base + gap_base * gaps + gap_remainder
+    x = (canvas_w - actual_width) // 2
+    for i, (ch, box, width) in enumerate(glyphs):
+        draw.text((x - box[0], y), ch, font=font, fill=WHITE)
+        x += width
+        if i < gaps:
+            x += gap_base + (1 if i < gap_remainder else 0)
+
 # In-game logo: preserve the original pixel-art sign silhouette and border,
 # change the sign color to lime, and replace only the edition-name line.
 logo = recolor_purple(Image.open(DATA / "logo.png"))
 ld = ImageDraw.Draw(logo)
 ld.rectangle([25, 40, 203, 68], fill=(105,176,46,255))
-centered_text(ld, logo.width, 43, "LIMEADE", ImageFont.truetype(str(FONT), 16))
+centered_tracked_text(ld, logo.width, 43, "LIMEADE", ImageFont.truetype(str(FONT), 16), 140)
 logo.save(DATA / "logo_limeade.png", optimize=True)
 
 # Launcher/Play icon: preserve the original sign composition, recolor it, and
@@ -49,7 +78,7 @@ icon = recolor_purple(Image.open(ICON_DIR / "icon512.png"))
 idraw = ImageDraw.Draw(icon)
 fill = icon.getpixel((260,250))
 idraw.rectangle([54, 215, 464, 302], fill=fill)
-centered_text(idraw, icon.width, 225, "LIMEADE", ImageFont.truetype(str(FONT), 62))
+centered_tracked_text(idraw, icon.width, 225, "LIMEADE", ImageFont.truetype(str(FONT), 62), round(140 * icon.width / 228))
 
 for size in (16,29,32,36):
     icon.resize((size,size), Image.Resampling.LANCZOS).save(ICON_DIR / f"icon{size}.png", optimize=True)
