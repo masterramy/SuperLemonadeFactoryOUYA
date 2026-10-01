@@ -44,8 +44,8 @@ jobs:
               xs=[p[0] for p in pts]
               ys=[p[1] for p in pts]
               return min(xs),max(xs),max(xs)-min(xs)+1,min(ys),max(ys)
-          lime=ink_span(40,69)
-          factory=ink_span(70,105)
+          lime=ink_span(42,61)
+          factory=ink_span(74,94)
           print("LIMEADE",lime)
           print("FACTORY",factory)
           assert abs(lime[2]-factory[2]) <= 2, (lime,factory)
@@ -186,8 +186,8 @@ jobs:
               assert pts
               xs=[x for x,y in pts]
               return min(xs),max(xs),max(xs)-min(xs)+1
-          lime_span=span(160,230)
-          factory_span=span(250,320)
+          lime_span=span(160,215)
+          factory_span=span(255,310)
           print('LIMEADE',lime_span,'FACTORY',factory_span)
           assert abs(lime_span[2]-factory_span[2]) <= 8, (lime_span,factory_span)
           with open('title-render/rendered-geometry.txt','w') as f:
