@@ -41,18 +41,27 @@ Game progress is stored locally in app-private storage and is not transmitted to
 - Local progress can be removed by clearing app data or uninstalling the app.
 
 ## Privacy policy
-Public policy file:
-https://github.com/masterramy/SuperLemonadeFactoryOUYA/blob/gate2a-rev47-super-limeade-release-ready/privacy.html
+Current immutable policy candidate:
+https://github.com/masterramy/SuperLemonadeFactoryOUYA/blob/2894a522e609d7d9f7d4c54b9adb85ec7f61f064/PRIVACY.md
 
-Before submission, reconcile this URL against the final immutable release branch/tag or other durable public hosting route and confirm it opens without authentication.
+The policy commit is documentation-only over exact Rev50. Before submission, independently confirm this URL opens without authentication from a normal public browser and remains active, non-geofenced, non-PDF, and non-editable. If Google rejects GitHub rendering as a policy host, move the same policy text to a durable public web page without changing the frozen game binary.
 
 ## Permissions
 Expected effective Android permissions: **none**.
 The release build must fail certification if any unexpected `uses-permission` appears, including `android.permission.INTERNET`.
 
 ## Target audience
-Intended audience for the Play declaration: **ages 13–17 and 18+**.
-The game is not designed primarily for children and should not be opted into child-directed/Families treatment merely to broaden availability.
+**Final selection is an owner/Console decision and is not pre-certified by this dossier.**
+
+Google's current Console uses separate target-age groups including Ages 13–15, Ages 16–17, and Ages 18 and over. Select only the group(s) the game was actually designed for and is appropriate for; do not add younger groups merely to broaden availability. A selection that includes children can trigger additional Families-policy obligations.
+
+Current product evidence supports only these factual inputs to the decision:
+- retro puzzle-platformer with text-heavy menus/story;
+- no ads, account, social/UGC, chat, purchases, gambling, sexual content, or realistic violence;
+- mild platforming peril / character death on environmental hazards;
+- no child-directed design claim has been established.
+
+Reconcile the exact live Console options and Ramy's intended audience immediately before saving the declaration.
 
 ## Content-rating questionnaire evidence
 Answer from the actual game content, not from branding:
@@ -84,13 +93,14 @@ The IARC rating itself must be the result returned by the live questionnaire; do
 ## Submission hold
 Do not submit any form or release until:
 1. the organization-account transition is complete;
-2. the documented Google synchronization/settling interval has elapsed;
-3. the live Console fields are reread and reconciled;
-4. the exact production-signed AAB has passed final cold audit;
-5. Ramy explicitly approves submission.
+2. at least 72 hours have elapsed from the actual transition-completion timestamp shown/confirmed by Google;
+3. the live Console fields are reread and reconciled, including package registration/verification status;
+4. the final target-audience choice has been owner-confirmed in the live Console;
+5. the exact production-signed AAB has passed final cold audit;
+6. Ramy explicitly approves submission.
 
 
-## Current Google Play platform requirements — verified 2026-09-19
+## Current Google Play platform requirements — rechecked 2026-10-01
 
 - New phone/tablet apps and updates submitted after 2026-08-31 must target Android 16 / API 36 or higher. This candidate targets API 36.
 - After this developer account's transition to an organization account is complete, **wait at least 72 hours before submitting a new app** so Play systems can finish synchronizing the account-type change.
