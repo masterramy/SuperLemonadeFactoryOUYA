@@ -36,6 +36,8 @@ package
 	{		
 		
 		public var __levelOver:Boolean = false;
+		// QA-only observational telemetry. This branch is never a shipping source.
+		private var qaObservationFrame:uint = 0;
 		
 		override public function create():void
 		{
@@ -75,6 +77,12 @@ package
 		override public function update():void
 		{
 			super.update();
+
+			// Observation only: persist a tiny state snapshot for the external
+			// QA player. It never mutates progression, positions, physics, or saves.
+			qaObservationFrame++;
+			if ((qaObservationFrame % 6) == 0 || levelFinished || __levelOver)
+				writeQAObservation();
 			
 			if (pauseFrameConsumed || FlxG.paused)
 				return;
@@ -441,6 +449,65 @@ package
 			}
 		}
 		
+		private function writeQAObservation():void
+		{
+			try
+			{
+				if (player1 == null || player2 == null) return;
+				var exitX:Number = -1;
+				var exitY:Number = -1;
+				if (exits != null && exits.length > 0 && exits.members[0] != null)
+				{
+					var qaExit:Exit = exits.members[0] as Exit;
+					if (qaExit != null)
+					{
+						exitX = qaExit.x;
+						exitY = qaExit.y;
+					}
+				}
+
+				var line:String =
+					"levelType=" + Registry.levelType + "\n" +
+					"levelNumber=" + Registry.levelNumber + "\n" +
+					"hardCore=" + Registry.hardCore + "\n" +
+					"playersNo=" + Registry.playersNo + "\n" +
+					"p1x=" + player1.x.toFixed(2) + "\n" +
+					"p1y=" + player1.y.toFixed(2) + "\n" +
+					"p1vx=" + player1.velocity.x.toFixed(2) + "\n" +
+					"p1vy=" + player1.velocity.y.toFixed(2) + "\n" +
+					"p1controlled=" + player1._currentlyControlled + "\n" +
+					"p1dead=" + player1.dead + "\n" +
+					"p1piggy=" + player1._isPiggyBacking + "\n" +
+					"p2x=" + player2.x.toFixed(2) + "\n" +
+					"p2y=" + player2.y.toFixed(2) + "\n" +
+					"p2vx=" + player2.velocity.x.toFixed(2) + "\n" +
+					"p2vy=" + player2.velocity.y.toFixed(2) + "\n" +
+					"p2controlled=" + player2._currentlyControlled + "\n" +
+					"p2dead=" + player2.dead + "\n" +
+					"p2piggy=" + player2._isPiggyBacking + "\n" +
+					"exitX=" + exitX.toFixed(2) + "\n" +
+					"exitY=" + exitY.toFixed(2) + "\n" +
+					"levelFinished=" + levelFinished + "\n" +
+					"levelOverMenu=" + __levelOver + "\n" +
+					"paused=" + FlxG.paused + "\n" +
+					"observationOnly=true\n";
+
+				var qaDir:File = File.applicationStorageDirectory.resolvePath("SUPERLEMONADEFACTORY");
+				if (!qaDir.exists) qaDir.createDirectory();
+				var qaTemp:File = qaDir.resolvePath("qa_state.txt.tmp");
+				var qaFile:File = qaDir.resolvePath("qa_state.txt");
+				var qaStream:FileStream = new FileStream();
+				qaStream.open(qaTemp, FileMode.WRITE);
+				qaStream.writeUTFBytes(line);
+				qaStream.close();
+				qaTemp.moveTo(qaFile, true);
+			}
+			catch (qaObservationError:Error)
+			{
+				// Observation must never affect gameplay.
+			}
+		}
+
 		public function replaceAt(s1:String, s2:String, ind:int):String {
 			FlxG.log(s1);
 			var arr:Array = s1.split("");
