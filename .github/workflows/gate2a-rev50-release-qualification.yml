@@ -73,7 +73,7 @@ jobs:
                   if m:
                       a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2)
           PY
-              while read -r x y; do test -z "${x:-}" || adb shell input tap "$x" "$y" >/dev/null 2>&1 || true; done < "$OUT/taps.txt"
+              while read -r tx ty; do test -z "${tx:-}" || adb shell input tap "$tx" "$ty" >/dev/null 2>&1 || true; done < "$OUT/taps.txt"
               sleep 1
             done
           }
