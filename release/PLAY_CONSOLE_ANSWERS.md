@@ -41,18 +41,21 @@ Game progress is stored locally in app-private storage and is not transmitted to
 - Local progress can be removed by clearing app data or uninstalling the app.
 
 ## Privacy policy
-Public policy file:
-https://github.com/masterramy/SuperLemonadeFactoryOUYA/blob/gate2a-rev47-super-limeade-release-ready/privacy.html
+Current immutable policy candidate:
+https://github.com/masterramy/SuperLemonadeFactoryOUYA/blob/2894a522e609d7d9f7d4c54b9adb85ec7f61f064/PRIVACY.md
 
-Before submission, reconcile this URL against the final immutable release branch/tag or other durable public hosting route and confirm it opens without authentication.
+The URL is commit-pinned so the referenced policy bytes cannot change in place. Before entering it in Play Console, verify the rendered page opens anonymously and remains globally accessible/non-geofenced. Google Play requires a publicly accessible, non-editable privacy-policy URL and also requires privacy policy text or a link within the app.
 
 ## Permissions
 Expected effective Android permissions: **none**.
 The release build must fail certification if any unexpected `uses-permission` appears, including `android.permission.INTERNET`.
 
 ## Target audience
-Intended audience for the Play declaration: **ages 13–17 and 18+**.
-The game is not designed primarily for children and should not be opted into child-directed/Families treatment merely to broaden availability.
+Current Play age-group choices separate teens into **13–15**, **16–17**, and **18+**.
+
+Do not select age groups merely to broaden availability. Google says any selected audience that includes children triggers Families-policy obligations, and notes that the 13–15 and 16–17 groups may be considered children in some locales. The final Console selection is therefore an owner/legal-policy judgment and must be reconciled against the live form.
+
+Product evidence relevant to that choice: the game has no ads, analytics, accounts, online communication, data transmission, IAP, gambling, sexual content, or realistic/graphic violence; it does contain retro platforming peril, character death on environmental hazards, and wartime/factory narrative context.
 
 ## Content-rating questionnaire evidence
 Answer from the actual game content, not from branding:
@@ -82,12 +85,13 @@ The IARC rating itself must be the result returned by the live questionnaire; do
 - Account creation: **No**
 
 ## Submission hold
-Do not submit any form or release until:
-1. the organization-account transition is complete;
-2. the documented Google synchronization/settling interval has elapsed;
-3. the live Console fields are reread and reconciled;
-4. the exact production-signed AAB has passed final cold audit;
-5. Ramy explicitly approves submission.
+Organization transition and production access are owner-confirmed complete. Before submission:
+1. confirm any required post-transition synchronization interval has actually elapsed from the live account event;
+2. reread and reconcile every live Console field and package-registration requirement;
+3. reconcile Play App Signing / upload-certificate identity;
+4. create and cold-audit the exact production-signed AAB;
+5. complete physical-device and Play-delivered smoke testing;
+6. obtain Ramy's explicit submission approval.
 
 
 ## Current Google Play platform requirements — verified 2026-09-19
@@ -97,3 +101,21 @@ Do not submit any form or release until:
 - Effective 2026-09-30, Play package-name registration is part of Android developer verification requirements. Before submission, confirm that `com.ramybaheeg.slfport` is registered or auto-registered in the live Console and complete any package-ownership proof Google actually requests.
 - New apps use Play App Signing. Current Google documentation says new apps are automatically enrolled in quantum-ready hybrid signing with Google-generated app-signing keys; Ramy retains the upload key used to sign the AAB submitted to Play.
 - Before submission, re-open **App content > Needs attention** and reconcile every live declaration. Do not assume this dossier's field names are still identical to the Console UI.
+
+
+## Rev50 Play static preflight — 2026-10-01
+
+QA-only branch `qa/rev50-release-qualification` introduced no shipping-source delta and re-used the exact promoted Rev50 artifacts.
+
+Run `36832587344`: SUCCESS.
+Verified against exact Rev50 AAB SHA-256 `7652669e33fd8dacb9cba902adc12eef31cb32f717e60ccf320310f9d83a8461`:
+- BundleConfig native-library uncompression enabled;
+- 16 KiB page alignment configuration present;
+- native PT_LOAD alignment minimum >= 0x4000;
+- ABIs present: armeabi-v7a, arm64-v8a, x86, x86_64;
+- active network call sites: none in frozen release audit;
+- source permission references: none in frozen release audit;
+- Play icon: 512x512;
+- feature graphic: 1024x500.
+
+This is static preflight evidence only. It does not substitute for Play Console processing, Pre-launch Report, physical-device acceptance, production signing, or Play-delivered install testing.
