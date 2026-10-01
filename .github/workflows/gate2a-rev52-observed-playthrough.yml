@@ -1,0 +1,122 @@
+name: Gate 2A Rev52 Observed Natural Playthrough
+
+on:
+  push:
+    branches:
+      - qa/rev52-observed-playthrough
+    paths:
+      - src/PCPlayState.as
+      - qa/observed_playthrough.py
+      - .github/workflows/gate2a-rev52-observed-playthrough.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_HEAD: 3e65ef5df0acb0f7a2c1e16e6eb0998e6501b7ae
+  SLF_NO_PAUSE: '1'
+
+jobs:
+  build-observation-runtime:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 32
+
+      - name: Prove QA-only observational delta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git fetch --no-tags --depth=1 origin $env:CANDIDATE_HEAD
+          if($LASTEXITCODE -ne 0){ throw 'Cannot fetch Rev52 candidate head.' }
+          $changed=@(git diff --name-only "$env:CANDIDATE_HEAD..HEAD")
+          $allowed=@(
+            'src/PCPlayState.as',
+            'qa/observed_playthrough.py',
+            '.github/workflows/gate2a-rev52-observed-playthrough.yml'
+          )
+          $unexpected=@($changed | Where-Object { $_ -notin $allowed })
+          if($unexpected.Count -ne 0){ throw "Unexpected QA delta: $($unexpected -join ', ')" }
+          $pc=Get-Content -Raw 'src/PCPlayState.as'
+          if($pc -notmatch 'observationOnly=true'){ throw 'Observation marker missing.' }
+          if($pc -match 'player1\.x\s*=|player2\.x\s*=|Registry\.levelNumber\s*\+\+.*QA'){ throw 'Potential QA mutation detected.' }
+          $changed | Set-Content qa-delta.txt
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+
+      - name: Ensure Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME }
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($null -eq $sdk){ $sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat' } else { $sdkPath=$sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){ throw 'Android SDK setup failed.' }
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+
+      - name: Build x64 observation runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File tools/build-emulator-apk.ps1
+          if($LASTEXITCODE -ne 0){ throw "x64 emulator build failed: $LASTEXITCODE" }
+          if(-not(Test-Path 'dist/emulator-qa/SLF-emulator-x64.apk')){ throw 'Missing QA APK.' }
+          Get-FileHash -Algorithm SHA256 'dist/emulator-qa/SLF-emulator-x64.apk' | Format-List
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-observed-runtime
+          path: |
+            dist/emulator-qa
+            qa-delta.txt
+          if-no-files-found: error
+
+  natural-level2:
+    needs: build-observation-runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev52-observed-runtime
+          path: runtime
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run state-observed ordinary-input Level 2
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: python3 qa/observed_playthrough.py
+
+      - name: Upload natural-play evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-observed-natural-level2
+          path: playthrough-evidence
+          if-no-files-found: error
