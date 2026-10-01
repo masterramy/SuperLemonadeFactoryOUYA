@@ -119,3 +119,24 @@ Verified against exact Rev50 AAB SHA-256 `7652669e33fd8dacb9cba902adc12eef31cb32
 - feature graphic: 1024x500.
 
 This is static preflight evidence only. It does not substitute for Play Console processing, Pre-launch Report, physical-device acceptance, production signing, or Play-delivered install testing.
+
+
+## Final autonomous Rev50 release qualification — 2026-10-01
+
+Rendered touch qualification:
+- workflow run `36887620530`, attempt 2: SUCCESS
+- QA workflow head: `dc182008fd091930218a55eef854a548750172b4`
+- exact promoted x64 APK SHA-256 verified: `90fde292caacbeb5cb68aa0d56c9672808e0aadd55c719c3b1b65e688440998c`
+- shipping-source delta vs Rev50: none
+- evidence artifact: `11174644888`, digest `sha256:6f2cdb38c9afe9ae52ee8889e58df790a214ffa89e3940035942a4c1206aac8c`
+- sequential rendered review: main menu PASS; fresh Level 1 selection PASS; real-touch swipe navigation to Level 3 PASS; locked-Level-3 modal PASS; real-touch modal dismissal PASS; real-touch navigation to Level 2 PASS; actual Level 2 gameplay PASS; fatal-runtime evidence absent.
+
+Play/static + progression-source qualification:
+- workflow run `36888659627`: SUCCESS
+- QA workflow head: `86b50a9c524e2b5bbc604f1488b22f43e1d277b9`
+- evidence artifact: `11176465073`, digest `sha256:7fec9747f8d61007ecdf1142fbfce0e8d34c5f5157ed04507d2aa20ac6a53aaa`
+- exact promoted Rev50 AAB SHA-256 reverified
+- API/ABI/page-alignment/network/permission/store-graphic checks PASS
+- completion-to-unlock source invariant PASS: fresh normal progress unlocks Levels 1–2; genuine Level 2 completion writes the Level 3 progress slot; `FlxSave.close()` flushes the backing SharedObject; Level Select reloads the same array and gates Level 3 from that slot.
+
+Boundary: this static invariant does **not** claim that the automated harness genuinely completed the full Level 2 puzzle. That runtime-completion residual remains UNPROVEN, not failed and not product RED.
