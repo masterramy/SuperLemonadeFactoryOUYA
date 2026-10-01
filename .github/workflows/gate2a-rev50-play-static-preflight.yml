@@ -1,0 +1,150 @@
+name: Gate 2A Rev50 Play Static Preflight
+
+on:
+  push:
+    branches:
+      - qa/rev50-release-qualification
+    paths:
+      - .github/workflows/gate2a-rev50-play-static-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  play-static-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: Prove QA branch has no shipping-source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code 354e354809d240811cd2bc50aea3b4017ca7b3e4 --             src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools             release/store-assets
+
+      - name: Download exact promoted Rev50 build evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev50-exact-head-android-validation
+          path: validation
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 35495911788
+
+      - name: Download exact promoted Rev50 static audit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev50-static-release-audit
+          path: static-audit
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 35495911788
+
+      - name: Verify Play-critical binary properties
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, pathlib, re, struct, subprocess, zipfile
+
+          aab=pathlib.Path("validation/local-aab/SLF-validation.aab")
+          expected="7652669e33fd8dacb9cba902adc12eef31cb32f717e60ccf320310f9d83a8461"
+          actual=hashlib.sha256(aab.read_bytes()).hexdigest()
+          assert actual == expected, (actual, expected)
+
+          def varint(buf, pos):
+              out=0; shift=0
+              while True:
+                  b=buf[pos]; pos += 1
+                  out |= (b & 0x7f) << shift
+                  if not (b & 0x80): return out,pos
+                  shift += 7
+
+          def parse(buf):
+              pos=0; out=[]
+              while pos < len(buf):
+                  key,pos=varint(buf,pos); field=key>>3; wire=key&7
+                  if wire==0:
+                      val,pos=varint(buf,pos)
+                  elif wire==2:
+                      n,pos=varint(buf,pos); val=buf[pos:pos+n]; pos += n
+                  else:
+                      raise AssertionError(f"unexpected protobuf wire type {wire}")
+                  out.append((field,wire,val))
+              return out
+
+          with zipfile.ZipFile(aab) as z:
+              cfg=z.read("BundleConfig.pb")
+              top=parse(cfg)
+              optim=next(v for f,w,v in top if f==2 and w==2)
+              opt=parse(optim)
+              uncompress=next(v for f,w,v in opt if f==2 and w==2)
+              un=parse(uncompress)
+              enabled=next(v for f,w,v in un if f==1 and w==0)
+              alignment=next(v for f,w,v in un if f==2 and w==0)
+              assert enabled == 1
+              assert alignment == 2, f"BundleConfig alignment enum={alignment}; expected PAGE_ALIGNMENT_16K=2"
+
+              libs=[n for n in z.namelist() if n.startswith("base/lib/") and n.endswith(".so")]
+              abis={n.split("/")[2] for n in libs}
+              required={"armeabi-v7a","arm64-v8a","x86","x86_64"}
+              assert required.issubset(abis), (abis, required)
+              outdir=pathlib.Path("play-static-preflight/native")
+              outdir.mkdir(parents=True,exist_ok=True)
+              for n in libs:
+                  p=outdir/pathlib.Path(n).name.replace(".so",f"-{n.split('/')[2]}.so")
+                  p.write_bytes(z.read(n))
+                  text=subprocess.check_output(["readelf","-lW",str(p)],text=True)
+                  aligns=[]
+                  for line in text.splitlines():
+                      if line.strip().startswith("LOAD"):
+                          m=re.search(r"(0x[0-9a-fA-F]+)\s*$",line)
+                          if m: aligns.append(int(m.group(1),16))
+                  assert aligns and min(aligns) >= 0x4000, (n, aligns)
+
+          # Exact frozen release audit: no active network call sites and no
+          # permission references in source-level release evidence.
+          for p in [
+              pathlib.Path("static-audit/active-network-call-sites.txt"),
+              pathlib.Path("static-audit/source-permission-references.txt"),
+              pathlib.Path("static-audit/unacceptable-runtime-brand-residue.txt"),
+              pathlib.Path("static-audit/legacy-public-presentation.txt"),
+          ]:
+              assert p.exists(), p
+              assert p.read_text(errors="replace").strip() == "", f"{p} is not empty"
+
+          # Verify store graphic dimensions directly from frozen PNG IHDR.
+          def png_dims(path):
+              b=pathlib.Path(path).read_bytes()
+              assert b[:8] == b"\x89PNG\r\n\x1a\n"
+              return struct.unpack(">II", b[16:24])
+          assert png_dims("release/store-assets/app-icon-512.png") == (512,512)
+          assert png_dims("release/store-assets/feature-graphic-1024x500.png") == (1024,500)
+
+          report=pathlib.Path("play-static-preflight/result.txt")
+          report.parent.mkdir(parents=True,exist_ok=True)
+          report.write_text(
+              "exact_rev50_aab_sha256="+actual+"\n"
+              "bundle_config_uncompress_native_libraries=true\n"
+              "bundle_config_page_alignment=PAGE_ALIGNMENT_16K\n"
+              "abis=armeabi-v7a,arm64-v8a,x86,x86_64\n"
+              "all_native_pt_load_alignment_min=0x4000\n"
+              "active_network_call_sites=none\n"
+              "source_permission_references=none\n"
+              "store_icon=512x512\n"
+              "feature_graphic=1024x500\n"
+          )
+          print(report.read_text())
+          PY
+
+      - name: Upload Play static preflight evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev50-play-static-preflight
+          path: play-static-preflight
+          if-no-files-found: error
