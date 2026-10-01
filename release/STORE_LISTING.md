@@ -17,7 +17,10 @@ This Android edition restores and modernizes the GPLv3-released OUYA source for 
 Super Limeade Factory is an **independent Android restoration/modification published by Ramy Baheeg**. It is based on the original **Super Lemonade Factory** by **Shane Brouwer / Initials Video Games**. This Android edition is **not produced, sponsored, or endorsed by Shane Brouwer or Initials Video Games**.
 
 Corresponding source and license information:
-https://github.com/masterramy/SuperLemonadeFactoryOUYA
+https://github.com/masterramy/SuperLemonadeFactoryOUYA/tree/8b1a99aa4c061e8aed79e05a0243131109d61230
+
+Privacy policy:
+https://github.com/masterramy/SuperLemonadeFactoryOUYA/blob/2894a522e609d7d9f7d4c54b9adb85ec7f61f064/PRIVACY.md
 
 ## Release notes
 Initial Google Play release of the independent Super Limeade Factory Android restoration, with modern Android packaging, touch controls, foldable-aware layout handling, preserved original-game credits, and GPLv3 corresponding-source access.
@@ -25,7 +28,7 @@ Initial Google Play release of the independent Super Limeade Factory Android res
 ## Support / contact
 Publisher: Ramy Baheeg
 Support and privacy contact: ramy.baheeg@gmail.com
-Source: https://github.com/masterramy/SuperLemonadeFactoryOUYA
+Source: https://github.com/masterramy/SuperLemonadeFactoryOUYA/tree/8b1a99aa4c061e8aed79e05a0243131109d61230
 
 ## Graphic asset plan
 - Play app icon: 512×512 PNG, lime sign treatment.
