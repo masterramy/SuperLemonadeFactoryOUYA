@@ -204,7 +204,7 @@ def solve_level2():
 
 def main():
     global DEV
-    apk="runtime/SLF-emulator-x64.apk"
+    apk="runtime/dist/emulator-qa/SLF-emulator-x64.apk"
     run(["adb","root"],check=False); time.sleep(2); run(["adb","wait-for-device"])
     DEV=find_keyboard()
     (OUT/"keyboard-device.txt").write_text(DEV+"\n",encoding="utf-8")
