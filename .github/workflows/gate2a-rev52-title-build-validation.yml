@@ -1,0 +1,199 @@
+name: Gate 2A Rev52 Title and Build Validation
+
+on:
+  push:
+    branches:
+      - gate2a-rev52-title-playthrough-repair
+    paths:
+      - data/logo_limeade.png
+      - icons/android/**
+      - release/store-assets/**
+      - tools/generate-lime-brand-assets.py
+      - .github/workflows/gate2a-rev52-title-build-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  title-asset-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Verify title typography geometry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+          mkdir -p title-audit
+          python - <<'PY'
+          from PIL import Image
+          im=Image.open("data/logo_limeade.png").convert("RGBA")
+          assert im.size==(228,116), im.size
+          def ink_span(y0,y1):
+              pts=[]
+              for y in range(y0,y1):
+                  for x in range(im.width):
+                      r,g,b,a=im.getpixel((x,y))
+                      if a>0 and r>=245 and g>=245 and b>=245:
+                          pts.append((x,y))
+              assert pts
+              xs=[p[0] for p in pts]
+              ys=[p[1] for p in pts]
+              return min(xs),max(xs),max(xs)-min(xs)+1,min(ys),max(ys)
+          lime=ink_span(40,69)
+          factory=ink_span(70,105)
+          print("LIMEADE",lime)
+          print("FACTORY",factory)
+          assert abs(lime[2]-factory[2]) <= 2, (lime,factory)
+          assert abs(lime[0]-factory[0]) <= 4, (lime,factory)
+          assert abs(lime[1]-factory[1]) <= 4, (lime,factory)
+          with open("title-audit/asset-geometry.txt","w") as f:
+              f.write(f"limeade={lime}\nfactory={factory}\nstatus=PASS\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-title-asset-audit
+          path: |
+            title-audit
+            data/logo_limeade.png
+            release/store-assets/app-icon-512.png
+            release/store-assets/feature-graphic-1024x500.png
+
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      SLF_NO_PAUSE: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 64
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - name: Ensure Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME }
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($null -eq $sdk){ $sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat' } else { $sdkPath=$sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){ throw 'Android SDK setup failed.' }
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+      - name: Build candidate validation APK AAB and x64 QA APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & cmd.exe /d /c BUILD_ANDROID_VALIDATION.bat
+          if($LASTEXITCODE -ne 0){ throw "Validation build failed: $LASTEXITCODE" }
+          & pwsh -NoProfile -File tools/build-emulator-apk.ps1
+          if($LASTEXITCODE -ne 0){ throw "x64 emulator build failed: $LASTEXITCODE" }
+          foreach($p in @('dist/local-apk/SLF-validation.apk','dist/local-aab/SLF-validation.aab','dist/emulator-qa/SLF-emulator-x64.apk')){ if(-not(Test-Path $p)){ throw "Missing $p" } }
+          Get-FileHash -Algorithm SHA256 'dist/local-apk/SLF-validation.apk' | Format-List
+          Get-FileHash -Algorithm SHA256 'dist/local-aab/SLF-validation.aab' | Format-List
+          Get-FileHash -Algorithm SHA256 'dist/emulator-qa/SLF-emulator-x64.apk' | Format-List
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-candidate-build
+          path: |
+            dist/local-apk
+            dist/local-aab
+            dist/emulator-qa
+          if-no-files-found: error
+
+  rendered-title:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev52-candidate-build
+          path: candidate
+      - name: Prepare title render harness
+        shell: bash
+        run: |
+          cat > title-render.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK=candidate/emulator-qa/SLF-emulator-x64.apk
+          PACKAGE=com.ramybaheeg.slfport
+          OUT=title-render
+          mkdir -p "$OUT"
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell pm clear "$PACKAGE" > "$OUT/clear.txt" 2>&1
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
+          sleep 8
+          adb exec-out screencap -p > "$OUT/01-title-1920x1080.png"
+          adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+          adb shell wm size 2560x1440
+          adb shell wm density 420
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch-large.txt" 2>&1
+          sleep 8
+          adb exec-out screencap -p > "$OUT/02-title-2560x1440.png"
+          adb logcat -d > "$OUT/logcat.txt" 2>&1
+          ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat.txt" > "$OUT/fatal.txt"
+          EOF
+          chmod +x title-render.sh
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Render candidate title
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash title-render.sh
+      - name: Rendered title geometry check
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+          python - <<'PY'
+          from PIL import Image
+          im=Image.open('title-render/01-title-1920x1080.png').convert('RGB')
+          def span(y0,y1,x0=650,x1=1250):
+              pts=[]
+              for y in range(y0,y1):
+                  for x in range(x0,x1):
+                      r,g,b=im.getpixel((x,y))
+                      if r>=245 and g>=245 and b>=245: pts.append((x,y))
+              assert pts
+              xs=[x for x,y in pts]
+              return min(xs),max(xs),max(xs)-min(xs)+1
+          lime_span=span(160,230)
+          factory_span=span(250,320)
+          print('LIMEADE',lime_span,'FACTORY',factory_span)
+          assert abs(lime_span[2]-factory_span[2]) <= 8, (lime_span,factory_span)
+          with open('title-render/rendered-geometry.txt','w') as f:
+              f.write(f"limeade={lime_span}\nfactory={factory_span}\nstatus=PASS\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gate2a-rev52-rendered-title
+          path: title-render
+          if-no-files-found: error
