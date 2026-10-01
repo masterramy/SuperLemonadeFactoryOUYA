@@ -1,3 +1,4 @@
+# Validates the currently generated Rev52 title assets and rendered opening screen.
 name: Gate 2A Rev52 Title and Build Validation
 
 on:
