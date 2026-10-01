@@ -3,7 +3,7 @@ name: Gate 2A Generate Limeade Brand Assets
 on:
   push:
     branches:
-      - gate2a-rev47-super-limeade-release-ready
+      - gate2a-rev52-title-playthrough-repair
     paths:
       - tools/generate-lime-brand-assets.py
       - .github/workflows/gate2a-lime-brand-assets.yml
@@ -43,4 +43,4 @@ jobs:
             exit 0
           fi
           git commit -m "release: generate Super Limeade Factory brand assets"
-          git push origin HEAD:gate2a-rev47-super-limeade-release-ready
+          git push origin HEAD:${GITHUB_REF_NAME}
