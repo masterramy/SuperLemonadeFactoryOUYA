@@ -1,0 +1,199 @@
+name: Gate 2A Rev50 Release Qualification
+
+on:
+  push:
+    branches:
+      - qa/rev50-release-qualification
+    paths:
+      - .github/workflows/gate2a-rev50-release-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  qualify-rendered-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 1
+
+      - name: Prove QA branch has no shipping-source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code 354e354809d240811cd2bc50aea3b4017ca7b3e4 --             src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools             release/store-assets
+          printf 'shipping_source_delta=none\nrev50=354e354809d240811cd2bc50aea3b4017ca7b3e4\n' > qualification-source.txt
+
+      - name: Download exact promoted Rev50 validation artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev50-exact-head-android-validation
+          path: validation
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 35495911788
+
+      - name: Verify exact promoted x64 QA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="validation/emulator-qa/SLF-emulator-x64.apk"
+          test -f "$APK"
+          actual="$(sha256sum "$APK" | awk '{print $1}')"
+          expected="90fde292caacbeb5cb68aa0d56c9672808e0aadd55c719c3b1b65e688440998c"
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual" | tee qualification-apk-sha256.txt
+          test "$actual" = "$expected"
+
+      - name: Prepare bounded exact-APK qualification harness
+        shell: bash
+        run: |
+          cat > qualify.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="validation/emulator-qa/SLF-emulator-x64.apk"
+          PACKAGE="com.ramybaheeg.slfport"
+          OUT="qualification"
+          mkdir -p "$OUT"
+
+          dismiss_system_ui(){
+            for _ in 1 2 3; do
+              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+              adb pull /sdcard/window.xml "$OUT/window.xml" >/dev/null 2>&1 || true
+              python3 - "$OUT/window.xml" <<'PY' > "$OUT/taps.txt" || true
+          import re,sys,xml.etree.ElementTree as ET
+          try: root=ET.parse(sys.argv[1]).getroot()
+          except Exception: raise SystemExit
+          for n in root.iter('node'):
+              if n.attrib.get('text') in ('Got it','Wait','OK','Continue'):
+                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+                  if m:
+                      a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2)
+          PY
+              while read -r x y; do test -z "${x:-}" || adb shell input tap "$x" "$y" >/dev/null 2>&1 || true; done < "$OUT/taps.txt"
+              sleep 1
+            done
+          }
+
+          capture(){
+            local file="$1"
+            adb exec-out screencap -p > "$file"
+            test -s "$file"
+            adb shell dumpsys window > "$file.window.txt" 2>&1
+            local pid focus
+            pid="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+            focus="$(grep -m1 'mCurrentFocus=' "$file.window.txt" || true)"
+            test -n "$pid"
+            echo "$focus" | grep -q "$PACKAGE"
+          }
+
+          fresh_to_lock(){
+            local dir="$1"
+            adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+            adb shell pm clear "$PACKAGE" > "$dir/clear-data.txt" 2>&1
+            adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$dir/launch.txt" 2>&1
+            sleep 5
+            dismiss_system_ui
+            sleep 4
+            adb shell input tap 960 810
+            sleep 4
+            adb shell input tap 960 500
+            sleep 4
+            adb shell input keyevent KEYCODE_DPAD_RIGHT
+            sleep 1
+            adb shell input keyevent KEYCODE_DPAD_RIGHT
+            sleep 1
+            capture "$dir/01-level3-selected.png"
+            adb shell input keyevent KEYCODE_X
+            sleep 3
+            capture "$dir/02-lock-dialog.png"
+          }
+
+          run_trial(){
+            local name="$1" x="$2" y="$3"
+            local dir="$OUT/$name"
+            mkdir -p "$dir"
+            fresh_to_lock "$dir"
+
+            # One ordinary Android touchscreen tap while the lock modal is visible.
+            adb shell input tap "$x" "$y"
+            sleep 3
+            capture "$dir/03-after-one-touch.png"
+
+            # If that touch dismissed the modal, LEFT selects the already-available
+            # Level 2 and X launches it. If it did not, these inputs remain bounded
+            # and the resulting screenshot will honestly show the residual modal.
+            adb shell input keyevent KEYCODE_DPAD_LEFT
+            sleep 1
+            adb shell input keyevent KEYCODE_X
+            sleep 8
+            capture "$dir/04-after-left-and-select.png"
+
+            adb logcat -d > "$dir/logcat.txt" 2>&1
+            if grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$dir/logcat.txt" > "$dir/fatal.txt"; then
+              echo "fatal runtime evidence in $name" >&2
+              exit 1
+            fi
+          }
+
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+          adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+
+          # Original failing coordinate plus two independent in-bounds positions.
+          run_trial "trial-a-original-coordinate" 960 900
+          run_trial "trial-b-center" 960 540
+          run_trial "trial-c-upper-right" 1600 120
+
+          cat > "$OUT/method.txt" <<'METHOD'
+          exact_rev50_x64_apk=true
+          exact_rev50_x64_apk_sha256=90fde292caacbeb5cb68aa0d56c9672808e0aadd55c719c3b1b65e688440998c
+          shipping_source_delta=false
+          save_or_game_state_edit=false
+          teleport=false
+          forced_completion=false
+          level2_completion_campaign_replayed=false
+          purpose=lock-modal-touch-dismissal-and-level2-launch-evidence-only
+          note=Level 2 transitions directly to gameplay; it has no cinematic by source logic.
+          visual_adjudication_required=true
+          METHOD
+          EOF
+          chmod +x qualify.sh
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run bounded rendered qualification
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash qualify.sh
+
+      - name: Upload exact-APK qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev50-release-qualification-evidence
+          path: |
+            qualification
+            qualification-source.txt
+            qualification-apk-sha256.txt
+          if-no-files-found: error
