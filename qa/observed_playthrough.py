@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
+from progress_guard import is_genuine_completion, is_death
 
 ADB=["adb"]
 PACKAGE="com.ramybaheeg.slfport"
@@ -147,6 +148,9 @@ def active_player(d):
 def ensure_active(which):
     for _ in range(5):
         d=state()
+        if is_death(d):
+            screenshot("death-during-switch"); log_state("death-during-switch")
+            raise RuntimeError(f"Player death during selection (not victory): {d}")
         if active_player(d)==which:return d
         if d.get("p1piggy") or d.get("p2piggy"):
             tap("B"); time.sleep(.4)
@@ -158,7 +162,11 @@ def advance_player(which, target_x, max_steps=60):
     lastx=None; stuck=0
     for step in range(max_steps):
         d=state()
-        if d.get("levelFinished"): return d
+        if is_genuine_completion(d): return d
+        if is_death(d):
+            screenshot(f"p{which}-death-step-{step:02d}")
+            log_state(f"p{which}-death-step-{step:02d}")
+            raise RuntimeError(f"Player death, not victory: {d}")
         x=d[f"p{which}x"]; y=d[f"p{which}y"]
         if abs(target_x-x) < 38:
             return d
@@ -185,7 +193,10 @@ def advance_player(which, target_x, max_steps=60):
 def settle_exit(max_rounds=30):
     for r in range(max_rounds):
         d=state()
-        if d.get("levelFinished"): return True
+        if is_genuine_completion(d): return True
+        if is_death(d):
+            screenshot(f"exit-death-{r:02d}"); log_state(f"exit-death-{r:02d}")
+            raise RuntimeError(f"Death at exit, not victory: {d}")
         ex=d.get("exitX",-1)
         if ex<0:return False
         # Move the farther character first, then the nearer one.
@@ -200,7 +211,7 @@ def settle_exit(max_rounds=30):
             screenshot(f"exit-settle-{r:02d}")
             log_state(f"exit-settle-{r:02d}")
         time.sleep(.3)
-    return bool(state().get("levelFinished"))
+    return is_genuine_completion(state())
 
 def solve_level2():
     d=wait_for_level(2)
@@ -229,8 +240,8 @@ def solve_level2():
     screenshot("level2-final")
     d=log_state("level2-final")
     (OUT/"level2-result.json").write_text(json.dumps({"completion":ok,"state":d},indent=2),encoding="utf-8")
-    if not ok:
-        raise RuntimeError(f"Level 2 not completed: {d}")
+    if not ok or not is_genuine_completion(d):
+        raise RuntimeError(f"Level 2 not genuinely completed: {d}")
     return d
 
 def main():
