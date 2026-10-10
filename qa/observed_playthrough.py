@@ -68,7 +68,21 @@ def locate_state():
             STATE_PATH=s.splitlines()[0].strip()
             return STATE_PATH
         time.sleep(.5)
-    raise RuntimeError("qa_state.txt not found")
+    # Fail with evidence, not with the false conclusion that Level 2 was
+    # never reached. An emulator screenshot may already prove gameplay.
+    probes=[
+        ("identity", "id; getprop ro.build.type"),
+        ("package", "pm path com.ramybaheeg.slfport; dumpsys package com.ramybaheeg.slfport | grep -E 'dataDir=|userId=|DEBUGGABLE' | head -12"),
+        ("private-roots", "ls -lad /data/user/0/com.ramybaheeg.slfport /data/data/com.ramybaheeg.slfport /data/user/0/com.ramybaheeg.slfport/files /data/user/0/com.ramybaheeg.slfport/files/SUPERLEMONADEFACTORY 2>&1"),
+        ("external-roots", "ls -lad /sdcard/Android/data/com.ramybaheeg.slfport /storage/emulated/0/Android/data/com.ramybaheeg.slfport 2>&1"),
+        ("all-candidate-files", "find /data/user/0/com.ramybaheeg.slfport /data/data/com.ramybaheeg.slfport /sdcard/Android/data/com.ramybaheeg.slfport -maxdepth 8 -type f \\( -name 'qa_state*' -o -name 'progress_backup.slf' \\) 2>&1 | head -80"),
+    ]
+    with (OUT/"observation-access-diagnostics.txt").open("w",encoding="utf-8") as h:
+        for name,cmd in probes:
+            p=run(["adb","shell",cmd],check=False)
+            h.write(f"=== {name} ===\\n{cmd}\\nexit={p.returncode}\\n{p.stdout}\\n{p.stderr}\\n")
+    screenshot("observation-missing-rendered-frame")
+    raise RuntimeError("QA observation file unavailable; see observation-access-diagnostics.txt. Do not interpret this as a gameplay failure.")
 
 def state():
     global STATE_PATH
