@@ -1,0 +1,149 @@
+name: Gate 2A Rev52 Genuine Piggyback Progression Probe
+
+on:
+  push:
+    branches: [qa/rev52-piggyback-progression]
+    paths:
+      - .github/workflows/gate2a-rev52-piggyback-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  level2-piggyback-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Prove only QA delta versus proposed Rev52 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code 8caf1156bb23e10e948f682589f46acbaf205484 -- src data application.xml tools BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat
+          echo "Shipping source is unchanged; this is a real-input probe."
+      - name: Download original exact product artifact for unchanged gameplay mechanics
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-rev50-exact-head-android-validation
+          path: validation
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 35495911788
+      - name: Verify exact gameplay APK and prepare new strategy
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '90fde292caacbeb5cb68aa0d56c9672808e0aadd55c719c3b1b65e688440998c  validation/emulator-qa/SLF-emulator-x64.apk' | sha256sum -c -
+          cat > probe.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          PACKAGE=com.ramybaheeg.slfport
+          APK=validation/emulator-qa/SLF-emulator-x64.apk
+          DEV=/dev/input/event1
+          OUT=progression
+          mkdir -p "$OUT"
+          capture(){
+            local label="$1"
+            for i in $(seq 1 15); do
+              adb shell dumpsys window > "$OUT/$label.window.txt" 2>&1
+              local pid="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+              local focus="$(grep -m1 'mCurrentFocus=' "$OUT/$label.window.txt" || true)"
+              if test -n "$pid" && echo "$focus" | grep -q "$PACKAGE"; then break; fi
+              sleep 1
+            done
+            adb exec-out screencap -p > "$OUT/$label.png"
+            test -s "$OUT/$label.png"
+            echo "$label" >> "$OUT/checkpoints.txt"
+          }
+          down(){ adb shell "sendevent $DEV 1 $1 1; sendevent $DEV 0 0 0"; }
+          up(){ adb shell "sendevent $DEV 1 $1 0; sendevent $DEV 0 0 0"; }
+          held_right(){ down 106; sleep "$1"; up 106; sleep 0.65; }
+          jump_right(){ down 106; sleep .05; down 46; sleep .28; up 46; sleep .10; up 106; sleep .22; }
+          # Original Level 2 was exhausted by alternating blind sweeping. This
+          # probe instead REUNITES BOTH characters and uses the built-in piggyback
+          # mechanic (B key) to traverse as a single genuine controlled party.
+          adb root >/dev/null 2>&1 || true
+          adb wait-for-device
+          adb shell getevent -lp "$DEV" > "$OUT/device-keys.txt" 2>&1
+          for k in KEY_RIGHT KEY_C KEY_B; do grep -q "$k" "$OUT/device-keys.txt"; done
+          adb install -r "$APK" > "$OUT/install.txt" 2>&1
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell pm clear "$PACKAGE" > "$OUT/clear.txt" 2>&1
+          adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
+          sleep 9
+          adb shell input tap 960 540; sleep 4
+          adb shell input tap 960 540; sleep 5
+          adb shell input swipe 700 540 1250 540 250; sleep 2
+          capture 00-level2-selected
+          adb shell input tap 960 540; sleep 9
+          capture 01-level2-start
+          # Legitimate right-jump sequence reaches the ledge from previous
+          # empirical evidence; the NEW route heads toward the second character
+          # and attempts B piggyback before the spike section.
+          for n in $(seq 1 7); do jump_right; done
+          capture 02-first-character-on-ledge
+          held_right 1.5
+          capture 03-approach-partner
+          held_right 1.3
+          capture 04-reunion-candidate
+          adb shell input keyevent KEYCODE_B; sleep 3
+          capture 05-piggyback-attempt
+          for n in $(seq 1 8); do jump_right; done
+          capture 06-party-rightward
+          held_right 1.2
+          capture 07-spike-approach
+          for n in $(seq 1 8); do jump_right; done
+          capture 08-exit-approach
+          held_right 1.2
+          capture 09-natural-exit-attempt
+          adb logcat -d > "$OUT/logcat.txt" 2>&1
+          if grep -E 'FATAL EXCEPTION|Process: com.ramybaheeg.slfport|Fatal signal' "$OUT/logcat.txt" > "$OUT/fatal.txt";then
+            echo 'Runtime fatal found' >&2
+            exit 1
+          fi
+          cat > "$OUT/method.txt" <<'METHOD'
+          branch_strategy=REUNION_PIGGYBACK_NOT_PRIOR_ALTERNATING_BRUTE_LOOP
+          exact_rev50_gameplay_apk=true
+          shipping_source_delta=false
+          ordinary_controls_only=true
+          save_edit=false
+          teleport=false
+          force_level_complete=false
+          completion_proven=false
+          frames_require_semantic_visual_adjudication=true
+          no_categorical_pass_without_onscreen_completion=true
+          METHOD
+          EOF
+          chmod +x probe.sh
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run genuine-input new-mechanic probe
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash probe.sh
+      - name: Upload checkpointed evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-piggyback-progression-probe
+          path: progression
+          if-no-files-found: warn
