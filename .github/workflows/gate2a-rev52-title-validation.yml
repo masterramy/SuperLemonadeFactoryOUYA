@@ -6,7 +6,7 @@ on:
     branches:
       - gate2a-rev52-title-typography
     paths:
-      - .github/workflows/gate2a-rev52-final-validation.yml
+      - .github/workflows/gate2a-rev52-title-validation.yml
       - src/PCLevelSelectState.as
       - data/logo_limeade.png
   workflow_dispatch:
