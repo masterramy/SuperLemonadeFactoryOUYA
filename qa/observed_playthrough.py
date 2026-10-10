@@ -87,7 +87,24 @@ def locate_state():
 def state():
     global STATE_PATH
     if not STATE_PATH: locate_state()
-    txt=shell(f"cat {STATE_PATH}",check=False)
+    result=run(["adb","shell",f"cat {STATE_PATH}"],check=False)
+    txt=result.stdout
+    if not txt.strip():
+        diagnostic=OUT/"observation-read-failure.txt"
+        if not diagnostic.exists():
+            probes=[
+                ("state-path", f"ls -l {STATE_PATH}; stat {STATE_PATH}; cat {STATE_PATH}"),
+                ("whoami", "id; getenforce; getprop ro.build.type"),
+                ("package", "pm path com.ramybaheeg.slfport; dumpsys package com.ramybaheeg.slfport | grep -E 'dataDir=|userId=|DEBUGGABLE' | head -12"),
+                ("private-roots", "ls -la /data/user/0/com.ramybaheeg.slfport /data/data/com.ramybaheeg.slfport /data/user/0/com.ramybaheeg.slfport/files /data/user/0/com.ramybaheeg.slfport/files/SUPERLEMONADEFACTORY 2>&1"),
+            ]
+            with diagnostic.open("w",encoding="utf-8") as h:
+                h.write(f"read_returncode={result.returncode}\\npath={STATE_PATH}\\nstdout={result.stdout}\\nstderr={result.stderr}\\n")
+                for name,cmd in probes:
+                    p=run(["adb","shell",cmd],check=False)
+                    h.write(f"=== {name} ===\\n{cmd}\\nexit={p.returncode}\\n{p.stdout}\\n{p.stderr}\\n")
+            screenshot("observation-read-failure-rendered-frame")
+        raise RuntimeError(f"QA state read returned empty, exit={result.returncode}; inspect observation-read-failure.txt")
     d={}
     for line in txt.splitlines():
         if "=" not in line: continue
