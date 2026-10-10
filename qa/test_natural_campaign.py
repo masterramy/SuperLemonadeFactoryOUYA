@@ -22,10 +22,10 @@ def make_frame(*, world=1, level=2, hardcore=0, controlled=1,
     assert len(payload) == 80
     cell = 4 * scale
     ox, oy = offset
-    im = Image.new("RGB", (ox + 10 * cell + 20, oy + 8 * cell + 20), (30, 30, 30))
+    im = Image.new("RGB", (ox + 12 * cell + 20, oy + 8 * cell + 20), (30, 30, 30))
     d = ImageDraw.Draw(im)
     for i, bit in enumerate(payload):
-        col, row = i % 10, i // 10
+        col, row = i % 12, i // 12
         x0, y0 = ox + col * cell, oy + row * cell
         d.rectangle((x0, y0, x0 + cell - 1, y0 + cell - 1), fill=ONE if bit else ZERO)
     return im
@@ -55,7 +55,7 @@ class TelemetryDecodeTests(unittest.TestCase):
         self.assertEqual(state["p1"], {"x": 2047, "y": 511, "dead": True})
         self.assertEqual(state["p2"], {"x": 4090, "y": 700, "dead": False})
         self.assertTrue(state["piggyback"])
-        self.assertEqual(state["exit_x"], 4000)
+        self.assertEqual(state["crate"], {"x": 4000, "y": 700})
 
     def test_rejects_frame_without_magic(self):
         im = make_frame()
