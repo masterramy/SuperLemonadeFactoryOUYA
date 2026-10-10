@@ -228,12 +228,33 @@ def solve_level2():
     screenshot("level2-crate-push"); log_state("level2-crate-push")
 
     # Move Liselot to the exit with her real double-jump controls.
-    advance_player(2, ex+8, max_steps=55)
+    # Level 2 source map: top platform ends x=1020; spike strip 1020..1090;
+    # patrolling enemy later at 1170..1290. The blind walk died near x=1244.
+    # This is a distinct, map-aware ordinary-input route.
+    advance_player(2, 955, max_steps=48)
+    screenshot("level2-liselot-pre-spike"); log_state("level2-liselot-pre-spike")
+    move_jump("RIGHT", double=True, duration=.80)
+    d=log_state("level2-liselot-hazard-leap")
+    screenshot("level2-liselot-hazard-leap")
+    if is_death(d): raise RuntimeError(f"Liselot hazard leap death: {d}")
+    advance_player(2, ex+8, max_steps=16)
     screenshot("level2-liselot-at-exit"); log_state("level2-liselot-at-exit")
 
-    # Bring Andre through the route with normal jump+dash controls.
+    # Andre starts before an armed guard on the first elevated platform.
     ensure_active(1)
-    advance_player(1, ex+4, max_steps=75)
+    advance_player(1, 205, max_steps=9)
+    screenshot("level2-andre-pre-army"); log_state("level2-andre-pre-army")
+    move_jump("RIGHT", dash=True, duration=.80)
+    d=log_state("level2-andre-guarded-army-leap")
+    screenshot("level2-andre-guarded-army-leap")
+    if is_death(d): raise RuntimeError(f"Andre army leap death: {d}")
+    advance_player(1, 965, max_steps=45)
+    screenshot("level2-andre-pre-spike"); log_state("level2-andre-pre-spike")
+    move_jump("RIGHT", dash=True, duration=.80)
+    d=log_state("level2-andre-hazard-leap")
+    screenshot("level2-andre-hazard-leap")
+    if is_death(d): raise RuntimeError(f"Andre hazard leap death: {d}")
+    advance_player(1, ex+4, max_steps=16)
     screenshot("level2-andre-at-exit"); log_state("level2-andre-at-exit")
 
     ok=settle_exit(36)
