@@ -2,6 +2,7 @@
 import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
 from progress_guard import is_genuine_completion, is_death
+from ledge_navigation import sustained_jump_right, clear_tall_ledge
 
 ADB=["adb"]
 PACKAGE="com.ramybaheeg.slfport"
@@ -259,7 +260,21 @@ def solve_level2():
     d=log_state("level2-andre-guarded-army-leap")
     screenshot("level2-andre-guarded-army-leap")
     if is_death(d): raise RuntimeError(f"Andre army leap death: {d}")
-    advance_player(1, 965, max_steps=45)
+    # The prior 0.04-second C taps trapped Andre at world x=730 below the
+    # 120px tall platform starting x=740. Stage him LEFT of that wall, hold
+    # jump for the game's real 0.35-second variable-height window, and
+    # accept passage only from the live QA observer's post-input position.
+    advance_player(1, 690, max_steps=30)
+    screenshot("level2-andre-before-tall-ledge"); log_state("level2-andre-before-tall-ledge")
+    clear_tall_ledge(
+        state, hold,
+        lambda: sustained_jump_right(
+            lambda k: ev(KEY[k], True),
+            lambda k: ev(KEY[k], False),
+            time.sleep),
+        screenshot)
+    screenshot("level2-andre-over-tall-ledge"); log_state("level2-andre-over-tall-ledge")
+    advance_player(1, 965, max_steps=18)
     screenshot("level2-andre-pre-spike"); log_state("level2-andre-pre-spike")
     move_jump("RIGHT", dash=True, duration=.80)
     d=log_state("level2-andre-hazard-leap")
