@@ -1,0 +1,27 @@
+name: Gate 2A Rev52 Natural Campaign
+
+on:
+  push:
+    branches:
+      - qa/rev52-natural-campaign
+    paths:
+      - qa/natural_campaign.py
+      - qa/test_natural_campaign.py
+      - src/QANaturalTelemetry.as
+      - src/PCPlayState.as
+      - .github/workflows/gate2a-rev52-natural-campaign.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  telemetry-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Install test dependency
+        run: python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+      - name: Run telemetry decoder tests
+        working-directory: qa
+        run: python -m unittest -v test_natural_campaign.py
