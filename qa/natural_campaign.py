@@ -2,7 +2,7 @@ from PIL import Image
 
 ONE = (255, 0, 255)
 ZERO = (0, 255, 255)
-GRID_COLS = 12
+GRID_COLS = 13
 GRID_ROWS = 8
 BASE_CELL = 4
 
@@ -21,7 +21,7 @@ def _classify(rgb):
     return 1 if d1 < d0 else 0
 
 def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
-    """Decode the QA-only 12x8 telemetry grid from a rendered frame."""
+    """Decode the QA-only 13x8 telemetry grid from a rendered frame."""
     if scale <= 0:
         raise ValueError("scale must be positive")
     im = image.convert("RGB")
@@ -53,17 +53,17 @@ def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
     controlled = take(1)
     level_finished = bool(take(1))
     p1x = take(12)
-    p1y = take(10)
+    p1y = take(12)
     p2x = take(12)
-    p2y = take(10)
+    p2y = take(12)
     p1dead = bool(take(1))
     p2dead = bool(take(1))
     piggyback = bool(take(1))
     crate_present = bool(take(1))
     crate_x = take(12)
-    crate_y = take(10)
-    take(5)  # reserved
-    if pos != 96:
+    crate_y = take(12)
+    take(7)  # reserved
+    if pos != 104:
         raise AssertionError(pos)
 
     return {
