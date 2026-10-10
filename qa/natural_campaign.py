@@ -2,7 +2,7 @@ from PIL import Image
 
 ONE = (255, 0, 255)
 ZERO = (0, 255, 255)
-GRID_COLS = 12
+GRID_COLS = 10
 GRID_ROWS = 8
 BASE_CELL = 4
 
@@ -59,11 +59,8 @@ def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
     p1dead = bool(take(1))
     p2dead = bool(take(1))
     piggyback = bool(take(1))
-    crate_present = bool(take(1))
-    crate_x = take(12)
-    crate_y = take(10)
-    take(5)  # reserved for protocol-compatible future observation fields
-    if pos != 96:
+    exit_x = take(12)
+    if pos != 80:
         raise AssertionError(pos)
 
     return {
@@ -76,5 +73,5 @@ def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
         "p1": {"x": p1x, "y": p1y, "dead": p1dead},
         "p2": {"x": p2x, "y": p2y, "dead": p2dead},
         "piggyback": piggyback,
-        "crate": {"x": crate_x, "y": crate_y} if crate_present else None,
+        "exit_x": exit_x,
     }
