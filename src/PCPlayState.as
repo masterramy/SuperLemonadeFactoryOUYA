@@ -36,6 +36,7 @@ package
 	{		
 		
 		public var __levelOver:Boolean = false;
+		private var qaNaturalTelemetry:QANaturalTelemetry;
 		
 		override public function create():void
 		{
@@ -69,12 +70,17 @@ package
 				
 				FlxG.music.play(false);
 			}
+
+			qaNaturalTelemetry = new QANaturalTelemetry();
+			add(qaNaturalTelemetry);
+			qaNaturalTelemetry.refresh(this, levelFinished);
 			
 		}
 
 		override public function update():void
 		{
 			super.update();
+			if (qaNaturalTelemetry != null) qaNaturalTelemetry.refresh(this, levelFinished);
 			
 			if (pauseFrameConsumed || FlxG.paused)
 				return;
