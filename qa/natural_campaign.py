@@ -2,7 +2,7 @@ from PIL import Image
 
 ONE = (255, 0, 255)
 ZERO = (0, 255, 255)
-GRID_COLS = 10
+GRID_COLS = 12
 GRID_ROWS = 8
 BASE_CELL = 4
 
@@ -21,25 +21,25 @@ def _classify(rgb):
     return 1 if d1 < d0 else 0
 
 def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
-    """Decode the QA-only 10x8 telemetry grid from a rendered frame."""
+    """Decode the QA-only 12x8 telemetry grid from a rendered frame."""
     if scale <= 0:
         raise ValueError("scale must be positive")
     im = image.convert("RGB")
     ox, oy = origin
     cell = BASE_CELL * scale
-    bits = []
+    payload = []
     for row in range(GRID_ROWS):
         for col in range(GRID_COLS):
             x = ox + col * cell + cell // 2
             y = oy + row * cell + cell // 2
             if not (0 <= x < im.width and 0 <= y < im.height):
                 raise ValueError("telemetry grid falls outside image")
-            bits.append(_classify(im.getpixel((x, y))))
+            payload.append(_classify(im.getpixel((x, y))))
 
     pos = 0
     def take(width):
         nonlocal pos
-        value = _int(bits[pos:pos + width])
+        value = _int(payload[pos:pos + width])
         pos += width
         return value
 
@@ -59,8 +59,11 @@ def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
     p1dead = bool(take(1))
     p2dead = bool(take(1))
     piggyback = bool(take(1))
-    exit_x = take(12)
-    if pos != 80:
+    crate_present = bool(take(1))
+    crate_x = take(12)
+    crate_y = take(10)
+    take(5)  # reserved
+    if pos != 96:
         raise AssertionError(pos)
 
     return {
@@ -73,5 +76,5 @@ def decode_telemetry_image(image: Image.Image, *, origin=(0, 0), scale=3):
         "p1": {"x": p1x, "y": p1y, "dead": p1dead},
         "p2": {"x": p2x, "y": p2y, "dead": p2dead},
         "piggyback": piggyback,
-        "exit_x": exit_x,
+        "crate": {"x": crate_x, "y": crate_y} if crate_present else None,
     }
