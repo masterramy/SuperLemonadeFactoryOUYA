@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import subprocess, time, os, re, sys, json
+import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
 
 ADB=["adb"]
@@ -87,13 +87,13 @@ def locate_state():
 def state():
     global STATE_PATH
     if not STATE_PATH: locate_state()
-    result=run(["adb","shell",f"cat {STATE_PATH}"],check=False)
+    result=run(["adb","shell",f"cat {shlex.quote(STATE_PATH)}"],check=False)
     txt=result.stdout
     if not txt.strip():
         diagnostic=OUT/"observation-read-failure.txt"
         if not diagnostic.exists():
             probes=[
-                ("state-path", f"ls -l {STATE_PATH}; stat {STATE_PATH}; cat {STATE_PATH}"),
+                ("state-path", f"ls -l {shlex.quote(STATE_PATH)}; stat {shlex.quote(STATE_PATH)}; cat {shlex.quote(STATE_PATH)}"),
                 ("whoami", "id; getenforce; getprop ro.build.type"),
                 ("package", "pm path com.ramybaheeg.slfport; dumpsys package com.ramybaheeg.slfport | grep -E 'dataDir=|userId=|DEBUGGABLE' | head -12"),
                 ("private-roots", "ls -la /data/user/0/com.ramybaheeg.slfport /data/data/com.ramybaheeg.slfport /data/user/0/com.ramybaheeg.slfport/files /data/user/0/com.ramybaheeg.slfport/files/SUPERLEMONADEFACTORY 2>&1"),
