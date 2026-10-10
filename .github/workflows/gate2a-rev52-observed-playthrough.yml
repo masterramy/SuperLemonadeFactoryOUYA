@@ -6,6 +6,8 @@ on:
       - qa/rev52-observed-playthrough
     paths:
       - qa/observed_playthrough.py
+      - qa/ledge_navigation.py
+      - qa/test_ledge_navigation.py
       - .github/workflows/gate2a-rev52-observed-playthrough.yml
   workflow_dispatch:
 
@@ -27,6 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=qa python3 -m unittest -v qa.test_progress_guard
+          PYTHONPATH=qa python3 -m unittest -v qa.test_ledge_navigation
 
       - name: Download existing exact QA observation APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
