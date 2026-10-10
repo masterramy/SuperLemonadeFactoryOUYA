@@ -174,6 +174,17 @@ def advance_player(which, target_x, max_steps=60):
         if lastx is not None and abs(x-lastx)<3: stuck+=1
         else: stuck=0
         lastx=x
+        # On the long elevated platform at x=740..1020, jump+double-jump
+        # travels too far to safely stage at x≈955 before the spike strip.
+        # Use bounded ground walking for the last 200px, observing every
+        # resulting state, so a single command cannot silently overrun it.
+        if which==2 and target_x<=970 and 740<=x<=1015 and abs(y-359.11)<40 and abs(target_x-x)<=210:
+            if x>=1000:
+                screenshot("unsafe-pre-spike-overrun")
+                raise RuntimeError(f"Pre-spike staging overrun: x={x} y={y}")
+            hold(direction, max(.10, min(.28, abs(target_x-x)/390.0)))
+            log_state(f"p2-precision-walk-{step:02d}")
+            continue
         if which==2:
             move_jump(direction,double=True,dash=False,duration=.46 if stuck<3 else .65)
         else:
