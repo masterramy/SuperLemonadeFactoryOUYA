@@ -24,6 +24,12 @@ class LedgeNavigationTests(unittest.TestCase):
         self.assertTrue(any('stage' in s for s in snaps))
         self.assertTrue(any('result' in s for s in snaps))
 
+    def test_apparent_wall_clip_below_platform_is_not_a_crossing(self):
+        pos={'p1x':730.0,'p1y':479.0,'p1dead':False,'p2dead':False}
+        def jump(): pos.update(p1x=785.0,p1y=425.0)
+        with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
+            clear_tall_ledge(lambda:dict(pos),lambda *a:None,jump,lambda *a:None,attempts=1)
+
     def test_blocked_path_fails_closed(self):
         pos={'p1x':730.0,'p1y':479.0,'p1dead':False,'p2dead':False}
         with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
