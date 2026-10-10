@@ -21,21 +21,21 @@ def make_frame(*, world=1, level=2, hardcore=0, controlled=1,
         bits(level, 4) +
         [hardcore, controlled, finished] +
         bits(p1x, 12) +
-        bits(p1y, 10) +
+        bits(p1y, 12) +
         bits(p2x, 12) +
-        bits(p2y, 10) +
+        bits(p2y, 12) +
         [p1dead, p2dead, piggy, crate_present] +
         bits(cratex, 12) +
-        bits(cratey, 10) +
-        [0, 0, 0, 0, 0]
+        bits(cratey, 12) +
+        [0, 0, 0, 0, 0, 0, 0]
     )
-    assert len(payload) == 96
+    assert len(payload) == 104
     cell = 4 * scale
     ox, oy = offset
-    im = Image.new("RGB", (ox + 12 * cell + 20, oy + 8 * cell + 20), (30, 30, 30))
+    im = Image.new("RGB", (ox + 13 * cell + 20, oy + 8 * cell + 20), (30, 30, 30))
     d = ImageDraw.Draw(im)
     for i, bit in enumerate(payload):
-        col, row = i % 12, i // 12
+        col, row = i % 13, i // 13
         x0, y0 = ox + col * cell, oy + row * cell
         d.rectangle((x0, y0, x0 + cell - 1, y0 + cell - 1), fill=ONE if bit else ZERO)
     return im
@@ -52,22 +52,22 @@ class TelemetryDecodeTests(unittest.TestCase):
             "crate": {"x": 763, "y": 373},
         })
 
-    def test_decodes_offset_4x_frame_and_finished_state(self):
+    def test_preserves_tall_level_coordinates_at_4x(self):
         state = decode_telemetry_image(
             make_frame(world=3, level=12, hardcore=1, controlled=0,
-                       finished=1, p1x=2047, p1y=511, p2x=4090, p2y=700,
+                       finished=1, p1x=2047, p1y=1200, p2x=4090, p2y=1300,
                        p1dead=1, p2dead=0, piggy=1,
-                       crate_present=1, cratex=4000, cratey=700,
+                       crate_present=1, cratex=4000, cratey=1280,
                        scale=4, offset=(17, 23)),
             origin=(17, 23), scale=4)
         self.assertEqual(state["world"], 3)
         self.assertEqual(state["level"], 12)
         self.assertTrue(state["hardcore"])
         self.assertTrue(state["level_finished"])
-        self.assertEqual(state["p1"], {"x": 2047, "y": 511, "dead": True})
-        self.assertEqual(state["p2"], {"x": 4090, "y": 700, "dead": False})
+        self.assertEqual(state["p1"], {"x": 2047, "y": 1200, "dead": True})
+        self.assertEqual(state["p2"], {"x": 4090, "y": 1300, "dead": False})
         self.assertTrue(state["piggyback"])
-        self.assertEqual(state["crate"], {"x": 4000, "y": 700})
+        self.assertEqual(state["crate"], {"x": 4000, "y": 1280})
 
     def test_decodes_missing_crate_as_none(self):
         state = decode_telemetry_image(
