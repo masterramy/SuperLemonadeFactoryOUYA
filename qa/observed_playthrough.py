@@ -3,6 +3,7 @@ import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
 from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, clear_tall_ledge
+from screen_navigation import classify_screen, system_dialog_target
 
 ADB=["adb"]
 PACKAGE="com.ramybaheeg.slfport"
@@ -24,6 +25,61 @@ def screenshot(tag):
     p=subprocess.run(["adb","exec-out","screencap","-p"],capture_output=True)
     if p.returncode==0 and p.stdout:
         (OUT/f"{tag}.png").write_bytes(p.stdout)
+
+def dismiss_system_ui(max_attempts=4):
+    """Dismiss only explicitly recognized Android system dialogs (e.g. ANR Wait).
+
+    Never blindly tap game pixels while a system dialog is obscuring gameplay.
+    A dialog may appear several seconds after emulator startup.
+    """
+    xml_file=OUT/"system-window.xml"
+    for attempt in range(max_attempts):
+        try:
+            result=subprocess.run(
+                ["adb","shell","uiautomator","dump","/sdcard/gate2a-window.xml"],
+                text=True,capture_output=True,timeout=15)
+            if result.returncode:
+                return
+            result=subprocess.run(
+                ["adb","pull","/sdcard/gate2a-window.xml",str(xml_file)],
+                text=True,capture_output=True,timeout=15)
+            if result.returncode or not xml_file.exists():
+                return
+        except subprocess.TimeoutExpired:
+            return
+        target=system_dialog_target(xml_file.read_text(errors="replace"))
+        if target is None:
+            return
+        shell(f"input tap {target[0]} {target[1]}",check=False)
+        (OUT/"system-dismissals.txt").open("a",encoding="utf-8").write(
+            f"dialog_attempt={attempt} tapped={target}\\n")
+        time.sleep(2.0)
+
+
+def navigate_to_level_select():
+    """Observe actual rendered UI before each navigation action.
+
+    Fixes Pixel Launcher ANR swallowing the first tap and corrupting all
+    subsequent level selection assumptions. Unknown state is NOT a pass.
+    """
+    for attempt in range(8):
+        dismiss_system_ui()
+        p=subprocess.run(["adb","exec-out","screencap","-p"],capture_output=True)
+        if p.returncode or not p.stdout:
+            raise RuntimeError("Cannot capture startup UI")
+        label=classify_screen(p.stdout)
+        (OUT/f"bootstrap-{attempt:02d}-{label}.png").write_bytes(p.stdout)
+        (OUT/"bootstrap-classifications.txt").open("a",encoding="utf-8").write(
+            f"attempt={attempt} classification={label}\\n")
+        if label=="level_select":
+            return
+        if label=="unknown":
+            time.sleep(2.0)
+            continue
+        # One normal touchscreen action advances title -> menu -> level select.
+        shell("input tap 960 540"); time.sleep(5.0)
+    raise RuntimeError("Could not reach visually confirmed Level Select; inspect bootstrap screenshots")
+
 
 def find_keyboard():
     text=shell("getevent -pl",check=False)
@@ -309,12 +365,11 @@ def main():
     shell("wm dismiss-keyguard",check=False)
     shell(f"am start -W -n {PACKAGE}/.AIRAppEntry")
     time.sleep(9)
-    screenshot("00-title")
-    # One Android tap uses the shipping mobile intro path.
-    shell("input tap 960 540"); time.sleep(5)
-    screenshot("01-main-menu")
-    shell("input tap 960 540"); time.sleep(5)
-    screenshot("02-level-select")
+    # Emulator system UI can display a Pixel Launcher ANR dialog at startup.
+    # Do not assume initial touches reached the game. Classify each frame and
+    # dismiss only Android-system buttons such as "Wait" before moving on.
+    navigate_to_level_select()
+    screenshot("02-level-select-confirmed")
     # Fresh level select: Level 1 selected. Select Level 2 with a real swipe.
     shell("input swipe 700 540 1250 540 250"); time.sleep(1)
     shell("input tap 960 540"); time.sleep(9)
