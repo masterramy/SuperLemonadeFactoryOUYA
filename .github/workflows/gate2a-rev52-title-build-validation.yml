@@ -7,6 +7,7 @@ on:
       - qa/rev52-title-composition
     paths:
       - src/PCIntroState.as
+      - src/MobileControls.as
       - data/logo_limeade.png
       - icons/android/**
       - release/store-assets/**
@@ -39,6 +40,20 @@ jobs:
           assert a_end >= 0 and a_end+184 <= logo_left, (a_end,logo_left)
           assert l_end >= logo_left+228 and l_end+146 <= w, (l_end,logo_left+228)
           print('portrait-logo source projection PASS:',a_end,l_end)
+          PY
+      - name: Assert intro prompt does not paint over portrait artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s=Path("src/MobileControls.as").read_text()
+          m=re.search(r'if\s*\(mode\s*==\s*"intro"\)\s*drawHint\(.*?"TAP TO START"\s*,\s*0xd3bdb2\s*,\s*([0-9.]+)\s*,\s*0x7725a1\);',s,re.S)
+          assert m, "intro label source rule not found"
+          alpha=float(m.group(1))
+          assert alpha==0.0, f"opaque intro prompt hides character legs: alpha={alpha}"
+          print("intro character artwork unobstructed; prompt text remains: PASS")
           PY
       - name: Verify title typography geometry
         shell: bash
