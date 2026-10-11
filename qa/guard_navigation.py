@@ -73,14 +73,10 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture):
             if float(apex['p1y']) + 41.0 > 440.0:
                 raise RuntimeError(f'helper jump did not clear ledge top: {apex}')
 
-            # The last rendered trial dashed too close to the guard's y390
-            # patrol. Wait for extra vertical clearance before going right.
-            sleep(0.16)
-            high = read_state()
-            if high.get('p1dead') or high.get('p2dead'):
-                raise RuntimeError(f'death gaining guard clearance: {high}')
-            if float(high['p1y']) + 41.0 >= 390.0:
-                raise RuntimeError(f'guard clearance too low before dash: {high}')
+            # Observed run 38126397776 proved a 0.16s wait causes
+            # descent to y380.82 (vy+327), missing the apex entirely.
+            # Start the facing-correct dash immediately and inspect the
+            # first 0.12s of flight instead of assuming elapsed-time safety.
             down('RIGHT')
             sleep(0.07)  # facing updates on next game frame
             down('X')
