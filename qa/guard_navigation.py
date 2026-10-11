@@ -29,6 +29,10 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture):
         capture('guard-apex-before-dash')
 
         down('RIGHT')
+        # PlayerMale uses _facing, which updates in Character.move() once
+        # per game frame. Do not press X in the same frame as RIGHT: prior
+        # staging may have left Andre facing left, producing a LEFT dash.
+        sleep(0.07)
         down('X')
         sleep(0.50)
         up('X')
