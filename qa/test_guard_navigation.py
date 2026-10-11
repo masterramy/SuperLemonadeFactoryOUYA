@@ -44,7 +44,7 @@ class GuardPassTests(unittest.TestCase):
         # the *safe* helper step at x220,y480. That is not yet x510,
         # but a second ordinary jump can clear the x260,y440 guard ledge.
         p={'p1x':210.,'p1y':479.11,'p1dead':False,'p2dead':False}
-        held=set(); captures=[]; jumps=0; dashes=0
+        held=set(); captures=[]; jumps=0; dashes=0; sleeps=[]
         def down(k):
             nonlocal jumps,dashes
             held.add(k)
@@ -52,6 +52,7 @@ class GuardPassTests(unittest.TestCase):
             if k=='X': dashes+=1
         def up(k): held.discard(k)
         def sleep(t):
+            sleeps.append(round(t,2))
             if 'C' in held: p['p1y']=378.57 if jumps==1 else 334.0
             if 'X' in held:
                 if dashes==1: p.update(p1x=250.13,p1y=439.11)
@@ -62,6 +63,8 @@ class GuardPassTests(unittest.TestCase):
         self.assertEqual(jumps,2)
         self.assertIn('guard-helper-step-apex',captures)
         self.assertIn('guard-helper-step-after-dash',captures)
+        self.assertIn('guard-helper-step-flight-00',captures)
+        self.assertIn(0.16,sleeps)  # observe extra height before facing/dash
         self.assertFalse(out['p1dead'])
         self.assertEqual(held,set())
 
