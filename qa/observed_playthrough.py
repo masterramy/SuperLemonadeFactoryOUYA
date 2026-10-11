@@ -2,7 +2,7 @@
 import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
 from progress_guard import is_genuine_completion, is_death
-from ledge_navigation import sustained_jump_right, clear_tall_ledge
+from ledge_navigation import sustained_jump_right, apex_first_jump_right, clear_tall_ledge
 from hazard_navigation import cross_spike_and_worker_corridor, align_exit_from_right
 from screen_navigation import classify_screen, system_dialog_target
 
@@ -344,10 +344,11 @@ def solve_level2():
     screenshot("level2-andre-before-tall-ledge"); log_state("level2-andre-before-tall-ledge")
     clear_tall_ledge(
         state, hold,
-        lambda: sustained_jump_right(
+        lambda: apex_first_jump_right(
             lambda k: ev(KEY[k], True),
             lambda k: ev(KEY[k], False),
-            time.sleep),
+            time.sleep,
+            lambda tag: (log_state(f"andre-{tag}"), screenshot(f"andre-{tag}"))),
         screenshot)
     screenshot("level2-andre-over-tall-ledge"); log_state("level2-andre-over-tall-ledge")
     advance_player(1, 965, max_steps=18)
