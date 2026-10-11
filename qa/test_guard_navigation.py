@@ -39,6 +39,32 @@ class GuardPassTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'not cleared'):
             airborne_dash_past_guard(lambda:dict(p),lambda k:None,lambda k:None,lambda t:None,lambda s:None)
 
+    def test_first_helper_platform_landing_requires_second_legitimate_jump(self):
+        # Rev52 observed run 38122130236: first dash reaches (250,439),
+        # the *safe* helper step at x220,y480. That is not yet x510,
+        # but a second ordinary jump can clear the x260,y440 guard ledge.
+        p={'p1x':210.,'p1y':479.11,'p1dead':False,'p2dead':False}
+        held=set(); captures=[]; jumps=0; dashes=0
+        def down(k):
+            nonlocal jumps,dashes
+            held.add(k)
+            if k=='C': jumps+=1
+            if k=='X': dashes+=1
+        def up(k): held.discard(k)
+        def sleep(t):
+            if 'C' in held: p['p1y']=378.57 if jumps==1 else 334.0
+            if 'X' in held:
+                if dashes==1: p.update(p1x=250.13,p1y=439.11)
+                else: p['p1x']+=500*t
+            elif dashes>=2 and 'RIGHT' in held: p['p1x']+=210*t
+        out=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
+        self.assertGreaterEqual(out['p1x'],510.)
+        self.assertEqual(jumps,2)
+        self.assertIn('guard-helper-step-apex',captures)
+        self.assertIn('guard-helper-step-after-dash',captures)
+        self.assertFalse(out['p1dead'])
+        self.assertEqual(held,set())
+
     def test_rejects_unknown_wrong_staging(self):
         with self.assertRaisesRegex(ValueError,'guard staging'):
             airborne_dash_past_guard(lambda:{'p1x':400.,'p1dead':False,'p2dead':False},lambda k:None,lambda k:None,lambda s:None,lambda s:None)
