@@ -3,6 +3,7 @@ import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
 from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, clear_tall_ledge
+from hazard_navigation import cross_spike_and_worker_corridor
 from screen_navigation import classify_screen, system_dialog_target
 
 ADB=["adb"]
@@ -300,11 +301,27 @@ def solve_level2():
     # patrolling enemy later at 1170..1290. The blind walk died near x=1244.
     # This is a distinct, map-aware ordinary-input route.
     advance_player(2, 955, max_steps=48)
+    # Stage near the end of the x=740..1020 platform. The prior 0.04s
+    # first-jump tap caused Liselot to land on the worker near x=1248.
+    # Keep stage x <=1010 to avoid walking into the spike strip at x=1020.
+    for step in range(12):
+        d=state()
+        if is_death(d): raise RuntimeError(f"Liselot died before corridor: {d}")
+        x=float(d["p2x"])
+        if 975.0<=x<=1010.0: break
+        if x>1010: raise RuntimeError(f"Unsafe Liselot staging overrun: {d}")
+        hold("RIGHT", .10)
+        if step in (3,7): log_state(f"liselot-stage-{step:02d}")
+    else:
+        raise RuntimeError(f"Could not stage Liselot before spike corridor: {state()}")
     screenshot("level2-liselot-pre-spike"); log_state("level2-liselot-pre-spike")
-    move_jump("RIGHT", double=True, duration=.80)
-    d=log_state("level2-liselot-hazard-leap")
-    screenshot("level2-liselot-hazard-leap")
-    if is_death(d): raise RuntimeError(f"Liselot hazard leap death: {d}")
+    d=cross_spike_and_worker_corridor(
+        state, lambda k: ev(KEY[k],True), lambda k: ev(KEY[k],False),
+        time.sleep, screenshot)
+    screenshot("level2-liselot-hazard-leap"); log_state("level2-liselot-hazard-leap")
+    time.sleep(.5)
+    d=state()
+    if is_death(d): raise RuntimeError(f"Liselot died after corridor crossing: {d}")
     advance_player(2, ex+8, max_steps=16)
     screenshot("level2-liselot-at-exit"); log_state("level2-liselot-at-exit")
 
