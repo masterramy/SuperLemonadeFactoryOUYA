@@ -535,7 +535,7 @@ package
 			clearOverlay(bounds, mode);
 			lastControlX = lastControlY = lastControlW = lastControlH = NaN;
 			if (mode == "intro")
-				drawHint(bounds.x, bounds.y + bounds.height * 0.80, bounds.width, bounds.height * 0.14, "TAP TO START", 0xd3bdb2, 1.0, 0x7725a1);
+				drawHint(bounds.x, bounds.y + bounds.height * 0.80, bounds.width, bounds.height * 0.14, "TAP TO START", 0xd3bdb2, 0.0, 0x7725a1);
 			else if (mode == "cinematic")
 			{
 				drawHint(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.035, bounds.width * 0.25, bounds.height * 0.08, "TAP TO SKIP", 0x000000, 1.0, 0xffffff);
