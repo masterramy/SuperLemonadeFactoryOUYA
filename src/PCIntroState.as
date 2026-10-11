@@ -76,19 +76,19 @@ package
 			logo = new FlxSprite(0, 0, Registry.ImgLogo);
 			logo.x = FlxG.width / 2 - logo.width / 2;
 			// Keep the public edition title clear of the legacy character entrance art.
-			logo.y = 12;
+			logo.y = 12; // Preserve the canonical centered pixel title and its lettering.
 			
 			andre = new FlxSprite(FlxG.width+200, 0, Registry.ImgAndre);
 			add(andre);
 			andre.y = FlxG.height - andre.height + 60;
 			andre.drag.x = 2000;
-			andre.velocity.x = -1630;
+			andre.velocity.x = -1810;
 			
 			liselot = new FlxSprite(FlxG.width-20-239-640, 0, Registry.ImgLiselot);
 			add(liselot);
 			liselot.y = FlxG.height - liselot.height + 60;		
 			liselot.drag.x = 2000;	
-			liselot.velocity.x = 1630;
+			liselot.velocity.x = 1700;
 				
 			worker = new FlxSprite(FlxG.width+200, 0, Registry.ImgWorker);
 			add(worker);
