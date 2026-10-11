@@ -4,8 +4,9 @@ name: Gate 2A Rev52 Title and Build Validation
 on:
   push:
     branches:
-      - gate2a-rev52-title-playthrough-repair
+      - qa/rev52-title-composition
     paths:
+      - src/PCIntroState.as
       - data/logo_limeade.png
       - icons/android/**
       - release/store-assets/**
@@ -22,6 +23,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Validate portrait-versus-logo layout bounds (source model)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          src=Path('src/PCIntroState.as').read_text()
+          def speed(which):
+              return abs(float(re.search(rf'{which}\\.velocity\\.x\\s*=\\s*(-?\\d+)',src).group(1)))
+          w=640
+          logo_left=(w-228)/2
+          a_end=(w+200)-speed('andre')**2/(2*2000)
+          l_end=(w-20-239-640)+speed('liselot')**2/(2*2000)
+          assert a_end >= 0 and a_end+184 <= logo_left, (a_end,logo_left)
+          assert l_end >= logo_left+228 and l_end+146 <= w, (l_end,logo_left+228)
+          print('portrait-logo source projection PASS:',a_end,l_end)
+          PY
       - name: Verify title typography geometry
         shell: bash
         run: |
