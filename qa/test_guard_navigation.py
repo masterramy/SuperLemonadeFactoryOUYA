@@ -64,7 +64,7 @@ class GuardPassTests(unittest.TestCase):
         self.assertIn('guard-helper-step-apex',captures)
         self.assertIn('guard-helper-step-after-dash',captures)
         self.assertIn('guard-helper-step-flight-00',captures)
-        self.assertIn(0.16,sleeps)  # observe extra height before facing/dash
+        self.assertNotIn(0.16,sleeps)  # extra delay makes Andre fall from the apex
         self.assertFalse(out['p1dead'])
         self.assertEqual(held,set())
 
