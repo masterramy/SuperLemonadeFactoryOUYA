@@ -4,6 +4,7 @@ from pathlib import Path
 from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, apex_first_jump_right, clear_tall_ledge
 from hazard_navigation import cross_spike_and_worker_corridor, align_exit_from_right
+from guard_navigation import airborne_dash_past_guard
 from screen_navigation import classify_screen, system_dialog_target
 
 ADB=["adb"]
@@ -332,10 +333,14 @@ def solve_level2():
     ensure_active(1)
     advance_player(1, 205, max_steps=9)
     screenshot("level2-andre-pre-army"); log_state("level2-andre-pre-army")
-    move_jump("RIGHT", dash=True, duration=.80)
+    d=airborne_dash_past_guard(
+        state,
+        lambda k: ev(KEY[k],True),
+        lambda k: ev(KEY[k],False),
+        time.sleep,
+        lambda tag: (log_state(tag),screenshot(tag)))
     d=log_state("level2-andre-guarded-army-leap")
     screenshot("level2-andre-guarded-army-leap")
-    if is_death(d): raise RuntimeError(f"Andre army leap death: {d}")
     # The prior 0.04-second C taps trapped Andre at world x=730 below the
     # 120px tall platform starting x=740. Stage him LEFT of that wall, hold
     # jump for the game's real 0.35-second variable-height window, and
