@@ -7,6 +7,8 @@ on:
     paths:
       - qa/observed_playthrough.py
       - qa/ledge_navigation.py
+      - qa/hazard_navigation.py
+      - qa/test_hazard_navigation.py
       - qa/test_ledge_navigation.py
       - qa/screen_navigation.py
       - qa/test_screen_navigation.py
@@ -36,6 +38,7 @@ jobs:
           set -euo pipefail
           PYTHONPATH=qa python3 -m unittest -v qa.test_progress_guard
           PYTHONPATH=qa python3 -m unittest -v qa.test_ledge_navigation
+          PYTHONPATH=qa python3 -m unittest -v qa.test_hazard_navigation
           PYTHONPATH=qa python3 -m unittest -v qa.test_screen_navigation
 
       - name: Download existing exact QA observation APK
