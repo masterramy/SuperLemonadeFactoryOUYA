@@ -31,7 +31,7 @@ jobs:
           from pathlib import Path
           src=Path('src/PCIntroState.as').read_text()
           def speed(which):
-              return abs(float(re.search(rf'{which}\\.velocity\\.x\\s*=\\s*(-?\\d+)',src).group(1)))
+              return abs(float(re.search(rf'{which}\.velocity\.x\s*=\s*(-?\d+)',src).group(1)))
           w=640
           logo_left=(w-228)/2
           a_end=(w+200)-speed('andre')**2/(2*2000)
