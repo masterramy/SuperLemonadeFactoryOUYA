@@ -3,7 +3,7 @@ import subprocess, time, os, re, sys, json, shlex
 from pathlib import Path
 from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, clear_tall_ledge
-from hazard_navigation import cross_spike_and_worker_corridor
+from hazard_navigation import cross_spike_and_worker_corridor, align_exit_from_right
 from screen_navigation import classify_screen, system_dialog_target
 
 ADB=["adb"]
@@ -322,7 +322,10 @@ def solve_level2():
     time.sleep(.5)
     d=state()
     if is_death(d): raise RuntimeError(f"Liselot died after corridor crossing: {d}")
-    advance_player(2, ex+8, max_steps=16)
+    # Last successful corridor jump reached x=1380 beyond exit x=1320.
+    # Do not jump backward: that landed in the worker patrol at x=1224.
+    # Measure each ordinary small LEFT walk and stop only from live state.
+    d=align_exit_from_right(state,hold,ex)
     screenshot("level2-liselot-at-exit"); log_state("level2-liselot-at-exit")
 
     # Andre starts before an armed guard on the first elevated platform.
