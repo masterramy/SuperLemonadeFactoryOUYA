@@ -30,6 +30,12 @@ class LedgeNavigationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
             clear_tall_ledge(lambda:dict(pos),lambda *a:None,jump,lambda *a:None,attempts=1)
 
+    def test_player_body_must_clear_wall_not_just_head(self):
+        pos={'p1x':730.,'p1y':479.,'p1dead':False,'p2dead':False}
+        def jump(): pos.update(p1x=785.,p1y=385.)
+        with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
+            clear_tall_ledge(lambda:dict(pos),lambda *a:None,jump,lambda *a:None,attempts=1)
+
     def test_blocked_path_fails_closed(self):
         pos={'p1x':730.0,'p1y':479.0,'p1dead':False,'p2dead':False}
         with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
