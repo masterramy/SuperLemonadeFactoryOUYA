@@ -22,6 +22,35 @@ def sustained_jump_right(keydown, keyup, sleep):
     sleep(0.18)
 
 
+
+
+def apex_first_jump_right(keydown, keyup, sleep, observe):
+    """Jump vertically to near apex, then advance right over the tall wall.
+
+    The prior immediate-horizontal held jump landed against the wall at x730.
+    Inspect the true airborne QA state at the end of the height-gaining phase.
+    Only ordinary player key events are sent, with guaranteed release.
+    """
+    held=set()
+    def down(k):
+        keydown(k); held.add(k)
+    def up(k):
+        if k in held:
+            keyup(k); held.remove(k)
+    try:
+        down('C')
+        sleep(0.34)
+        observe('apex-before-translate')
+        down('RIGHT')
+        sleep(0.12)
+        up('C')
+        sleep(0.45)
+        observe('after-apex-translate')
+    finally:
+        up('C')
+        up('RIGHT')
+    sleep(0.18)
+
 def clear_tall_ledge(read_state, hold, jump, capture, attempts=4):
     """Try stage-left-and-held-jump, using only actual inputs and observed state.
 
@@ -32,7 +61,7 @@ def clear_tall_ledge(read_state, hold, jump, capture, attempts=4):
         d = read_state()
         if d.get('p1dead') or d.get('p2dead'):
             raise RuntimeError(f'Death while staging tall platform: {d}')
-        desired = 605.0 + 12.0*attempt
+        desired = 690.0 + 6.0*attempt
         for _ in range(16):
             d = read_state()
             if d.get('p1dead') or d.get('p2dead'):
