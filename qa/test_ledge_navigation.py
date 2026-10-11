@@ -35,5 +35,30 @@ class LedgeNavigationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
             clear_tall_ledge(lambda:dict(pos),lambda *a:None,lambda:None,lambda *a:None,attempts=2)
 
+
+    def test_apex_first_jump_holds_c_before_right(self):
+        from ledge_navigation import apex_first_jump_right
+        log=[]
+        def down(k): log.append(('down',k))
+        def up(k): log.append(('up',k))
+        def sleep(s): log.append(('sleep',round(s,2)))
+        probes=[]
+        apex_first_jump_right(down,up,sleep,lambda label:probes.append(label))
+        self.assertLess(log.index(('down','C')),log.index(('down','RIGHT')))
+        self.assertIn(('sleep',0.34),log)
+        self.assertEqual(log[-2:],[('up','RIGHT'),('sleep',0.18)])
+        self.assertIn('apex-before-translate',probes)
+
+    def test_apex_jump_releases_keys_on_observer_error(self):
+        from ledge_navigation import apex_first_jump_right
+        log=[]
+        with self.assertRaisesRegex(RuntimeError,'observer unavailable'):
+            apex_first_jump_right(lambda k: log.append(('down',k)),
+                                  lambda k: log.append(('up',k)),
+                                  lambda s:None,
+                                  lambda label: (_ for _ in ()).throw(RuntimeError('observer unavailable')))
+        self.assertIn(('up','C'),log)
+        self.assertNotIn(('down','RIGHT'),log)
+
 if __name__=='__main__':
     unittest.main()
