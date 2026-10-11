@@ -41,4 +41,27 @@ class CorridorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'unsafe staging'):
             cross_spike_and_worker_corridor(lambda:dict(p),lambda k:None,lambda k:None,lambda t:None,lambda x:None)
 
+
+class ExitAlignmentTests(unittest.TestCase):
+    def test_aligns_without_jump_and_observes_true_exit_proximity(self):
+        from hazard_navigation import align_exit_from_right
+        pos={'p2x':1380.,'p2dead':False,'p1dead':False}
+        cmds=[]
+        def walk(d,t):
+            cmds.append((d,t)); pos['p2x'] -= 210*t
+        result=align_exit_from_right(lambda:dict(pos),walk,1320.0)
+        self.assertLessEqual(abs(result['p2x']-1320),15)
+        self.assertTrue(all(direction=='LEFT' for direction,t in cmds))
+        self.assertTrue(all(t<=.16 for direction,t in cmds))
+
+    def test_rejects_overshoot_into_enemy_corridor(self):
+        from hazard_navigation import align_exit_from_right
+        with self.assertRaisesRegex(RuntimeError,'unsafe'):
+            align_exit_from_right(lambda:{'p2x':1295.,'p2dead':False,'p1dead':False},lambda *a:None,1320.)
+
+    def test_stalled_alignment_does_not_pass(self):
+        from hazard_navigation import align_exit_from_right
+        with self.assertRaisesRegex(RuntimeError,'not aligned'):
+            align_exit_from_right(lambda:{'p2x':1380.,'p2dead':False,'p1dead':False},lambda *a:None,1320.)
+
 if __name__=='__main__': unittest.main()
