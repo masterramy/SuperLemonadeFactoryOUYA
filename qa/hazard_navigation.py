@@ -56,3 +56,24 @@ def cross_spike_and_worker_corridor(read_state, keydown, keyup, sleep, capture,
         # Never leave buttons held after success, death, missing observer, or timeout.
         up('C')
         up('RIGHT')
+
+
+def align_exit_from_right(read_state, hold, exit_x, max_steps=12):
+    """Reapproach the exit from safe right-hand ground by measured walking.
+
+    A large double-jump back toward exit overshot from x1380 to x1224
+    and entered the worker patrol. This method never jumps, never accepts
+    an unobserved position, and fails if it crosses the safety boundary.
+    """
+    for step in range(max_steps):
+        d=read_state()
+        if d.get('p1dead') or d.get('p2dead'):
+            raise RuntimeError(f'exit alignment death: {d}')
+        x=float(d['p2x'])
+        if abs(x-exit_x)<=15.0:
+            return d
+        if x<exit_x-15.0:
+            raise RuntimeError(f'unsafe exit alignment overshoot: {d}')
+        seconds=max(0.07,min(0.16,(x-exit_x)/230.0))
+        hold('LEFT', seconds)
+    raise RuntimeError(f'exit not aligned after {max_steps} ordinary walks; state={read_state()}')
