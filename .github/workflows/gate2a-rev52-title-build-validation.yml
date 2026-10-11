@@ -53,6 +53,8 @@ jobs:
           assert m, "intro label source rule not found"
           alpha=float(m.group(1))
           assert alpha==0.0, f"opaque intro prompt hides character legs: alpha={alpha}"
+          intro=Path("src/PCIntroState.as").read_text()
+          assert re.search(r'pressStart\.visible\s*=\s*false\s*;',intro), "obsolete PRESS O TO START appears behind modern TAP TO START"
           print("intro character artwork unobstructed; prompt text remains: PASS")
           PY
       - name: Verify title typography geometry
@@ -177,12 +179,34 @@ jobs:
           adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
           adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
           sleep 8
+          # Dismiss only a recognized Android system tutorial.
+          dismiss_system_ui(){
+            adb shell uiautomator dump /sdcard/gate2a-title-window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/gate2a-title-window.xml "$OUT/system-window.xml" >/dev/null 2>&1 || true
+            python3 - "$OUT/system-window.xml" <<'PY' > "$OUT/system-taps.txt"
+import re,sys,xml.etree.ElementTree as ET
+try: root=ET.parse(sys.argv[1]).getroot()
+except Exception: raise SystemExit
+for n in root.iter('node'):
+    if n.attrib.get('text') in ('Got it','Wait','OK'):
+        m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',n.attrib.get('bounds',''))
+        if m:
+            x1,y1,x2,y2=map(int,m.groups())
+            print((x1+x2)//2,(y1+y2)//2)
+PY
+            while read -r x y; do
+              [ -z "$x" ] || adb shell input tap "$x" "$y" >/dev/null 2>&1 || true
+            done < "$OUT/system-taps.txt"
+            sleep 2
+          }
+          dismiss_system_ui
           adb exec-out screencap -p > "$OUT/01-title-1920x1080.png"
           adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
           adb shell wm size 2560x1440
           adb shell wm density 420
           adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch-large.txt" 2>&1
           sleep 8
+          dismiss_system_ui
           adb exec-out screencap -p > "$OUT/02-title-2560x1440.png"
           adb logcat -d > "$OUT/logcat.txt" 2>&1
           ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat.txt" > "$OUT/fatal.txt"
