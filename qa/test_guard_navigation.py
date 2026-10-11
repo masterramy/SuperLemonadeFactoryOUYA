@@ -8,6 +8,7 @@ class GuardPassTests(unittest.TestCase):
         def down(k): held.add(k);commands.append(('down',k))
         def up(k): held.discard(k);commands.append(('up',k))
         def sleep(t):
+            commands.append(('sleep',round(t,2)))
             if 'X' in held and 'RIGHT' in held:p['p1x']+=500*t
             elif 'RIGHT' in held:p['p1x']+=210*t
             if 'C' in held:p['p1y']-=240*t
@@ -15,6 +16,11 @@ class GuardPassTests(unittest.TestCase):
         self.assertGreaterEqual(result['p1x'],510.)
         self.assertLess(commands.index(('down','C')),commands.index(('down','X')))
         self.assertLess(commands.index(('up','C')),commands.index(('down','X')))
+        # PlayerMale.airDash derives direction from facing, not KEY_RIGHT.
+        # A full frame with RIGHT held must happen before X is pressed.
+        ri=commands.index(('down','RIGHT'))
+        ai=commands.index(('down','X'))
+        self.assertIn(('sleep',0.07),commands[ri+1:ai])
         self.assertIn('guard-apex-before-dash',observations)
         self.assertIn('guard-after-dash',observations)
         self.assertEqual(held,set())
