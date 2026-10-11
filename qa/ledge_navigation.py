@@ -77,6 +77,6 @@ def clear_tall_ledge(read_state, hold, jump, capture, attempts=4):
         d = read_state()
         if d.get('p1dead') or d.get('p2dead'):
             raise RuntimeError(f'Death during tall platform jump: {d}')
-        if float(d['p1x']) >= 740.0 and float(d['p1y']) <= 400.0:
+        if float(d['p1x']) >= 740.0 and (float(d['p1y']) + 41.0) <= 400.0:
             return d
     raise RuntimeError(f'Tall platform not crossed after {attempts} legitimate held-jump attempts; last={read_state()}')
