@@ -110,6 +110,9 @@ package
 			pressStart.size = 16;
 			pressStart.shadow = 0xff000000;
 			add(pressStart);
+			// MobileControls draws the platform-neutral TAP TO START hint.
+			// Hide the obsolete OUYA-era PRESS O TO START wording.
+			pressStart.visible = false;
 			
 			pressStart.text = "Press O to start.";
 			
