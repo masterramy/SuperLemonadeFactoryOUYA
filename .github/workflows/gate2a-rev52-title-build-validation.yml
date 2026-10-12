@@ -33,6 +33,9 @@ jobs:
           source=Path("src/MobileControls.as").read_text()
           needle='"TAP TO START", 0xd3bdb2, 0.0, 0x7725a1);'
           assert needle in source, "Intro prompt backing must not mask character legs"
+          intro=Path("src/PCIntroState.as").read_text()
+          assert 'Press O to start.' not in intro, "Legacy OUYA controller title prompt remains"
+          assert 'Or Press A or B' not in intro, "Legacy controller-only title prompt remains"
           print("PASS: intro prompt transparent backing regression")
           PY
       - name: Verify portrait-to-logo space at intro rest positions
