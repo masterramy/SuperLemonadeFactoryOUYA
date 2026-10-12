@@ -5,7 +5,7 @@ patrol around x382. This controller gains altitude before horizontal air-dash.
 It never edits position, health, save data, collisions, enemies, or game time.
 """
 
-def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture):
+def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounded_retries=1):
     d=read_state()
     if d.get('p1dead') or d.get('p2dead'):
         raise RuntimeError(f'guard death before movement: {d}')
@@ -45,6 +45,28 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture):
         if out.get('p1dead') or out.get('p2dead'):
             raise RuntimeError(f'guard death while exiting patrol: {out}')
         if float(out['p1x']) < 510.0:
+            # A genuinely observed run sometimes finishes the first ordinary
+            # air-dash safely on the ground at x~210 instead of advancing.
+            # One *different* short grounded approach changes the takeoff
+            # point; re-observe before a second ordinary jump/dash. Never
+            # edit positions or silently label this a successful crossing.
+            x, y = float(out['p1x']), float(out['p1y'])
+            if grounded_retries>0 and 190.0<=x<=230.0 and 460.0<=y<=495.0:
+                up('RIGHT')
+                down('RIGHT')
+                sleep(0.12)
+                up('RIGHT')
+                sleep(0.16)
+                advanced=read_state()
+                capture('guard-ground-reapproach')
+                if advanced.get('p1dead') or advanced.get('p2dead'):
+                    raise RuntimeError(f'death during grounded reapproach: {advanced}')
+                nx,ny=float(advanced['p1x']),float(advanced['p1y'])
+                if not (x+5.0 <= nx <= 235.0 and 455.0<=ny<=495.0):
+                    raise RuntimeError(f'ground reapproach not safely observed: before={out} after={advanced}')
+                return airborne_dash_past_guard(
+                    read_state,keydown,keyup,sleep,capture,
+                    grounded_retries=grounded_retries-1)
             # Level2.oel's ordinary route has a helper block at x220,y480
             # before the guard ledge at x260,y440. The original dash can
             # legitimately land on this lower block: observed (250,439).
