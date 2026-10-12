@@ -45,3 +45,27 @@ def classify_screen(image):
     if purple>int(w*h*.005):
         return 'level_select'
     return 'unknown'
+
+
+def retry_level_select_transition(observe, action, wait, attempts=4):
+    """Retry ONLY while the rendered frame is actually Level Select.
+
+    Each action is an ordinary Android tap. Unknown/gameplay/cutscene frames
+    receive no additional touches. The caller must separately verify the
+    specific desired level from its observation stream, not infer victory.
+    """
+    for _ in range(attempts):
+        label=observe()
+        if label=='level_select':
+            action()
+            wait()
+            continue
+        if label in ('menu','title'):
+            raise RuntimeError(f'Unexpected navigation regression: {label}')
+        return label
+    label=observe()
+    if label=='level_select':
+        raise RuntimeError('Level Select remains after bounded action attempts')
+    if label in ('menu','title'):
+        raise RuntimeError(f'Unexpected navigation regression: {label}')
+    return label
