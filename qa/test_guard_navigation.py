@@ -90,7 +90,7 @@ class GuardPassTests(unittest.TestCase):
                 if dashes==1: p.update(p1x=210.13,p1y=479.11)
                 elif dashes==2: p.update(p1x=250.13,p1y=439.11)
                 else: p['p1x']+=500*t
-            elif dashes==1 and jumps==1 and 'RIGHT' in held and t>=.12:
+            elif dashes==1 and jumps==1 and 'RIGHT' in held and .10<=t<=.16:
                 p['p1x']=226.0
             elif jumps==3 and 'RIGHT' in held:
                 p['p1x']+=210*t
