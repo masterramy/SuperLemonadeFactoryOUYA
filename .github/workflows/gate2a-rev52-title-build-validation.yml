@@ -7,6 +7,7 @@ on:
       - gate2a-rev52-title-playthrough-repair
     paths:
       - src/PCIntroState.as
+      - src/MobileControls.as
       - data/logo_limeade.png
       - icons/android/**
       - release/store-assets/**
@@ -23,6 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Verify transparent intro prompt backing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path("src/MobileControls.as").read_text()
+          needle='"TAP TO START", 0xd3bdb2, 0.0, 0x7725a1);'
+          assert needle in source, "Intro prompt backing must not mask character legs"
+          print("PASS: intro prompt transparent backing regression")
+          PY
       - name: Verify portrait-to-logo space at intro rest positions
         shell: bash
         run: |
