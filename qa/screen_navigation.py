@@ -37,6 +37,18 @@ def classify_screen(image):
         image=Image.open(io.BytesIO(image))
     im=image.convert('RGB')
     w,h=im.size
+    # Real Android gameplay has six evenly-spaced tan control pads at
+    # y≈90% of the canvas. Purple effects/scenery ALSO occur in gameplay,
+    # so classify this distinctive native gameplay HUD before Level Select.
+    controls=[
+        im.getpixel((int(w*x),int(h*.90)))
+        for x in (.08,.24,.40,.56,.72,.89)
+    ]
+    active_controls=sum(
+        130<=r<=160 and 110<=g<=140 and 95<=b<=125 and r>g>b
+        for r,g,b in controls)
+    if active_controls>=5:
+        return 'gameplay'
     green=_count(im,(.30,.03,.67,.39),lambda r,g,b:g>80 and g>r*1.2 and g>b*1.3)
     red=_count(im,(.68,.10,.92,.65),lambda r,g,b:r>120 and r>g*1.4 and r>b*1.3)
     purple=_count(im,(.15,.12,.90,.82),lambda r,g,b:r>70 and b>r and r>g*1.2 and b>g*1.2)
