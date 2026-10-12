@@ -400,6 +400,10 @@ def main():
     shell("input swipe 700 540 1250 540 250"); time.sleep(1)
     count=[0]
     def level2_launch_screen():
+        # Late Pixel Launcher ANR dialogs may obscure a genuine Level Select
+        # transition. Only dismiss recognized Android system UI, never
+        # blindly act on unknown game frames.
+        dismiss_system_ui()
         p=subprocess.run(["adb","exec-out","screencap","-p"],capture_output=True)
         if p.returncode or not p.stdout:
             raise RuntimeError("Cannot observe Level 2 transition")
