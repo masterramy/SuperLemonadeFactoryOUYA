@@ -31,6 +31,27 @@ class ScreenNavigationTests(unittest.TestCase):
         self.assertEqual(label,'unknown')
         self.assertEqual(actions,[])
 
+    def test_delayed_system_dialog_unknown_is_observed_without_game_taps(self):
+        observed=iter(['unknown','level_select','gameplay'])
+        actions=[]
+        outcome=retry_level_select_transition(
+            lambda:next(observed),
+            lambda:actions.append('tap'),
+            lambda:actions.append('wait'),
+            attempts=4)
+        self.assertEqual(outcome,'gameplay')
+        self.assertEqual(actions,['wait','tap','wait'])
+
+    def test_repeated_unknown_never_causes_game_touch(self):
+        actions=[]
+        with self.assertRaisesRegex(RuntimeError,'Unknown screen'):
+            retry_level_select_transition(
+                lambda:'unknown',
+                lambda:actions.append('tap'),
+                lambda:actions.append('wait'),
+                attempts=3)
+        self.assertEqual(actions,[])
+
     def test_nontransition_stops_after_bounded_attempts(self):
         actions=[]
         with self.assertRaisesRegex(RuntimeError,'Level Select remains'):
