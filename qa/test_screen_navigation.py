@@ -39,6 +39,16 @@ class ScreenNavigationTests(unittest.TestCase):
                 lambda:None,attempts=3)
         self.assertEqual(len(actions),3)
 
+    def test_realistic_gameplay_controls_override_purple_level_ui(self):
+        # Run 38213127671: genuine Level 2 frames have purple scenery,
+        # causing the old color-only classifier to return level_select.
+        im=Image.new('RGB',(1920,1080),(211,189,178))
+        d=ImageDraw.Draw(im)
+        d.rectangle((420,190,800,440),fill=(130,65,159))
+        d.rectangle((0,850,1919,1079),fill=(145,124,109))
+        d.rectangle((1640,20,1890,150),fill=(70,65,54))
+        self.assertEqual(classify_screen(im),'gameplay')
+
     def test_title_menu_and_level_select_classification(self):
         def frame():return Image.new('RGB',(1920,1080),(211,189,178))
         intro=frame();d=ImageDraw.Draw(intro);d.rectangle((575,35,1265,420),fill=(100,180,35));d.rectangle((1450,160,1700,400),fill=(205,40,45))
