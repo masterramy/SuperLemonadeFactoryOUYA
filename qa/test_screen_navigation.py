@@ -13,23 +13,23 @@ class ScreenNavigationTests(unittest.TestCase):
         self.assertIsNone(system_dialog_target(xml))
 
     def test_bounded_level_select_transition_retries_only_confirmed_select(self):
-        observed=iter(['level_select','level_select','unknown'])
+        observed=iter(['level_select','level_select','gameplay'])
         actions=[]
         outcome=retry_level_select_transition(
             lambda:next(observed),
             lambda:actions.append('tap'),
             lambda:actions.append('wait'),
             attempts=4)
-        self.assertEqual(outcome,'unknown')
+        self.assertEqual(outcome,'gameplay')
         self.assertEqual(actions,['tap','wait','tap','wait'])
 
     def test_unknown_screen_does_not_receive_extra_tap(self):
-        actions=[]
-        label=retry_level_select_transition(
-            lambda:'unknown',lambda:actions.append('tap'),
-            lambda:actions.append('wait'))
-        self.assertEqual(label,'unknown')
-        self.assertEqual(actions,[])
+        touches=[]
+        with self.assertRaisesRegex(RuntimeError,'Unknown screen'):
+            retry_level_select_transition(
+                lambda:'unknown',lambda:touches.append('tap'),
+                lambda:None)
+        self.assertEqual(touches,[])
 
     def test_delayed_system_dialog_unknown_is_observed_without_game_taps(self):
         observed=iter(['unknown','level_select','gameplay'])
@@ -43,14 +43,16 @@ class ScreenNavigationTests(unittest.TestCase):
         self.assertEqual(actions,['wait','tap','wait'])
 
     def test_repeated_unknown_never_causes_game_touch(self):
-        actions=[]
+        touches=[]
+        waits=[]
         with self.assertRaisesRegex(RuntimeError,'Unknown screen'):
             retry_level_select_transition(
                 lambda:'unknown',
-                lambda:actions.append('tap'),
-                lambda:actions.append('wait'),
+                lambda:touches.append('tap'),
+                lambda:waits.append('wait'),
                 attempts=3)
-        self.assertEqual(actions,[])
+        self.assertEqual(touches,[])
+        self.assertEqual(len(waits),3)
 
     def test_nontransition_stops_after_bounded_attempts(self):
         actions=[]
