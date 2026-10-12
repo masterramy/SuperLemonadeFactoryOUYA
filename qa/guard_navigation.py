@@ -63,7 +63,7 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
                     raise RuntimeError(f'death during grounded reapproach: {advanced}')
                 nx,ny=float(advanced['p1x']),float(advanced['p1y'])
                 if not (x+5.0 <= nx <= 235.0 and 455.0<=ny<=495.0):
-                    raise RuntimeError(f'ground reapproach not safely observed: before={out} after={advanced}')
+                    raise RuntimeError(f'first guard not cleared: ground reapproach not safely observed: before={out} after={advanced}')
                 return airborne_dash_past_guard(
                     read_state,keydown,keyup,sleep,capture,
                     grounded_retries=grounded_retries-1)
