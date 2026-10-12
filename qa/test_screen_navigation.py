@@ -1,6 +1,6 @@
 import unittest
 from PIL import Image,ImageDraw
-from screen_navigation import classify_screen,system_dialog_target
+from screen_navigation import classify_screen,system_dialog_target,retry_level_select_transition
 
 
 class ScreenNavigationTests(unittest.TestCase):
@@ -11,6 +11,33 @@ class ScreenNavigationTests(unittest.TestCase):
     def test_unknown_dialog_does_not_click_game(self):
         xml='<hierarchy><node text="PLAY AGAIN" bounds="[100,100][400,300]"/></hierarchy>'
         self.assertIsNone(system_dialog_target(xml))
+
+    def test_bounded_level_select_transition_retries_only_confirmed_select(self):
+        observed=iter(['level_select','level_select','unknown'])
+        actions=[]
+        outcome=retry_level_select_transition(
+            lambda:next(observed),
+            lambda:actions.append('tap'),
+            lambda:actions.append('wait'),
+            attempts=4)
+        self.assertEqual(outcome,'unknown')
+        self.assertEqual(actions,['tap','wait','tap','wait'])
+
+    def test_unknown_screen_does_not_receive_extra_tap(self):
+        actions=[]
+        label=retry_level_select_transition(
+            lambda:'unknown',lambda:actions.append('tap'),
+            lambda:actions.append('wait'))
+        self.assertEqual(label,'unknown')
+        self.assertEqual(actions,[])
+
+    def test_nontransition_stops_after_bounded_attempts(self):
+        actions=[]
+        with self.assertRaisesRegex(RuntimeError,'Level Select remains'):
+            retry_level_select_transition(
+                lambda:'level_select',lambda:actions.append('tap'),
+                lambda:None,attempts=3)
+        self.assertEqual(len(actions),3)
 
     def test_title_menu_and_level_select_classification(self):
         def frame():return Image.new('RGB',(1920,1080),(211,189,178))
