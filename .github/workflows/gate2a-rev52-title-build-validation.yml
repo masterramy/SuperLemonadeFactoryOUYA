@@ -168,6 +168,29 @@ jobs:
           PACKAGE=com.ramybaheeg.slfport
           OUT=title-render
           mkdir -p "$OUT"
+          dismiss_system_dialog(){
+            for attempt in 1 2 3 4; do
+              timeout 15 adb shell uiautomator dump /sdcard/rev52-title-window.xml >/dev/null 2>&1 || true
+              adb pull /sdcard/rev52-title-window.xml "$OUT/system-window.xml" >/dev/null 2>&1 || true
+              python3 - "$OUT/system-window.xml" <<'PY' > "$OUT/system-tap.txt"
+          import re,sys,xml.etree.ElementTree as ET
+          try: root=ET.parse(sys.argv[1]).getroot()
+          except Exception: raise SystemExit
+          for n in root.iter('node'):
+              if n.attrib.get('text') not in ('Wait','Got it','Continue','OK'):continue
+              m=re.fullmatch(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',n.attrib.get('bounds',''))
+              if m:
+                  x1,y1,x2,y2=map(int,m.groups())
+                  print((x1+x2)//2,(y1+y2)//2)
+                  break
+          PY
+              if ! test -s "$OUT/system-tap.txt"; then break; fi
+              read -r x y < "$OUT/system-tap.txt"
+              echo "system_dialog_dismissed=$attempt x=$x y=$y" >> "$OUT/system-dismissals.txt"
+              adb shell input tap "$x" "$y"
+              sleep 3
+            done
+          }
           adb install -r "$APK" > "$OUT/install.txt" 2>&1
           adb shell pm clear "$PACKAGE" > "$OUT/clear.txt" 2>&1
           adb shell wm size 1920x1080
@@ -180,12 +203,14 @@ jobs:
           adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
           adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch.txt" 2>&1
           sleep 8
+          dismiss_system_dialog
           adb exec-out screencap -p > "$OUT/01-title-1920x1080.png"
           adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
           adb shell wm size 2560x1440
           adb shell wm density 420
           adb shell am start -W -n "$PACKAGE/.AIRAppEntry" > "$OUT/launch-large.txt" 2>&1
           sleep 8
+          dismiss_system_dialog
           adb exec-out screencap -p > "$OUT/02-title-2560x1440.png"
           adb logcat -d > "$OUT/logcat.txt" 2>&1
           ! grep -E "FATAL EXCEPTION|Process: $PACKAGE|Fatal signal" "$OUT/logcat.txt" > "$OUT/fatal.txt"
