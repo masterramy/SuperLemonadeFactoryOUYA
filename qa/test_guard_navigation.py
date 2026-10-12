@@ -71,6 +71,38 @@ class GuardPassTests(unittest.TestCase):
         self.assertFalse(out['p1dead'])
         self.assertEqual(held,set())
 
+    def test_grounded_stall_makes_one_observed_reapproach_then_clears(self):
+        # Actual run 38127257088: after the first aerial attempt, Andre is
+        # alive on the ground at x210,y479. A safe, observed local re-approach
+        # is allowed; it must never be mistaken for victory or teleportation.
+        p={'p1x':205.,'p1y':479.11,'p1dead':False,'p2dead':False}
+        held=set(); jumps=0; dashes=0; captures=[]
+        def down(k):
+            nonlocal jumps,dashes
+            held.add(k)
+            if k=='C': jumps+=1
+            if k=='X': dashes+=1
+        def up(k): held.discard(k)
+        def sleep(t):
+            if 'C' in held:
+                p['p1y']={1:377.3,2:377.3,3:352.7,4:314.0}[min(jumps,4)]
+            if 'X' in held:
+                if dashes==1: p.update(p1x=210.13,p1y=479.11)
+                elif dashes==2: p.update(p1x=250.13,p1y=439.11)
+                else: p['p1x']+=500*t
+            elif dashes==1 and jumps==1 and 'RIGHT' in held and t>=.12:
+                p['p1x']=226.0
+            elif jumps==3 and 'RIGHT' in held:
+                p['p1x']+=210*t
+            if jumps==3 and 'RIGHT' not in held and t>=.40:
+                p['p1y']=399.0
+        out=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
+        self.assertGreaterEqual(out['p1x'],510.)
+        self.assertEqual(dashes,3)
+        self.assertIn('guard-ground-reapproach',captures)
+        self.assertFalse(out['p1dead'])
+        self.assertFalse(held)
+
     def test_rejects_unknown_wrong_staging(self):
         with self.assertRaisesRegex(ValueError,'guard staging'):
             airborne_dash_past_guard(lambda:{'p1x':400.,'p1dead':False,'p2dead':False},lambda k:None,lambda k:None,lambda s:None,lambda s:None)
