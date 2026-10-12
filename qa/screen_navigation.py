@@ -72,12 +72,19 @@ def retry_level_select_transition(observe, action, wait, attempts=4):
             action()
             wait()
             continue
+        if label=='unknown':
+            # Pixel Launcher ANR/system dialogs can arrive AFTER the game
+            # has reached Level Select. Do not tap uncertain frames.
+            wait()
+            continue
         if label in ('menu','title'):
             raise RuntimeError(f'Unexpected navigation regression: {label}')
         return label
     label=observe()
     if label=='level_select':
         raise RuntimeError('Level Select remains after bounded action attempts')
+    if label=='unknown':
+        raise RuntimeError('Unknown screen remains after bounded observation attempts')
     if label in ('menu','title'):
         raise RuntimeError(f'Unexpected navigation regression: {label}')
     return label
