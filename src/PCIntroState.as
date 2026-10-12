@@ -51,7 +51,6 @@ package
 		private var army:FlxSprite;
 		private var andre:FlxSprite;
 		private var liselot:FlxSprite;
-		private var pressStart:FlxText;
 		
 		private var clicks:int;
 			
@@ -106,17 +105,6 @@ package
 			// remains legible throughout the entrance animation.
 			add(logo);
 			
-			pressStart = new FlxText(60, FlxG.height - 60, FlxG.width, "", true);
-			pressStart.size = 16;
-			pressStart.shadow = 0xff000000;
-			add(pressStart);
-			
-			pressStart.text = "Press O to start.";
-			
-			if (FlxG.usingJoystick) {
-				pressStart.text = pressStart.text + "\nOr Press A or B on your control pad.";
-			}
-		
 			FlxG.play(Registry.SndOnShoulders,0.9);
 			FlxG.stage.align = "TL";
 			
