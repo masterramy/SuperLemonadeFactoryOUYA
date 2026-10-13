@@ -63,9 +63,13 @@ def reach_right_side_without_pushing(read_state, hold, high_jump, capture,
         x,y=float(d['p2x']),float(d['p2y'])
         if float(d['crateX'])>original_x+20.:
             raise RuntimeError(f'crate moved right during safe approach: {d}')
-        if 670.0<=x<=715.0 and y>=430.0:
+        # Rendered run38474873546: x719.66,y479.11 was safely on
+        # the floor LEFT of untouched crate x763 and the x740 wall.
+        # Allow up to x730 (the real ground-level wall collision stop),
+        # then vault vertically. Still fail before entering crate's side.
+        if 670.0<=x<=730.0 and y>=430.0:
             break
-        if x>715.0:
+        if x>730.0:
             raise RuntimeError(f'crate approach got too close without clearance: {d}')
         hold('RIGHT', max(.10,min(.25,(690.0-x)/230.0)))
     else:
