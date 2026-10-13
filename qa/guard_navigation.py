@@ -52,21 +52,35 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             # edit positions or silently label this a successful crossing.
             x, y = float(out['p1x']), float(out['p1y'])
             if grounded_retries>0 and 190.0<=x<=230.0 and 460.0<=y<=495.0:
+                # Real run 38214609453: Andre is at x210 with the x220,
+                # y480 helper block physically in his way. Walking RIGHT
+                # cannot cross a solid! Use a legitimate variable-height
+                # jump before moving onto that block. This changes input
+                # strategy, not physics/save/game state.
                 up('RIGHT')
+                down('C')
+                sleep(0.34)
+                up('C')
+                capture('guard-ground-helper-takeoff')
+                rise=read_state()
+                if rise.get('p1dead') or rise.get('p2dead'):
+                    raise RuntimeError(f'death during normal helper jump: {rise}')
+                if float(rise['p1y']) >= 440.0:
+                    raise RuntimeError(f'Andre did not rise above helper block: {rise}')
                 down('RIGHT')
-                sleep(0.12)
+                sleep(0.18)
                 up('RIGHT')
-                sleep(0.16)
+                sleep(0.38)
                 advanced=read_state()
-                capture('guard-ground-reapproach')
+                capture('guard-ground-helper-landed')
                 if advanced.get('p1dead') or advanced.get('p2dead'):
-                    raise RuntimeError(f'death during grounded reapproach: {advanced}')
+                    raise RuntimeError(f'death during helper-block landing: {advanced}')
                 nx,ny=float(advanced['p1x']),float(advanced['p1y'])
-                if not (x+5.0 <= nx <= 235.0 and 455.0<=ny<=495.0):
-                    raise RuntimeError(f'first guard not cleared: ground reapproach not safely observed: before={out} after={advanced}')
-                return airborne_dash_past_guard(
-                    read_state,keydown,keyup,sleep,capture,
-                    grounded_retries=grounded_retries-1)
+                if not (235.0 <= nx <= 260.0 and 420.0 <= ny <= 455.0):
+                    raise RuntimeError(f'normal helper jump did not land on observed lower step: {advanced}')
+                # Fall through to the proven separate helper-to-upper
+                # platform jump below; x250,y439 is not completion.
+                out=advanced
             # Level2.oel's ordinary route has a helper block at x220,y480
             # before the guard ledge at x260,y440. The original dash can
             # legitimately land on this lower block: observed (250,439).
