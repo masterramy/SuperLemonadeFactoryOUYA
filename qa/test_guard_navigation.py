@@ -59,7 +59,14 @@ class GuardPassTests(unittest.TestCase):
                 else: p['p1x']+=500*t
             elif jumps==2 and 'RIGHT' in held: p['p1x']+=210*t
             if jumps==2 and .20<=t<=.25 and 'RIGHT' not in held: p['p1y']=321.0
-        out=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
+        def guarded_observation():
+            # ADB state observation takes real elapsed time. From the second
+            # helper jump until its air dash, there must be no read/capture
+            # that turns a clean launch into a fatal landing.
+            if jumps >= 2 and dashes < 2:
+                raise AssertionError('blocking state observation during helper air maneuver')
+            return dict(p)
+        out=airborne_dash_past_guard(guarded_observation,down,up,sleep,captures.append)
         self.assertGreaterEqual(out['p1x'],510.)
         self.assertEqual(jumps,2)
         self.assertNotIn('guard-helper-step-apex',captures)
