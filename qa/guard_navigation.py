@@ -109,52 +109,35 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             if float(apex['p1y']) + 41.0 > 440.0:
                 raise RuntimeError(f'helper jump did not clear ledge top: {apex}')
 
-            # The second jump from the helper clears the raised block's
-            # front edge, but run 38126835150 showed a long dash straight
-            # into the patrol at x≈372 while descending. First land on the
-            # upper platform's safe left edge using a short normal walk.
-            down('RIGHT')
-            sleep(0.07)
-            sleep(0.12)
-            up('RIGHT')
-            sleep(0.45)
-            platform = read_state()
-            capture('guard-upper-platform-stage')
-            if platform.get('p1dead') or platform.get('p2dead'):
-                raise RuntimeError(f'death staging on upper guard platform: {platform}')
-            if not (270.0 <= float(platform['p1x']) <= 340.0
-                    and 375.0 <= float(platform['p1y']) <= 414.0):
-                raise RuntimeError(f'upper guard platform landing unproven: {platform}')
-
-            # The player must be on the higher y440 platform before this
-            # separate ordinary jump, giving enough altitude to pass
-            # over the y390 guard. Still no teleport, saves, or physics edits.
-            down('C')
-            sleep(0.34)
-            up('C')
-            capture('guard-upper-platform-apex')
+            # Real run 38349009371: landing at x310,y399 puts Andre
+            # directly into the moving guard. Avoid the unsafe landing;
+            # continue the ordinary helper-step jump until the player's
+            # feet are genuinely ABOVE the patrol, then execute his
+            # normal facing-correct midair dash. No physics/save edits.
+            sleep(0.22)
             high = read_state()
+            capture('guard-helper-airborne-clearance')
             if high.get('p1dead') or high.get('p2dead'):
-                raise RuntimeError(f'death on upper platform jump: {high}')
-            if float(high['p1y'])+41.0 >= 390.0:
-                raise RuntimeError(f'upper platform jump below guard top: {high}')
+                raise RuntimeError(f'death while rising above guard: {high}')
+            if float(high['p1y']) + 41.0 >= 390.0:
+                raise RuntimeError(f'normal helper jump not yet clear above guard: {high}')
             down('RIGHT')
             sleep(0.07)
             down('X')
             sleep(0.12)
-            capture('guard-upper-platform-flight-00')
+            capture('guard-high-air-dash-early')
             flight = read_state()
             if flight.get('p1dead') or flight.get('p2dead'):
-                raise RuntimeError(f'death during upper platform dash: {flight}')
+                raise RuntimeError(f'death during high air dash: {flight}')
             sleep(0.38)
             up('X')
-            capture('guard-upper-platform-after-dash')
+            capture('guard-high-air-dash-late')
             sleep(0.30)
             out = read_state()
             if out.get('p1dead') or out.get('p2dead'):
-                raise RuntimeError(f'death clearing upper guard platform: {out}')
+                raise RuntimeError(f'death after airborne guard clearance: {out}')
             if float(out['p1x']) < 510.0:
-                raise RuntimeError(f'guard not cleared by upper platform leap: {out}')
+                raise RuntimeError(f'guard not cleared by genuine airborne helper leap: {out}')
         return out
     finally:
         up('C')
