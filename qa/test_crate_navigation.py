@@ -26,6 +26,21 @@ class CratePuzzleTests(unittest.TestCase):
         self.assertGreaterEqual(out['p2x'],out['crateX']+32.)
         self.assertTrue(all(s<=.25 for _,s in steps))
 
+    def test_real_38474873546_safe_floor_staging_at_x719(self):
+        # The vault did not run: x719.66 ground was rejected solely by
+        # stale x<=715 threshold, while untouched crate x763 and all
+        # characters were alive. Collision wall starts x740.
+        p={'p2x':719.66,'p2y':479.11,'crateX':763.,'crateY':377.1,
+           'p1dead':False,'p2dead':False}
+        launched=[]
+        def jump():
+            launched.append(True)
+            p.update(p2x=847.,p2y=359.11)
+        d=reach_right_side_without_pushing(lambda:dict(p),
+              lambda direction,sec:None,jump,lambda tag:None)
+        self.assertEqual(launched,[True])
+        self.assertEqual(d['crateX'],763.)
+
     def test_ground_approach_rejects_previously_shoved_crate(self):
         p={'p2x':851.,'p2y':359.11,'crateX':1092.17,'crateY':427.1,
            'p1dead':False,'p2dead':False}
