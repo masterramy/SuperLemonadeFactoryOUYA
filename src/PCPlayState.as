@@ -485,6 +485,11 @@ package
 					"p2controlled=" + player2._currentlyControlled + "\n" +
 					"p2dead=" + player2.dead + "\n" +
 					"p2piggy=" + player2._isPiggyBacking + "\n" +
+					// Read-only moving patrol telemetry for autonomous QA.
+					// The shipping class and real movement/collision are untouched.
+					"armyX=" + (army != null ? army.x.toFixed(2) : "-1.00") + "\n" +
+					"armyY=" + (army != null ? army.y.toFixed(2) : "-1.00") + "\n" +
+					"armyVx=" + (army != null ? army.velocity.x.toFixed(2) : "0.00") + "\n" +
 					"exitX=" + exitX.toFixed(2) + "\n" +
 					"exitY=" + exitY.toFixed(2) + "\n" +
 					"levelFinished=" + levelFinished + "\n" +
