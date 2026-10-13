@@ -466,6 +466,12 @@ package
 					}
 				}
 
+            // QA-only movable-crate positions; never modify game state.
+            var qaCrate:Crate = null;
+            if (crates != null && crates.members != null &&
+                crates.members.length > 0 && crates.members[0] != null)
+                qaCrate = crates.members[0] as Crate;
+
 				var line:String =
 					"levelType=" + Registry.levelType + "\n" +
 					"levelNumber=" + Registry.levelNumber + "\n" +
@@ -490,6 +496,8 @@ package
 					"armyX=" + (army != null ? army.x.toFixed(2) : "-1.00") + "\n" +
 					"armyY=" + (army != null ? army.y.toFixed(2) : "-1.00") + "\n" +
 					"armyVx=" + (army != null ? army.velocity.x.toFixed(2) : "0.00") + "\n" +
+                    "crateX=" + (qaCrate != null ? qaCrate.x.toFixed(2) : "-1.00") + "\n" +
+                    "crateY=" + (qaCrate != null ? qaCrate.y.toFixed(2) : "-1.00") + "\n" +
 					"exitX=" + exitX.toFixed(2) + "\n" +
 					"exitY=" + exitY.toFixed(2) + "\n" +
 					"levelFinished=" + levelFinished + "\n" +
