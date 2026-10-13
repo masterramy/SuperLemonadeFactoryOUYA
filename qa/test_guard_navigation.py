@@ -101,7 +101,7 @@ class GuardPassTests(unittest.TestCase):
             elif jumps==2 and 'RIGHT' in held:
                 p['p1x']=250.0
             elif jumps==3 and 'RIGHT' in held:
-                p['p1x']=290.0
+                p['p1x']+=210*t
             if jumps==2 and t>=.30 and 'RIGHT' not in held:
                 p['p1y']=439.0
             if jumps==3 and .20<=t<=.25 and 'RIGHT' not in held:
