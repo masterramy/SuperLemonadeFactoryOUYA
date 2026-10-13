@@ -88,6 +88,25 @@ class LedgeNavigationTests(unittest.TestCase):
             ('down','C'),('down','RIGHT'),('up','C'),('up','RIGHT')])
         self.assertEqual(events[1],('sleep',.26))
 
+
+    def test_crate_stage_uses_nearby_x706_not_old_x690(self):
+        # 38464588882: landed crate x716,y497, Andre approaches x706.
+        pos={'p1x':706.39,'p1y':479.11,'crateX':716.0,'crateY':497.1,
+             'p1dead':False,'p2dead':False}
+        stage=[]; landed=[]
+        def hold(direction, seconds):
+            stage.append(direction)
+            pos['p1x']+=(-1 if direction=='LEFT' else 1)*210*seconds
+        def jump():
+            landed.append(dict(pos))
+            pos.update(p1x=730.,p1y=457.19)
+        def crate_jump():pos.update(p1x=782.,p1y=359.)
+        out=clear_tall_ledge(lambda:dict(pos),hold,jump,lambda _:None,
+                             attempts=3,crate_jump=crate_jump)
+        self.assertLess(abs(landed[0]['p1x']-704.),12.)
+        self.assertNotIn('LEFT',stage)
+        self.assertEqual(out['p1y'],359.)
+
     def test_crate_stage_cannot_be_mistaken_for_final_wall_clearance(self):
         pos={'p1x':730.,'p1y':457.19,'crateX':716.,'crateY':497.1,
              'p1dead':False,'p2dead':False}

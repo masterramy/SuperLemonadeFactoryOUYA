@@ -124,7 +124,11 @@ def clear_tall_ledge(read_state, hold, jump, capture, attempts=4,
         # former bounded staging as a diagnostic-only fallback.
         cx=float(d.get('crateX',-1.0))
         cy=float(d.get('crateY',-1.0))
-        target=max(665.0,min(cx-25.0,712.0)) if (0<=cx<=780 and 485<=cy<=515) else 690.0+6.0*attempt
+        # The documented ground-stage x706 is within ordinary jump range
+        # of the real fallen crate x716. Staging at x691 repeatedly
+        # caused horizontal drift and needless re-climbs; aim for its
+        # near-left face, never inside the x740 solid wall.
+        target=max(675.0,min(cx-12.0,712.0)) if (0<=cx<=780 and 485<=cy<=515) else 690.0+6.0*attempt
         for _ in range(16):
             d=check(read_state())
             delta=target-float(d['p1x'])
