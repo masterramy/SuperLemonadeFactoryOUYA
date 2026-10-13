@@ -63,7 +63,7 @@ class LedgeNavigationTests(unittest.TestCase):
         self.assertNotIn('LEFT',actions)
 
     def test_ground_jump_lands_on_crate_then_second_jump_clears_wall(self):
-        pos={'p1x':691.0,'p1y':479.11,
+        pos={'p1x':704.0,'p1y':479.11,
              'crateX':716.,'crateY':497.1,'p1dead':False,'p2dead':False}
         actions=[]
         def hold(direction,seconds):actions.append((direction,seconds))
