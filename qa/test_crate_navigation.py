@@ -44,6 +44,13 @@ class CratePuzzleTests(unittest.TestCase):
             ('down','C'),('up','C'),('down','C'),('up','C'),
             ('down','RIGHT'),('up','RIGHT')])
         self.assertEqual(events[1],('sleep',.29))
+        # Run 38474282598: moving RIGHT immediately after second C
+        # shoved the crate from x763 to x875. Gain substantial second
+        # jump height BEFORE the first horizontal frame.
+        second_up=[i for i,v in enumerate(events) if v==('up','C')][1]
+        right=events.index(('down','RIGHT'))
+        self.assertIn(('sleep',.25),events[second_up+1:right])
+
 
     def test_jumps_to_right_then_pushes_crate_completely_off_left_edge(self):
         state={"p2x":809.6,"p2y":359.11,"crateX":842.0,"crateY":360.0,
