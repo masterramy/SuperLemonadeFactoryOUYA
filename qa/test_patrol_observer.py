@@ -12,6 +12,19 @@ class PatrolObserverContract(unittest.TestCase):
         self.assertNotRegex(body, r'army\.(?:x|y|velocity\.x)\s*=')
         self.assertIn('"observationOnly=true\\n"', body)
 
+    def test_live_crate_observer_exposes_exact_movable_crate_xy_without_writes(self):
+        # Level2.oel explicitly instructs Liselot to push the only small
+        # crate OFF the left edge at x740. Prior QA missed this puzzle and
+        # instead attempted Andre's physically unreachable ground jump.
+        src=Path("src/PCPlayState.as").read_text(encoding="utf-8")
+        obs=src.split("private function writeQAObservation():void",1)[1].split("public function replaceAt",1)[0]
+        for t in ('"crateX="','"crateY="','qaCrate.x.toFixed(2)','qaCrate.y.toFixed(2)'):
+            self.assertIn(t,obs)
+        self.assertNotRegex(obs,r'qaCrate\\.(?:x|y)\\s*=')
+        ctrl=Path("qa/observed_playthrough.py").read_text(encoding="utf-8")
+        self.assertIn('"crateX"',ctrl)
+        self.assertIn('"crateY"',ctrl)
+
     def test_reader_accepts_patrol_observations(self):
         code = Path("qa/observed_playthrough.py").read_text(encoding="utf-8")
         self.assertIn('"armyX"', code)
