@@ -68,10 +68,25 @@ class ExitAlignmentTests(unittest.TestCase):
         self.assertTrue(all(t<=0.16 for _,t in actions))
         self.assertTrue(all(direction in ('LEFT','RIGHT') for direction,t in actions))
 
+    def test_actual_run_38457476683_safe_29px_left_micro_recovery(self):
+        # Exact read-only observed live coordinate: both alive, x=1291.06,
+        # 28.94px left of exit. A small rightward walk is safer than
+        # claiming a gameplay failure without even attempting recovery.
+        from hazard_navigation import align_exit_from_right
+        p={'p2x':1291.06,'p1dead':False,'p2dead':False}
+        actions=[]
+        def walk(direction,seconds):
+            actions.append((direction,seconds))
+            p['p2x'] += 220*seconds if direction=='RIGHT' else -220*seconds
+        result=align_exit_from_right(lambda:dict(p),walk,1320.,max_steps=12)
+        self.assertLessEqual(abs(result['p2x']-1320.),15.)
+        self.assertTrue(actions)
+        self.assertTrue(all(k=='RIGHT' for k,_ in actions))
+
     def test_rejects_overshoot_into_enemy_corridor(self):
         from hazard_navigation import align_exit_from_right
         with self.assertRaisesRegex(RuntimeError,'unsafe'):
-            align_exit_from_right(lambda:{'p2x':1295.,'p2dead':False,'p1dead':False},lambda *a:None,1320.)
+            align_exit_from_right(lambda:{'p2x':1260.,'p2dead':False,'p1dead':False},lambda *a:None,1320.)
 
     def test_stalled_alignment_does_not_pass(self):
         from hazard_navigation import align_exit_from_right
