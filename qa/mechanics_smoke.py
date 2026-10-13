@@ -60,8 +60,10 @@ def main():
     g.navigate_to_level_select()
     screenshot("01-level-select")
     # Level 1 is the opening tutorial; no swipes or progression manipulation.
-    g.shell("input tap 960 540")
-    time.sleep(6)
+    # Rendered 1920x1080 Level Select: Level 1 is the LEFT purple
+    # button at approximately x560,y392. Prior center tap missed it.
+    g.shell("input tap 560 392")
+    time.sleep(5)
     def frame():
         import subprocess
         from screen_navigation import classify_screen
@@ -69,7 +71,11 @@ def main():
         if p.returncode or not p.stdout:
             raise RuntimeError("No startup frame")
         return classify_screen(p.stdout)
-    label=frame()
+    from screen_navigation import retry_level_select_transition
+    label=retry_level_select_transition(
+        frame,
+        lambda:g.shell("input tap 560 392"),
+        lambda:time.sleep(4), attempts=3)
     if label=="cutscene":
         from screen_navigation import advance_cutscene_to_gameplay
         advance_cutscene_to_gameplay(frame,lambda:g.shell("input tap 960 540"),
