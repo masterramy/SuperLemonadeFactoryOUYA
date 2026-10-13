@@ -63,11 +63,12 @@ class GuardPassTests(unittest.TestCase):
         self.assertGreaterEqual(out['p1x'],510.)
         self.assertEqual(jumps,2)
         self.assertNotIn('guard-helper-step-apex',captures)
-        self.assertIn('guard-high-air-dash-early',captures)
+        # No screenshot while the real game clock advances through the dash.
+        # Those slow captures caused actual guard collision in run 38357033825.
+        self.assertNotIn('guard-high-air-dash-early',captures)
         self.assertNotIn('guard-helper-airborne-clearance',captures)
         self.assertNotIn('guard-upper-platform-stage',captures)
-        self.assertIn('guard-high-air-dash-early',captures)
-        self.assertIn('guard-high-air-dash-late',captures)
+        self.assertNotIn('guard-high-air-dash-late',captures)
         self.assertNotIn(0.16,sleeps)  # extra delay makes Andre fall from the apex
         self.assertFalse(out['p1dead'])
         self.assertEqual(held,set())
