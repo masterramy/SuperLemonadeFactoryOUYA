@@ -50,19 +50,21 @@ jobs:
       - name: Download existing exact QA observation APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: gate2a-rev52-observed-runtime
+          name: gate2a-rev52-patrol-observation-runtime
           path: runtime
           github-token: ${{ github.token }}
           repository: masterramy/SuperLemonadeFactoryOUYA
-          run-id: 36942957574
+          run-id: 38359601668
 
       - name: Verify observation runtime identity and no shipping delta
         shell: bash
         run: |
           set -euo pipefail
-          expected=d00cfcbfca51ab9e02bcb4b7842a932b4da029e235c126ad5e7c9634a3b5d3ae
+          expected=62ca3dc76807c521caf7ea2cb0d575331ae3ea59cd61c0972542aba2f107fd13
           test "$(sha256sum runtime/dist/emulator-qa/SLF-emulator-x64.apk | cut -d' ' -f1)" = "$expected"
           cat runtime/qa-delta.txt
+          grep -Fxq src/PCPlayState.as runtime/qa-delta.txt
+          test "$(wc -l < runtime/qa-delta.txt)" -eq 1
           git diff --exit-code 3e65ef5df0acb0f7a2c1e16e6eb0998e6501b7ae -- \
             application.xml src/PCLevelSelectState.as data/logo_limeade.png tools/build-emulator-apk.ps1
 
