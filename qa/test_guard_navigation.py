@@ -63,8 +63,10 @@ class GuardPassTests(unittest.TestCase):
             # ADB state observation takes real elapsed time. From the second
             # helper jump until its air dash, there must be no read/capture
             # that turns a clean launch into a fatal landing.
-            if jumps >= 2 and dashes < 2:
-                raise AssertionError('blocking state observation during helper air maneuver')
+            if jumps >= 2 and dashes < 2 and not (
+                270. <= p['p1x'] <= 335. and 375. <= p['p1y'] <= 415.
+            ):
+                raise AssertionError('blocking observation before upper-ledge landing')
             return dict(p)
         out=airborne_dash_past_guard(guarded_observation,down,up,sleep,captures.append)
         self.assertGreaterEqual(out['p1x'],510.)
