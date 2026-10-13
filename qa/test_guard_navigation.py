@@ -84,6 +84,40 @@ class GuardPassTests(unittest.TestCase):
     # x220 helper. Run 38214609453 proves that premise physically false.
     # test_ground_stall_requires_actual_jump_onto_helper supersedes it.
 
+    def test_guard_helper_uses_upper_ledge_landing_before_second_dash(self):
+        # Real run 38367393914: one continuous dash from lower helper
+        # x250,y439 hit patrolling army at x451,y399. The source map has
+        # an upper platform at y440: land on it and jump again before X.
+        p={'p1x':210.,'p1y':479.11,'p1dead':False,'p2dead':False}
+        held=set(); jumps=0; dashes=0; observations=[]; landed=False
+        def down(k):
+            nonlocal jumps,dashes
+            held.add(k)
+            if k=='C': jumps+=1
+            if k=='X': dashes+=1
+        def up(k): held.discard(k)
+        def sleep(t):
+            nonlocal landed
+            if jumps==1 and 'C' in held: p['p1y']=380.
+            if dashes==1 and 'X' in held: p.update(p1x=250.,p1y=439.)
+            elif jumps==2 and 'RIGHT' in held and 'X' not in held:
+                p['p1x']=283.
+            if jumps==2 and t>=.50 and 'RIGHT' not in held:
+                landed=True; p['p1y']=399.
+            if dashes>=2 and 'X' in held:
+                if not landed: raise AssertionError('dash before landing on upper ledge')
+                p.update(p1x=535.,p1y=300.)
+        def observe():
+            if dashes>=2 and not landed:
+                raise AssertionError('no upper platform landing was established')
+            return dict(p)
+        out=airborne_dash_past_guard(observe,down,up,sleep,observations.append)
+        self.assertTrue(landed)
+        self.assertGreaterEqual(jumps,3)
+        self.assertGreaterEqual(out['p1x'],510.)
+        self.assertIn('guard-upper-platform-landed',observations)
+        self.assertEqual(held,set())
+
     def test_rejects_unknown_wrong_staging(self):
         with self.assertRaisesRegex(ValueError,'guard staging'):
             airborne_dash_past_guard(lambda:{'p1x':400.,'p1dead':False,'p2dead':False},lambda k:None,lambda k:None,lambda s:None,lambda s:None)
