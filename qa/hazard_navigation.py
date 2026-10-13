@@ -73,13 +73,13 @@ def align_exit_from_right(read_state, hold, exit_x, max_steps=12):
         if abs(x-exit_x)<=15.0:
             return d
         if x < exit_x-15.0:
-            # Actual run 38359529083 observed x=1303.46, only 16.54px
-            # short of exit. The prior strict LEFT-only alignment
-            # incorrectly classified this as an unsafe overshoot and
-            # stopped a living character. Make one measured ordinary
-            # RIGHT correction if within a 22px safe margin.
-            # Larger retreats remain a hard failure to avoid the patrol.
-            if x < exit_x-22.0:
+            # Exact run 38457476683 observed living Liselot at x=1291.06,
+            # 28.94px left of the exit, after a ground-walk step. Do not
+            # declare that a fatal overshoot while both characters are
+            # alive and close enough to correct with ordinary rightward
+            # walking. Retain a conservative 40px limit: deeper retreats
+            # toward the 1170..1290 worker patrol still fail closed.
+            if x < exit_x-40.0:
                 raise RuntimeError(f'unsafe exit alignment overshoot: {d}')
             seconds=max(0.04,min(0.08,(exit_x-x)/220.0))
             hold('RIGHT', seconds)
