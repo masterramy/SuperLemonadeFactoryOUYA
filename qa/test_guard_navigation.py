@@ -123,6 +123,29 @@ class GuardPassTests(unittest.TestCase):
         self.assertIn('guard-upper-platform-landed',observations)
         self.assertEqual(held,set())
 
+    def test_actual_38458084249_upper_landing_at_x267_is_valid(self):
+        # Real emulator: Andre x267.04,y399.11, both alive on the
+        # upper x260..520, top-y440 platform, before a second C/X jump.
+        # Old x>=270 staging threshold rejected this physically valid step.
+        p={'p1x':210.,'p1y':479.11,'p1dead':False,'p2dead':False}
+        held=set(); jumps=0; dashes=0; captures=[]
+        def down(k):
+            nonlocal jumps,dashes
+            held.add(k)
+            if k=='C': jumps+=1
+            if k=='X': dashes+=1
+        def up(k): held.discard(k)
+        def sleep(t):
+            if jumps==1 and 'C' in held: p['p1y']=384.
+            if dashes==1 and 'X' in held: p.update(p1x=250.13,p1y=439.11)
+            if jumps==2 and 'RIGHT' in held and 'X' not in held: p['p1x']=267.04
+            if jumps==2 and t>=.5 and 'RIGHT' not in held: p['p1y']=399.11
+            if dashes==2 and 'X' in held: p.update(p1x=540.,p1y=300.)
+        result=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
+        self.assertGreaterEqual(result['p1x'],510.)
+        self.assertIn('guard-upper-platform-landed',captures)
+        self.assertEqual(held,set())
+
     def test_rejects_unknown_wrong_staging(self):
         with self.assertRaisesRegex(ValueError,'guard staging'):
             airborne_dash_past_guard(lambda:{'p1x':400.,'p1dead':False,'p2dead':False},lambda k:None,lambda k:None,lambda s:None,lambda s:None)
