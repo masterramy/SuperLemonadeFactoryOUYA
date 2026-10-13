@@ -124,8 +124,13 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             # Dash only from the verified higher platform, without
             # mid-air ADB reads/screenshots. X must follow a directional
             # frame so PlayerMale uses the intended RIGHT facing.
+            # Run 38459830440: jumping fully before starting X led to
+            # a genuine guard collision at x477,y399. Start horizontal
+            # airborne acceleration while still rising; retain C through
+            # the dash onset for a nearly full variable-height jump.
+            # Ordinary key inputs only, no timing/state manipulation.
             down('C')
-            sleep(0.34)
+            sleep(0.16)
             down('RIGHT')
             sleep(0.07)
             down('X')
