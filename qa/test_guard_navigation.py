@@ -79,7 +79,9 @@ class GuardPassTests(unittest.TestCase):
         self.assertNotIn('guard-helper-airborne-clearance',captures)
         self.assertNotIn('guard-upper-platform-stage',captures)
         self.assertNotIn('guard-high-air-dash-late',captures)
-        self.assertNotIn(0.16,sleeps)  # extra delay makes Andre fall from the apex
+        # 0.16s is now intentional RIGHT steering onto the upper ledge,
+        # not a blocking read/screenshot during an air dash.
+        self.assertIn(0.16,sleeps)
         self.assertFalse(out['p1dead'])
         self.assertEqual(held,set())
 
