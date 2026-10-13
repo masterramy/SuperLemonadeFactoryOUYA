@@ -5,7 +5,7 @@ from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, apex_first_jump_right, clear_tall_ledge
 from hazard_navigation import cross_spike_and_worker_corridor, align_exit_from_right
 from guard_navigation import airborne_dash_past_guard
-from screen_navigation import classify_screen, system_dialog_target, retry_level_select_transition
+from screen_navigation import classify_screen, system_dialog_target, retry_level_select_transition, advance_cutscene_to_gameplay
 
 ADB=["adb"]
 PACKAGE="com.ramybaheeg.slfport"
@@ -411,13 +411,20 @@ def main():
         (OUT/f"level2-launch-view-{count[0]:02d}-{label}.png").write_bytes(p.stdout)
         count[0]+=1
         return label
-    retry_level_select_transition(
+    scene=retry_level_select_transition(
         level2_launch_screen,
         lambda: shell("input tap 960 540"),
         lambda: time.sleep(7),
         attempts=4)
-    # A non-Level-Select frame only clears the navigation stage. Genuine
-    # gameplay still requires the read-only runtime observer below.
+    if scene=='cutscene':
+        scene=advance_cutscene_to_gameplay(
+            level2_launch_screen,
+            lambda: shell("input tap 960 540"),
+            lambda: time.sleep(2),
+            attempts=8)
+    if scene!='gameplay':
+        raise RuntimeError(f"Level 2 gameplay not visually established: {scene}")
+    # Genuine gameplay still requires the read-only runtime observer below.
     locate_state()
     wait_for_level(2)
     solve_level2()

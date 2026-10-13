@@ -49,6 +49,17 @@ def classify_screen(image):
         for r,g,b in controls)
     if active_controls>=5:
         return 'gameplay'
+    # Exact CI run 38368800892: Level 2's real story/dialogue screen has
+    # black cinematic bars and a bright central dialogue sheet, plus purple
+    # accents that previously tripped the generic Level Select color check.
+    # Keep this distinct from gameplay so ordinary story-advance inputs can
+    # be bounded and verified, never mistaken for repeated level selection.
+    def dark_at(x,y):
+        return max(im.getpixel((int(w*x),int(h*y)))) < 24
+    if (dark_at(.25,.08) and dark_at(.75,.08)
+            and dark_at(.25,.93) and dark_at(.75,.93)
+            and min(im.getpixel((int(w*.50),int(h*.28)))) > 220):
+        return 'cutscene'
     green=_count(im,(.30,.03,.67,.39),lambda r,g,b:g>80 and g>r*1.2 and g>b*1.3)
     red=_count(im,(.68,.10,.92,.65),lambda r,g,b:r>120 and r>g*1.4 and r>b*1.3)
     purple=_count(im,(.15,.12,.90,.82),lambda r,g,b:r>70 and b>r and r>g*1.2 and b>g*1.2)
@@ -57,6 +68,29 @@ def classify_screen(image):
     if purple>int(w*h*.005):
         return 'level_select'
     return 'unknown'
+
+
+def advance_cutscene_to_gameplay(observe, action, wait, attempts=8):
+    """Advance an actual rendered story using ordinary taps, never blind taps.
+
+    This is navigation, not a gameplay-completion assertion. Unexpected or
+    unclassified screens fail closed without another input.
+    """
+    for _ in range(attempts):
+        label=observe()
+        if label=='gameplay':
+            return label
+        if label=='cutscene':
+            action()
+            wait()
+            continue
+        if label=='unknown':
+            raise RuntimeError('Unknown frame during cutscene; no blind action')
+        raise RuntimeError(f'Unexpected frame during cutscene: {label}')
+    label=observe()
+    if label=='gameplay':
+        return label
+    raise RuntimeError(f'Cutscene did not reach gameplay in bounded steps: {label}')
 
 
 def retry_level_select_transition(observe, action, wait, attempts=4):
