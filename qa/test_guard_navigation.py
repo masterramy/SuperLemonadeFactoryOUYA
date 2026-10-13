@@ -129,13 +129,19 @@ class GuardPassTests(unittest.TestCase):
         # Old x>=270 staging threshold rejected this physically valid step.
         p={'p1x':210.,'p1y':479.11,'p1dead':False,'p2dead':False}
         held=set(); jumps=0; dashes=0; captures=[]
+        clock=[0.0]; third_jump_at=[]; second_dash_at=[]
         def down(k):
             nonlocal jumps,dashes
             held.add(k)
-            if k=='C': jumps+=1
-            if k=='X': dashes+=1
+            if k=='C':
+                jumps+=1
+                if jumps==3: third_jump_at.append(clock[0])
+            if k=='X':
+                dashes+=1
+                if dashes==2: second_dash_at.append(clock[0])
         def up(k): held.discard(k)
         def sleep(t):
+            clock[0]+=t
             if jumps==1 and 'C' in held: p['p1y']=384.
             if dashes==1 and 'X' in held: p.update(p1x=250.13,p1y=439.11)
             if jumps==2 and 'RIGHT' in held and 'X' not in held: p['p1x']=267.04
@@ -144,6 +150,12 @@ class GuardPassTests(unittest.TestCase):
         result=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
         self.assertGreaterEqual(result['p1x'],510.)
         self.assertIn('guard-upper-platform-landed',captures)
+        # Failure 38459830440: x477,y399 death after starting the dash
+        # too late in Andre's only full-height jump. Start RIGHT+X
+        # before the 0.35s held-jump apex instead of after it.
+        self.assertEqual(len(third_jump_at),1)
+        self.assertEqual(len(second_dash_at),1)
+        self.assertLessEqual(second_dash_at[0]-third_jump_at[0],.28)
         self.assertEqual(held,set())
 
     def test_rejects_unknown_wrong_staging(self):
