@@ -65,8 +65,8 @@ jobs:
           cat runtime/qa-delta.txt
           # Windows observer builder writes CRLF; strip CR without
           # weakening the exact source-delta assertion.
-          tr -d '\\r' < runtime/qa-delta.txt | grep -Fxq src/PCPlayState.as
-          test "$(tr -d '\\r' < runtime/qa-delta.txt | sed '/^$/d' | wc -l)" -eq 1
+          tr -d '\r' < runtime/qa-delta.txt | grep -Fxq src/PCPlayState.as
+          test "$(tr -d '\r' < runtime/qa-delta.txt | sed '/^$/d' | wc -l)" -eq 1
           git diff --exit-code 3e65ef5df0acb0f7a2c1e16e6eb0998e6501b7ae -- \
             application.xml src/PCLevelSelectState.as data/logo_limeade.png tools/build-emulator-apk.ps1
 
