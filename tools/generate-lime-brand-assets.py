@@ -35,13 +35,54 @@ def centered_text(draw, canvas_w, y, text, font):
     w = box[2] - box[0]
     draw.text(((canvas_w - w)//2, y), text, font=font, fill=WHITE)
 
-# In-game logo: preserve the original pixel-art sign silhouette and border,
-# change the sign color to lime, and replace only the edition-name line.
-logo = recolor_purple(Image.open(DATA / "logo.png"))
-ld = ImageDraw.Draw(logo)
-ld.rectangle([25, 40, 203, 68], fill=(105,176,46,255))
-centered_text(ld, logo.width, 43, "LIMEADE", ImageFont.truetype(str(FONT), 16))
-logo.save(DATA / "logo_limeade.png", optimize=True)
+# In-game logo: use the original sign's ACTUAL 17-pixel glyphs, not a
+# separately rasterized 16pt C64 text line, to preserve stroke, baseline
+# and tracking consistency with SUPER and FACTORY.
+def native_lettering(original):
+    samples = {"L": (41, 51), "E": (59, 69), "M": (77, 91),
+               "A": (142, 155), "D": (163, 176)}
+    glyphs = {}
+    for char, (left, right) in samples.items():
+        glyph = Image.new("RGBA", (right-left+1, 17), (0, 0, 0, 0))
+        for yy in range(17):
+            for xx in range(right-left+1):
+                pixel = original.getpixel((left+xx, 49+yy))
+                if min(pixel[:3]) >= 250 and pixel[3] == 255:
+                    glyph.putpixel((xx, yy), WHITE)
+        glyphs[char] = glyph
+    letter_i = Image.new("RGBA", (11, 17), (0, 0, 0, 0))
+    for yy in range(17):
+        for xx in range(11):
+            if yy < 3 or yy >= 14 or 4 <= xx <= 6:
+                letter_i.putpixel((xx, yy), WHITE)
+    glyphs["I"] = letter_i
+    return glyphs
+
+
+def compose_native_limeade(background, original):
+    # Clear original LEMONADE lettering only. Preserve the logo outline,
+    # SUPER, FACTORY, paper fold, color and image dimensions.
+    bg = background.load()
+    for yy in range(49, 66):
+        fill = bg[30, yy]
+        for xx in range(35, 200):
+            pixel = original.getpixel((xx, yy))
+            if min(pixel[:3]) >= 250 and pixel[3] == 255:
+                bg[xx, yy] = fill
+
+    glyphs = native_lettering(original)
+    word, tracking = "LIMEADE", 7
+    width = sum(glyphs[k].width for k in word) + tracking * (len(word) - 1)
+    x = (background.width - width) // 2
+    for k in word:
+        background.alpha_composite(glyphs[k], (x, 49))
+        x += glyphs[k].width + tracking
+    return background
+
+
+source_logo = Image.open(DATA / "logo.png").convert("RGBA")
+logo = compose_native_limeade(recolor_purple(source_logo.copy()), source_logo)
+logo.save(DATA / "logo_limeade.png", optimize=True, icc_profile=None)
 
 # Launcher/Play icon: preserve the original sign composition, recolor it, and
 # replace the title line so no public icon says LEMONADE.
