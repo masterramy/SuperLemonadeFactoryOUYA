@@ -43,31 +43,50 @@ class LedgeNavigationTests(unittest.TestCase):
 
 
     def test_real_crate_landing_triggers_second_normal_jump_before_wall(self):
-        # Real emulator 38464588882: crate fell to x716,y497;
-        # Andre x730,y457 ON the crate, not past the tall wall.
-        # The old retry reset to x690, walking him OFF the crate!
-        pos={'p1x':706.39,'p1y':479.11,
+        # Exact run 38464588882: p1x730,y457.19 on fallen crate x716,y497.
+        # Do not stage LEFT off the foothold; jump toward the upper platform.
+        pos={'p1x':730.0,'p1y':457.19,
              'crateX':716.,'crateY':497.1,'p1dead':False,'p2dead':False}
         launched=[]; actions=[]
-        def hold(direction, seconds):
-            actions.append((direction,round(seconds,2)))
-            if direction=='RIGHT':
-                pos['p1x']=730.0
-            else:
-                pos['p1x']-=seconds*210
-        def ground_jump():
-            # Simulate regular inputs and post-physics box landing.
-            pos.update(p1x=730.0,p1y=457.19)
+        def hold(direction, seconds): actions.append(direction)
+        def normal_ground_jump():
+            raise AssertionError('Already on fallen crate: no extra ground jump')
         def crate_jump():
             launched.append(dict(pos))
             pos.update(p1x=770.0,p1y=359.0)
-        out=clear_tall_ledge(lambda:dict(pos),hold,ground_jump,
+        out=clear_tall_ledge(lambda:dict(pos),hold,normal_ground_jump,
                              lambda _:None,attempts=4,crate_jump=crate_jump)
         self.assertEqual(len(launched),1)
         self.assertAlmostEqual(launched[0]['p1x'],730)
         self.assertAlmostEqual(launched[0]['p1y'],457.19)
         self.assertEqual(out['p1x'],770)
-        self.assertFalse(any(d=='LEFT' for d,_ in actions))
+        self.assertNotIn('LEFT',actions)
+
+    def test_ground_jump_lands_on_crate_then_second_jump_clears_wall(self):
+        pos={'p1x':691.0,'p1y':479.11,
+             'crateX':716.,'crateY':497.1,'p1dead':False,'p2dead':False}
+        actions=[]
+        def hold(direction,seconds):actions.append((direction,seconds))
+        def ordinary_ground_jump():pos.update(p1x=730.0,p1y=457.19)
+        def ordinary_crate_jump():
+            self.assertAlmostEqual(pos['p1x'],730.0)
+            self.assertAlmostEqual(pos['p1y'],457.19)
+            pos.update(p1x=772.0,p1y=359.0)
+        result=clear_tall_ledge(lambda:dict(pos),hold,ordinary_ground_jump,
+                                lambda _:None,attempts=3,
+                                crate_jump=ordinary_crate_jump)
+        self.assertEqual(result['p1x'],772.0)
+        self.assertEqual(actions,[])
+
+    def test_crate_jump_uses_genuine_held_keys_and_always_releases(self):
+        from ledge_navigation import crate_jump_right
+        events=[]
+        crate_jump_right(lambda k:events.append(('down',k)),
+                         lambda k:events.append(('up',k)),
+                         lambda t:events.append(('sleep',round(t,2))))
+        self.assertEqual([e for e in events if e[0]!='sleep'],[
+            ('down','C'),('down','RIGHT'),('up','C'),('up','RIGHT')])
+        self.assertEqual(events[1],('sleep',.26))
 
     def test_crate_stage_cannot_be_mistaken_for_final_wall_clearance(self):
         pos={'p1x':730.,'p1y':457.19,'crateX':716.,'crateY':497.1,
