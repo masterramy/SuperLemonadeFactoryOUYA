@@ -1,5 +1,5 @@
 import unittest
-from guard_navigation import airborne_dash_past_guard
+from guard_navigation import airborne_dash_past_guard, wait_for_guard_window
 
 class GuardPassTests(unittest.TestCase):
     def test_true_airborne_dash_and_observed_clear(self):
@@ -157,6 +157,44 @@ class GuardPassTests(unittest.TestCase):
         self.assertEqual(len(second_dash_at),1)
         self.assertLessEqual(second_dash_at[0]-third_jump_at[0],.28)
         self.assertEqual(held,set())
+
+    def test_real_patrol_window_matches_successful_38461623946(self):
+        # Successful actual crossing: Andre x300, guard x345 moving LEFT.
+        p={'p1x':300.4,'p1dead':False,'p2dead':False,
+           'armyX':345.36,'armyVx':-40.}
+        waits=[]
+        result=wait_for_guard_window(lambda:dict(p),
+                                     lambda t: waits.append(t))
+        self.assertEqual(waits,[])
+        self.assertLess(float(result['armyVx']),0)
+        self.assertGreaterEqual(result['armyX']-result['p1x'],35.)
+
+    def test_actual_failed_guard_rightward_patrol_must_wait_before_dash(self):
+        # Death 38472669676: upper stage x300, enemy x427.92
+        # RIGHT +40. Do not launch until guard reverses and approaches
+        # x340..375 LEFT, while still separated from Andre.
+        p={'p1x':300.4,'p1dead':False,'p2dead':False,
+           'armyX':427.92,'armyVx':40.}
+        waits=[]
+        def wait(t):
+            waits.append(t)
+            x=p['armyX']+p['armyVx']*t
+            if x>=490:
+                x=490-(x-490);p['armyVx']=-40.
+            if x<=266:
+                x=266+(266-x);p['armyVx']=40.
+            p['armyX']=x
+        out=wait_for_guard_window(lambda:dict(p),wait)
+        self.assertGreater(len(waits),3)
+        self.assertLess(out['armyVx'],0)
+        self.assertGreaterEqual(out['armyX']-out['p1x'],35.)
+        self.assertLessEqual(out['armyX']-out['p1x'],80.)
+
+    def test_patrol_window_fail_closes_when_enemy_too_close(self):
+        p={'p1x':300.4,'p1dead':False,'p2dead':False,
+           'armyX':307.0,'armyVx':-40.}
+        with self.assertRaisesRegex(RuntimeError,'guard.*too close'):
+            wait_for_guard_window(lambda:dict(p),lambda t:None)
 
     def test_rejects_unknown_wrong_staging(self):
         with self.assertRaisesRegex(ValueError,'guard staging'):
