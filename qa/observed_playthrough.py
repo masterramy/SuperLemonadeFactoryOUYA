@@ -5,6 +5,7 @@ from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, apex_first_jump_right, clear_tall_ledge
 from hazard_navigation import cross_spike_and_worker_corridor, align_exit_from_right
 from guard_navigation import airborne_dash_past_guard
+from crate_navigation import move_crate_off_left_ledge
 from screen_navigation import classify_screen, system_dialog_target, retry_level_select_transition, advance_cutscene_to_gameplay
 
 ADB=["adb"]
@@ -288,14 +289,19 @@ def solve_level2():
     ex=d["exitX"]
     log_state("level2-start"); screenshot("level2-start")
 
-    # Source-grounded crate setup: Liselot starts near the small crate. Get to
-    # its right side, then push it left off the ledge using ordinary input.
+    # Level2.oel: the small crate at x763,y373 must be pushed OFF the
+    # LEFT edge of the elevated x740 platform. Prior QA actually stopped
+    # Liselot on the crate's LEFT and walked away; Andre then faced an
+    # unreachable tall ledge. Observe the crate itself, never infer success
+    # from simply issuing a LEFT command.
     ensure_active(2)
     advance_player(2, 825, max_steps=30)
-    screenshot("level2-liselot-right-of-crate"); log_state("level2-liselot-right-of-crate")
-    hold("LEFT",1.45)
-    time.sleep(.7)
-    screenshot("level2-crate-push"); log_state("level2-crate-push")
+    screenshot("level2-before-crate-puzzle"); log_state("level2-before-crate-puzzle")
+    d=move_crate_off_left_ledge(
+        state,hold,
+        lambda: move_jump("RIGHT",double=True,duration=.30),
+        screenshot,time.sleep,max_actions=40)
+    screenshot("level2-crate-off-left-verified"); log_state("level2-crate-off-left-verified")
 
     # Move Liselot to the exit with her real double-jump controls.
     # Level 2 source map: top platform ends x=1020; spike strip 1020..1090;
