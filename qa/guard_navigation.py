@@ -96,14 +96,31 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             if not (235.0 <= float(step['p1x']) <= 260.0 and 420.0 <= float(step['p1y']) <= 455.0):
                 raise RuntimeError(f'helper step not stably occupied: {step}')
 
-            # The game continues to simulate physics during slow ADB reads
-            # and screenshots. Real runs 38357033825/38357677165 proved that
-            # in-air observation turns this jump into a fatal landing.
-            # Perform one short, continuous ordinary-input maneuver instead:
-            # rise from the helper step; steer right for at least one frame;
-            # hold Andre's standard X air dash before losing jump altitude.
-            # Observe outcome only after input finishes. This is NOT
-            # teleportation, save editing, collision or time manipulation.
+            # Real run 38367393914 disproved the lower-step air dash:
+            # Andre x250,y439 -> x451,y399, colliding with the army
+            # stationed on the x260..520 upper ledge (ground top y440).
+            # Stage on that actual upper ledge using ordinary C+RIGHT,
+            # allow physics to land, prove x/y, then take a *second* high
+            # jump/air dash from ~40 pixels above the helper step.
+            # No state edits, no collision edits, no forced completion.
+            down('C')
+            sleep(0.34)
+            down('RIGHT')
+            sleep(0.16)
+            up('RIGHT')
+            up('C')
+            sleep(0.55)
+            upper=read_state()
+            if upper.get('p1dead') or upper.get('p2dead'):
+                raise RuntimeError(f'death landing on legitimate upper ledge: {upper}')
+            ux,uy=float(upper['p1x']),float(upper['p1y'])
+            if not (270.0 <= ux <= 335.0 and 375.0 <= uy <= 415.0):
+                raise RuntimeError(f'upper platform landing not proven before guard dash: {upper}')
+            capture('guard-upper-platform-landed')
+
+            # Dash only from the verified higher platform, without
+            # mid-air ADB reads/screenshots. X must follow a directional
+            # frame so PlayerMale uses the intended RIGHT facing.
             down('C')
             sleep(0.34)
             down('RIGHT')
@@ -116,9 +133,9 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             sleep(0.20)
             out = read_state()
             if out.get('p1dead') or out.get('p2dead'):
-                raise RuntimeError(f'death after continuous ordinary guard dash: {out}')
+                raise RuntimeError(f'death after elevated ordinary guard dash: {out}')
             if float(out['p1x']) < 510.0:
-                raise RuntimeError(f'guard not cleared by genuine airborne helper leap: {out}')
+                raise RuntimeError(f'guard not cleared by elevated ordinary air dash: {out}')
         return out
     finally:
         up('C')
