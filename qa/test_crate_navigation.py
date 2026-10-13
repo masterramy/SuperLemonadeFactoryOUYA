@@ -41,6 +41,28 @@ class CratePuzzleTests(unittest.TestCase):
         self.assertEqual(launched,[True])
         self.assertEqual(d['crateX'],763.)
 
+    def test_real_38475366497_wall_stall_fallback_one_moving_jump(self):
+        # Real vertical vault came back to x730,y479, untouched
+        # crate x763. A single native moving double-jump (as in
+        # previous successful route) can stage on the upper platform
+        # with bounded crate shift x842, then separate left-push helper.
+        p={'p2x':719.66,'p2y':479.11,'crateX':763.,'crateY':377.1,
+           'p1dead':False,'p2dead':False}
+        calls=[]
+        def vertical():
+            calls.append('vertical')
+            p.update(p2x=730.,p2y=479.11)
+        def moving():
+            calls.append('moving')
+            p.update(p2x=801.76,p2y=359.11,crateX=842.77)
+        result=reach_right_side_without_pushing(
+            lambda:dict(p),lambda d,t:None,vertical,
+            lambda tag:None, fallback_jump=moving)
+        self.assertEqual(calls,['vertical','moving'])
+        self.assertLess(result['crateX'],950.)
+        self.assertLess(result['p2y'],400.)
+        self.assertGreater(result['p2x'],780.)
+
     def test_ground_approach_rejects_previously_shoved_crate(self):
         p={'p2x':851.,'p2y':359.11,'crateX':1092.17,'crateY':427.1,
            'p1dead':False,'p2dead':False}
