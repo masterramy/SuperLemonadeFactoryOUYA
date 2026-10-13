@@ -33,6 +33,18 @@ class CratePuzzleTests(unittest.TestCase):
             reach_right_side_without_pushing(lambda:dict(p),
                 lambda *a:None,lambda:None,lambda *a:None)
 
+    def test_vertical_double_jump_precedes_horizontal_vault(self):
+        from crate_navigation import high_double_jump_over_crate
+        events=[]
+        high_double_jump_over_crate(lambda k:events.append(('down',k)),
+                                    lambda k:events.append(('up',k)),
+                                    lambda s:events.append(('sleep',round(s,2))))
+        important=[e for e in events if e[0]!='sleep']
+        self.assertEqual(important,[
+            ('down','C'),('up','C'),('down','C'),('up','C'),
+            ('down','RIGHT'),('up','RIGHT')])
+        self.assertEqual(events[1],('sleep',.29))
+
     def test_jumps_to_right_then_pushes_crate_completely_off_left_edge(self):
         state={"p2x":809.6,"p2y":359.11,"crateX":842.0,"crateY":360.0,
                "p1dead":False,"p2dead":False}

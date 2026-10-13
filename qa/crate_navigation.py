@@ -5,6 +5,80 @@ left ledge. The QA player cannot edit positions, gravity, saves or physics.
 Neither an issued keypress nor a character move constitutes puzzle proof.
 """
 
+def high_double_jump_over_crate(keydown, keyup, sleep):
+    """Liselot's ordinary vertical first/second jumps BEFORE moving right.
+
+    A rightward jump from floor x690 used to physically shove the crate
+    x763 into the wrong edge. Gain vertical clearance first, then translate
+    over the crate. No read-state or screenshots during time-sensitive input.
+    """
+    held=set()
+    def down(k):
+        keydown(k); held.add(k)
+    def up(k):
+        if k in held:
+            keyup(k); held.remove(k)
+    try:
+        down('C')
+        sleep(.29)
+        up('C')
+        sleep(.08)
+        down('C')
+        sleep(.07)
+        up('C')
+        down('RIGHT')
+        sleep(.69)
+    finally:
+        up('C')
+        up('RIGHT')
+    sleep(.23)
+
+
+def reach_right_side_without_pushing(read_state, hold, high_jump, capture,
+                                    max_steps=12):
+    """Walk to x~690 on floor and vault ABOVE the crate without shoving it.
+
+    It is not enough to stand right of an already-displaced crate. Require
+    real crate telemetry and refuse success when ordinary input displaced
+    it right more than a small tolerance.
+    """
+    def observed():
+        d=read_state()
+        if d.get('p1dead') or d.get('p2dead'):
+            raise RuntimeError(f'player death in crate approach: {d}')
+        if 'crateX' not in d or 'crateY' not in d:
+            raise RuntimeError(f'crate observer unavailable: {d}')
+        return d
+    start=observed()
+    original_x=float(start['crateX'])
+    original_y=float(start['crateY'])
+    if not (735.0<=original_x<=830.0 and 330.0<=original_y<=410.0):
+        raise RuntimeError(f'crate wrong edge or unsafe initial position: {start}')
+    for step in range(max_steps):
+        d=observed()
+        x,y=float(d['p2x']),float(d['p2y'])
+        if float(d['crateX'])>original_x+20.:
+            raise RuntimeError(f'crate moved right during safe approach: {d}')
+        if 670.0<=x<=715.0 and y>=430.0:
+            break
+        if x>715.0:
+            raise RuntimeError(f'crate approach got too close without clearance: {d}')
+        hold('RIGHT', max(.10,min(.25,(690.0-x)/230.0)))
+    else:
+        raise RuntimeError(f'cannot stage Liselot left of crate: {observed()}')
+    capture('crate-left-ground-stage')
+    high_jump()
+    d=observed()
+    if float(d['crateX'])>original_x+20.0:
+        raise RuntimeError(f'crate moved right during vault, not a puzzle pass: {d}')
+    if float(d['p2x'])<float(d['crateX'])+32.0 or float(d['p2x'])>1010.:
+        raise RuntimeError(f'Liselot not safely right of crate: {d}')
+    if float(d['p2y'])>425.:
+        raise RuntimeError(f'Liselot did not clear crate to upper platform: {d}')
+    capture('crate-right-side-without-shoving')
+    return d
+
+
 def move_crate_off_left_ledge(read_state, hold, jump_right, capture, pause=None,
                               platform_left=740.0, crate_width=24.0,
                               max_actions=35):

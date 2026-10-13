@@ -5,7 +5,7 @@ from progress_guard import is_genuine_completion, is_death
 from ledge_navigation import sustained_jump_right, apex_first_jump_right, clear_tall_ledge, crate_jump_right
 from hazard_navigation import cross_spike_and_worker_corridor, align_exit_from_right
 from guard_navigation import airborne_dash_past_guard
-from crate_navigation import move_crate_off_left_ledge
+from crate_navigation import move_crate_off_left_ledge, reach_right_side_without_pushing, high_double_jump_over_crate
 from screen_navigation import classify_screen, system_dialog_target, retry_level_select_transition, advance_cutscene_to_gameplay
 
 ADB=["adb"]
@@ -295,7 +295,17 @@ def solve_level2():
     # unreachable tall ledge. Observe the crate itself, never infer success
     # from simply issuing a LEFT command.
     ensure_active(2)
-    advance_player(2, 825, max_steps=30)
+    # Ground-walk only to x690, then use legitimate VERTICAL female
+    # double-jump BEFORE translating right over the x763 crate. Previous
+    # generic advance_player physically shoved crate to x1092 off wrong
+    # edge in real run 38473523858. Verify it stays near authored x763.
+    reach_right_side_without_pushing(
+        state,hold,
+        lambda: high_double_jump_over_crate(
+            lambda k: ev(KEY[k],True),
+            lambda k: ev(KEY[k],False),
+            time.sleep),
+        screenshot)
     screenshot("level2-before-crate-puzzle"); log_state("level2-before-crate-puzzle")
     d=move_crate_off_left_ledge(
         state,hold,
