@@ -30,7 +30,7 @@ jobs:
           p=pathlib.Path('SuperLimeadeFactory-Rev52-Corresponding-Source.zip')
           with zipfile.ZipFile(p) as z:
               assert z.testzip() is None, 'Source ZIP CRC failure'
-              actual=set(z.namelist())
+              actual={name for name in z.namelist() if not name.endswith('/')}
               tracked=subprocess.check_output(
                   ['git','ls-tree','-r','--name-only','0d5fd0bb63558ad6659ba31552deaede4745382b'],
                   text=True).splitlines()
