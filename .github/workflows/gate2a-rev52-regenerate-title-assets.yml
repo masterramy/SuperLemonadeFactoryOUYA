@@ -1,0 +1,43 @@
+name: Rev52 regenerate consistent title artwork
+
+on:
+  push:
+    branches:
+      - gate2a-rev52-title-native-pixel-repair
+    paths:
+      - .github/workflows/gate2a-rev52-regenerate-title-assets.yml
+      - tools/generate-lime-brand-assets.py
+      - tools/test_title_lockup.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: true
+      - name: Generate and test title assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/rev52-venv
+          /tmp/rev52-venv/bin/pip install 'Pillow==11.3.0'
+          /tmp/rev52-venv/bin/python tools/generate-lime-brand-assets.py
+          /tmp/rev52-venv/bin/python tools/test_title_lockup.py
+          git diff --stat
+      - name: Commit generated binary art only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- data/logo_limeade.png icons/android/icons icons/android/adaptive release/store-assets
+          if git diff --cached --quiet; then
+            echo 'Generated assets already byte-identical.'
+            exit 0
+          fi
+          git -c user.name='Gate 2A Release QA' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'rev52: synchronize launcher adaptive and Play artwork with native logo'
+          git push origin 'HEAD:gate2a-rev52-title-native-pixel-repair'
