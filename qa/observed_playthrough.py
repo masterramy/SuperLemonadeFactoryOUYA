@@ -305,7 +305,8 @@ def solve_level2():
             lambda k: ev(KEY[k],True),
             lambda k: ev(KEY[k],False),
             time.sleep),
-        screenshot)
+        screenshot,
+        fallback_jump=lambda:move_jump("RIGHT",double=True,duration=.46))
     screenshot("level2-before-crate-puzzle"); log_state("level2-before-crate-puzzle")
     d=move_crate_off_left_ledge(
         state,hold,

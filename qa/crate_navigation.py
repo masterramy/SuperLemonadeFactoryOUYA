@@ -39,7 +39,7 @@ def high_double_jump_over_crate(keydown, keyup, sleep):
 
 
 def reach_right_side_without_pushing(read_state, hold, high_jump, capture,
-                                    max_steps=12):
+                                    max_steps=12, fallback_jump=None):
     """Walk to x~690 on floor and vault ABOVE the crate without shoving it.
 
     It is not enough to stand right of an already-displaced crate. Require
@@ -79,6 +79,26 @@ def reach_right_side_without_pushing(read_state, hold, high_jump, capture,
     d=observed()
     if float(d['crateX'])>original_x+20.0:
         raise RuntimeError(f'crate moved right during vault, not a puzzle pass: {d}')
+    if 670.0<=float(d['p2x'])<=733.0 and float(d['p2y'])>=430.0:
+        # Exact run38475366497: vertical double jump ended alive at
+        # x730,y479 with crate completely untouched at x763. Ordinary
+        # moving C,C+RIGHT can cross the wall (real successful prior
+        # run reached x801,y359 while crate slid moderately to x842).
+        # One controlled fallback only; no repeating unsafe blind jumps.
+        if fallback_jump is None:
+            raise RuntimeError(f'vertical vault stalled at floor wall: {d}')
+        capture('crate-vertical-vault-wall-stall')
+        fallback_jump()
+        d=observed()
+        if (float(d['crateX'])>original_x+140.0 or
+                float(d['crateY'])>420.0):
+            raise RuntimeError(f'crate moved to unsafe right edge during fallback: {d}')
+        if (float(d['p2x'])<750.0 or float(d['p2x'])>1010.0 or
+                float(d['p2y'])>425.0):
+            raise RuntimeError(f'Liselot did not stage on upper platform: {d}')
+        capture('crate-bounded-upper-platform-stage')
+        return d
+
     if float(d['p2x'])<float(d['crateX'])+32.0 or float(d['p2x'])>1010.:
         raise RuntimeError(f'Liselot not safely right of crate: {d}')
     if float(d['p2y'])>425.:
