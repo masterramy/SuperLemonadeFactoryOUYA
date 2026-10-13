@@ -1,0 +1,85 @@
+name: Gate 2A Rev52 QA Patrol Observer Build
+
+on:
+  push:
+    branches:
+      - qa/rev52-observed-playthrough
+    paths:
+      - src/PCPlayState.as
+      - .github/workflows/gate2a-rev52-patrol-observer-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_HEAD: 3e65ef5df0acb0f7a2c1e16e6eb0998e6501b7ae
+  SLF_NO_PAUSE: '1'
+
+jobs:
+  build-patrol-observation-runtime:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 64
+
+      - name: Fail closed on any shipping source change
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git fetch --no-tags --depth=1 origin $env:CANDIDATE_HEAD
+          if($LASTEXITCODE -ne 0){ throw 'Cannot fetch pinned Rev52 baseline.' }
+          $changed=@(git diff --name-only "$env:CANDIDATE_HEAD..HEAD" -- src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools)
+          $unexpected=@($changed | Where-Object { $_ -ne 'src/PCPlayState.as' })
+          if($unexpected.Count -ne 0){ throw "Unauthorized shipping-source delta: $($unexpected -join ', ')" }
+          if($changed -notcontains 'src/PCPlayState.as'){ throw 'No QA observer source delta found.' }
+          $source=Get-Content -Raw 'src/PCPlayState.as'
+          foreach($v in @('observationOnly=true','armyX=','armyY=','armyVx=')){ if(-not $source.Contains($v)){ throw "Missing QA observer: $v" } }
+          if($source -match 'army\.x\s*=|army\.y\s*=|army\.velocity\.x\s*='){ throw 'Forbidden patrol mutation in QA observation source.' }
+          $changed | Set-Content qa-delta.txt
+          Write-Host "Only qa-instrumented PCPlayState differs from pinned candidate."
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+
+      - name: Ensure Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME }
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($null -eq $sdk){ $sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat' } else { $sdkPath=$sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){ throw 'Android SDK setup failed.' }
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+
+      - name: Build x64 observation-only APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File tools/build-emulator-apk.ps1
+          if($LASTEXITCODE -ne 0){ throw "Observation APK build failed: $LASTEXITCODE" }
+          $apk='dist/emulator-qa/SLF-emulator-x64.apk'
+          if(-not(Test-Path $apk)){ throw 'Observation APK missing.' }
+          $sha=(Get-FileHash -Algorithm SHA256 $apk).Hash.ToLowerInvariant()
+          "observation_apk_sha256=$sha" | Set-Content observation-build-sha256.txt
+          "sha_head=$(git rev-parse HEAD)" | Add-Content observation-build-sha256.txt
+          Get-Content observation-build-sha256.txt | Write-Host
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-patrol-observation-runtime
+          path: |
+            dist/emulator-qa
+            qa-delta.txt
+            observation-build-sha256.txt
+          if-no-files-found: error
