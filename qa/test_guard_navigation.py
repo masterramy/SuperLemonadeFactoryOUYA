@@ -107,4 +107,38 @@ class GuardPassTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'guard staging'):
             airborne_dash_past_guard(lambda:{'p1x':400.,'p1dead':False,'p2dead':False},lambda k:None,lambda k:None,lambda s:None,lambda s:None)
 
+
+    def test_ground_stall_requires_actual_jump_onto_helper(self):
+        # Exact real-device blocker in run 38214609453: at x210,y479 the
+        # x220,y480 helper block prevents simply walking RIGHT. A genuine
+        # C jump is needed before a short grounded approach can advance.
+        p={'p1x':205.0,'p1y':479.11,'p1dead':False,'p2dead':False}
+        held=set(); jumps=0; dashes=0; captures=[]
+        def down(k):
+            nonlocal jumps,dashes
+            held.add(k)
+            if k=='C': jumps+=1
+            if k=='X': dashes+=1
+        def up(k): held.discard(k)
+        def sleep(t):
+            if 'C' in held:
+                p['p1y']={1:377.0,2:377.0,3:352.0,4:314.0}[min(jumps,4)]
+            if 'X' in held:
+                if dashes==1: p.update(p1x=210.0,p1y=479.11)
+                else: p['p1x']+=500*t
+            elif jumps==2 and 'RIGHT' in held:
+                p['p1x']=250.0
+            elif jumps==3 and 'RIGHT' in held:
+                p['p1x']=290.0
+            if jumps==2 and t>=.30 and 'RIGHT' not in held:
+                p['p1y']=439.0
+            if jumps==3 and t>=.40 and 'RIGHT' not in held:
+                p['p1y']=399.0
+        result=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
+        self.assertGreaterEqual(result['p1x'],510.)
+        self.assertGreaterEqual(jumps,4)
+        self.assertIn('guard-ground-helper-takeoff',captures)
+        self.assertIn('guard-ground-helper-landed',captures)
+        self.assertEqual(held,set())
+
 if __name__=='__main__': unittest.main()
