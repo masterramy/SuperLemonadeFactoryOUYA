@@ -4,7 +4,7 @@ name: Gate 2A Rev52 Limeade Repair Validation
 on:
   push:
     branches:
-      - gate2a-rev52-mobile-lock-dismissal-repair
+      - gate2a-rev52-title-native-pixel-repair
     paths:
       - .github/workflows/gate2a-rev52-final-validation.yml
       - src/PCLevelSelectState.as
