@@ -355,11 +355,14 @@ def solve_level2():
     screenshot("level2-andre-before-tall-ledge"); log_state("level2-andre-before-tall-ledge")
     clear_tall_ledge(
         state, hold,
-        lambda: apex_first_jump_right(
+        # Do not take read-state screenshots in flight: the old
+        # apex-first helper delayed RIGHT until after landing, repeatedly
+        # returning Andre to x706 instead of the observed fallen crate.
+        # Use genuine sustained RIGHT+C without interruption, then observe.
+        lambda: sustained_jump_right(
             lambda k: ev(KEY[k], True),
             lambda k: ev(KEY[k], False),
-            time.sleep,
-            lambda tag: (log_state(f"andre-{tag}"), screenshot(f"andre-{tag}"))),
+            time.sleep),
         screenshot,
         crate_jump=lambda: crate_jump_right(
             lambda k: ev(KEY[k], True),
