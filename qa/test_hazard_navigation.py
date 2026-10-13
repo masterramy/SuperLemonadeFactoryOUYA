@@ -54,6 +54,20 @@ class ExitAlignmentTests(unittest.TestCase):
         self.assertTrue(all(direction=='LEFT' for direction,t in cmds))
         self.assertTrue(all(t<=.16 for direction,t in cmds))
 
+    def test_micro_corrects_safe_left_of_exit_without_jumping(self):
+        from hazard_navigation import align_exit_from_right
+        player={'p2x':1303.46,'p2dead':False,'p1dead':False}
+        actions=[]
+        def walk(direction,seconds):
+            actions.append((direction,seconds))
+            player['p2x'] += (220*seconds if direction=='RIGHT' else -220*seconds)
+        final=align_exit_from_right(lambda:dict(player),walk,1320.0)
+        self.assertLessEqual(abs(final['p2x']-1320.0),15.0)
+        self.assertTrue(actions)
+        self.assertEqual(actions[0][0], 'RIGHT')
+        self.assertTrue(all(t<=0.16 for _,t in actions))
+        self.assertTrue(all(direction in ('LEFT','RIGHT') for direction,t in actions))
+
     def test_rejects_overshoot_into_enemy_corridor(self):
         from hazard_navigation import align_exit_from_right
         with self.assertRaisesRegex(RuntimeError,'unsafe'):
