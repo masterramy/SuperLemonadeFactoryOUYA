@@ -51,32 +51,96 @@ def apex_first_jump_right(keydown, keyup, sleep, observe):
         up('RIGHT')
     sleep(0.18)
 
-def clear_tall_ledge(read_state, hold, jump, capture, attempts=4):
-    """Try stage-left-and-held-jump, using only actual inputs and observed state.
+def crate_jump_right(keydown, keyup, sleep):
+    """Legitimate ordinary C/right jump from the observed fallen-crate foothold.
 
-    A crossing is reported only when the real post-input player position
-    is on top of or beyond the tall platform. Death/stall fails closed.
+    Never block on ADB state reads or screenshots while the player is rising.
+    Keep C held through the engine's variable-height jump window; use
+    RIGHT only after some altitude is gained. Input is always released.
     """
-    for attempt in range(attempts):
-        d = read_state()
+    held=set()
+    def down(key):
+        keydown(key); held.add(key)
+    def up(key):
+        if key in held:
+            keyup(key); held.remove(key)
+    try:
+        down('C')
+        sleep(.26)
+        down('RIGHT')
+        sleep(.10)
+        up('C')
+        sleep(.32)
+    finally:
+        up('C')
+        up('RIGHT')
+    sleep(.22)
+
+
+def clear_tall_ledge(read_state, hold, jump, capture, attempts=4,
+                     crate_jump=None):
+    """Traverse only with observed positions and real player inputs.
+
+    Level2.oel has a 120px tall ledge (x740,y400). When Liselot has
+    legitimately pushed its movable crate LEFT onto ground (x~716,
+    y~497), Andre must jump onto that crate, then jump AGAIN toward
+    the ledge. The old controller walked LEFT off the crate every
+    attempt, then kept repeating an impossible ground-only jump.
+    """
+    def check(d):
         if d.get('p1dead') or d.get('p2dead'):
-            raise RuntimeError(f'Death while staging tall platform: {d}')
-        desired = 690.0 + 6.0*attempt
+            raise RuntimeError(f'Death during tall platform traversal: {d}')
+        return d
+    def crossed(d):
+        return float(d['p1x']) >= 740.0 and float(d['p1y'])+41.0 <= 400.0
+    def on_fallen_crate(d):
+        cx=float(d.get('crateX',-1.0))
+        cy=float(d.get('crateY',-1.0))
+        if cx<0 or not (485.0<=cy<=515.0):
+            return False
+        x,y=float(d['p1x']),float(d['p1y'])
+        return (cx-8.0<=x<=cx+25.0 and
+                abs((y+41.0)-cy)<=6.0)
+
+    for attempt in range(attempts):
+        d=check(read_state())
+        if crossed(d):
+            return d
+        if on_fallen_crate(d):
+            if crate_jump is None:
+                raise RuntimeError('Fallen crate foothold observed; missing normal crate jump')
+            # IMPORTANT no staged LEFT correction here: x730,y457
+            # is the real foothold. Moving to x690 loses elevation.
+            capture(f'andre-crate-foothold-{attempt:02d}')
+            crate_jump()
+            d=check(read_state())
+            capture(f'andre-crate-jump-result-{attempt:02d}')
+            if crossed(d):
+                return d
+            continue
+
+        # On the floor, take off LEFT of the fallen crate and land on
+        # its upper face. If no valid crate telemetry, preserve the
+        # former bounded staging as a diagnostic-only fallback.
+        cx=float(d.get('crateX',-1.0))
+        cy=float(d.get('crateY',-1.0))
+        target=max(665.0,min(cx-25.0,712.0)) if (0<=cx<=780 and 485<=cy<=515) else 690.0+6.0*attempt
         for _ in range(16):
-            d = read_state()
-            if d.get('p1dead') or d.get('p2dead'):
-                raise RuntimeError(f'Death while staging tall platform: {d}')
-            delta = desired - float(d['p1x'])
-            if abs(delta) < 12.0:
+            d=check(read_state())
+            delta=target-float(d['p1x'])
+            if abs(delta)<12.0:
                 break
-            direction = 'RIGHT' if delta > 0 else 'LEFT'
-            hold(direction, max(0.10, min(0.25, abs(delta)/240.0)))
+            direction='RIGHT' if delta>0 else 'LEFT'
+            hold(direction,max(.10,min(.25,abs(delta)/240.0)))
         capture(f'andre-ledge-stage-{attempt:02d}')
         jump()
+        d=check(read_state())
         capture(f'andre-ledge-result-{attempt:02d}')
-        d = read_state()
-        if d.get('p1dead') or d.get('p2dead'):
-            raise RuntimeError(f'Death during tall platform jump: {d}')
-        if float(d['p1x']) >= 740.0 and (float(d['p1y']) + 41.0) <= 400.0:
+        if crossed(d):
             return d
-    raise RuntimeError(f'Tall platform not crossed after {attempts} legitimate held-jump attempts; last={read_state()}')
+        # Next iteration MUST detect any valid landing on the
+        # fallen crate instead of restaging left and undoing it.
+
+    raise RuntimeError(
+        f'Tall platform not crossed after {attempts} legitimate held-jump attempts; '
+        f'last={check(read_state())}')
