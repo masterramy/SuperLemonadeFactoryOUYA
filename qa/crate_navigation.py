@@ -26,8 +26,12 @@ def high_double_jump_over_crate(keydown, keyup, sleep):
         down('C')
         sleep(.07)
         up('C')
+        # Source-grounded female double jump: let the ordinary second
+        # launch raise her feet ABOVE crate top y377 before translating.
+        # Immediate RIGHT shoved crate to x875 in live run38474282598.
+        sleep(.25)
         down('RIGHT')
-        sleep(.69)
+        sleep(.75)
     finally:
         up('C')
         up('RIGHT')
