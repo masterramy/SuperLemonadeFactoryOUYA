@@ -11,6 +11,8 @@ on:
       - qa/guard_navigation.py
       - qa/test_guard_navigation.py
       - qa/test_patrol_observer.py
+      - qa/crate_navigation.py
+      - qa/test_crate_navigation.py
       - src/PCPlayState.as
       - qa/test_hazard_navigation.py
       - qa/test_ledge_navigation.py
@@ -46,6 +48,7 @@ jobs:
           PYTHONPATH=qa python3 -m unittest -v qa.test_guard_navigation
           PYTHONPATH=qa python3 -m unittest -v qa.test_screen_navigation
           PYTHONPATH=qa python3 -m unittest -v qa.test_patrol_observer
+          PYTHONPATH=qa python3 -m unittest -v qa.test_crate_navigation
 
       - name: Download existing exact QA observation APK
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
