@@ -96,47 +96,27 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             if not (235.0 <= float(step['p1x']) <= 260.0 and 420.0 <= float(step['p1y']) <= 455.0):
                 raise RuntimeError(f'helper step not stably occupied: {step}')
 
-            # Jump from the +40px helper block to clear the next +40px
-            # ledge. PlayerMale has no double-jump; only normal jump and
-            # facing-correct ordinary air-dash are used.
+            # The game continues to simulate physics during slow ADB reads
+            # and screenshots. Real runs 38357033825/38357677165 proved that
+            # in-air observation turns this jump into a fatal landing.
+            # Perform one short, continuous ordinary-input maneuver instead:
+            # rise from the helper step; steer right for at least one frame;
+            # hold Andre's standard X air dash before losing jump altitude.
+            # Observe outcome only after input finishes. This is NOT
+            # teleportation, save editing, collision or time manipulation.
             down('C')
             sleep(0.34)
-            up('C')
-            # In-air screenshot capture takes long enough to consume the jump
-            # window (real run 38349561527). Read state without a capture.
-            apex = read_state()
-            if apex.get('p1dead') or apex.get('p2dead'):
-                raise RuntimeError(f'death during helper step jump: {apex}')
-            if float(apex['p1y']) + 41.0 > 440.0:
-                raise RuntimeError(f'helper jump did not clear ledge top: {apex}')
-
-            # Real run 38349009371: landing at x310,y399 puts Andre
-            # directly into the moving guard. Avoid the unsafe landing;
-            # continue the ordinary helper-step jump until the player's
-            # feet are genuinely ABOVE the patrol, then execute his
-            # normal facing-correct midair dash. No physics/save edits.
-            sleep(0.22)
-            high = read_state()
-            if high.get('p1dead') or high.get('p2dead'):
-                raise RuntimeError(f'death while rising above guard: {high}')
-            if float(high['p1y']) + 41.0 >= 390.0:
-                raise RuntimeError(f'normal helper jump not yet clear above guard: {high}')
             down('RIGHT')
             sleep(0.07)
             down('X')
-            sleep(0.12)
-            # Screenshot capture blocks long enough for gravity/patrol collision.
-            # Read lightweight telemetry while real input remains held; do not
-            # stop the physical dash to take a diagnostic screenshot.
-            flight = read_state()
-            if flight.get('p1dead') or flight.get('p2dead'):
-                raise RuntimeError(f'death during high air dash: {flight}')
-            sleep(0.38)
+            sleep(0.10)
+            up('C')
+            sleep(0.40)
             up('X')
-            sleep(0.30)
+            sleep(0.20)
             out = read_state()
             if out.get('p1dead') or out.get('p2dead'):
-                raise RuntimeError(f'death after airborne guard clearance: {out}')
+                raise RuntimeError(f'death after continuous ordinary guard dash: {out}')
             if float(out['p1x']) < 510.0:
                 raise RuntimeError(f'guard not cleared by genuine airborne helper leap: {out}')
         return out
