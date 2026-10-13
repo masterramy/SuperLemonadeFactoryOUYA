@@ -125,13 +125,14 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             sleep(0.07)
             down('X')
             sleep(0.12)
-            capture('guard-high-air-dash-early')
+            # Screenshot capture blocks long enough for gravity/patrol collision.
+            # Read lightweight telemetry while real input remains held; do not
+            # stop the physical dash to take a diagnostic screenshot.
             flight = read_state()
             if flight.get('p1dead') or flight.get('p2dead'):
                 raise RuntimeError(f'death during high air dash: {flight}')
             sleep(0.38)
             up('X')
-            capture('guard-high-air-dash-late')
             sleep(0.30)
             out = read_state()
             if out.get('p1dead') or out.get('p2dead'):
