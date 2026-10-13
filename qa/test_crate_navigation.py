@@ -27,6 +27,29 @@ class CratePuzzleTests(unittest.TestCase):
         self.assertGreater(result["crateY"],410.0)
         self.assertTrue(all(t<=.20 for _,t in moves))
 
+    def test_real_38463869038_airborne_overshoot_recovers_left(self):
+        # Actual run: ordinary jump x809 -> x1046,y257 while crate
+        # got pushed to x931.64. Still alive, enough time to steer LEFT.
+        st={"p2x":809.,"p2y":359.11,"crateX":844.3,"crateY":377.1,
+            "p1dead":False,"p2dead":False}
+        moves=[]
+        def jump():
+            st.update(p2x=1046.14,p2y=257.62,crateX=931.64)
+        def hold(direction,seconds):
+            moves.append(direction)
+            if direction=="LEFT":
+                st["p2x"]-=32.
+                if st["p2x"]<=st["crateX"]+29:
+                    st["crateX"]-=32.
+                if st["p2x"]<=995: st["p2y"]=359.11
+                if st["crateX"]+24<=740: st["crateY"]=498.
+        result=move_crate_off_left_ledge(lambda:dict(st),hold,jump,
+                                         lambda t:None,max_actions=35)
+        self.assertTrue(moves)
+        self.assertEqual(moves[0],"LEFT")
+        self.assertLessEqual(result["crateX"]+24,740)
+        self.assertGreater(result["crateY"],410)
+
     def test_walking_away_does_not_claim_crate_pushed(self):
         st={"p2x":809.,"p2y":359.11,"crateX":844.,"crateY":360.,
             "p1dead":False,"p2dead":False}
