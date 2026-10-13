@@ -10,16 +10,22 @@
 - Shipping Rev50 frozen; Rev52 candidate title is visually PASS but not Master-promoted. QA observer APK has a single read-only `PCPlayState.as` telemetry delta, and must not be used as sole final-release proof.
 - No save edit, teleport, debug levelOver calls, synthetic unlock, physics or collision edits; no Play upload or publication.
 
+## Sequential real-run review (evidence reuse, not a new bot claim)
+
+Run **38464588882**, artifact **11848391661** was read end-to-end: **25 timestamped state records**, from real Level 2 gameplay start through the final stalled tall-wall attempt. Critical ordered observations: player2 x580→730→801→991→1380→1314 (genuine navigation), crate x763→842→714 and y377→497 (a legitimate leftward fall), Andre y479→382 during held jump, then x210→250→288→558→730 through the soldier section, all with dead flags false in this run. Later wall ascent remained incomplete; `levelFinished=false`, `levelOverMenu=false` throughout. Earlier separate run 38472669676 observed a real guard death at x494 with army x489. **These are mechanic-specific evidence, not full-level qualification.**
+
+The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **38481655023** stopped in UI selection/cinematic classification. No game-mechanic failure occurred; **do not spend more emulator runs on button-coordinate or cutscene-classifier tuning as a release gate**. Reserve future runtime testing for currently uncovered mechanic families and authentic exit/unlock/persistence proof.
+
 ## Test budget / representative cases
 
 | Mechanic family | Representative scene | Evidence at current cutoff | Required for signoff |
 |---|---|---|---|
 | Startup, title typography, UI navigation | Rev52 title at 1920/2560, Warehouse level-select | Title screenshots PASS; Level2 selected through genuine UI | Verify new smoke Level1 selection |
-| Andre move, sustained jump, action/dash | Level 1 tutorial | Action-specific smoke started, not yet adjudicated | One live ordinary-input motion/animation demonstration |
-| Liselot move, switch, double jump | Level 1 tutorial | Prior natural progress by Liselot; double-jump implemented but independent response pending | One female movement & midair second-jump demonstration |
+| Andre move, sustained jump, air dash | Level 2 | **OBSERVED** in real run38464588882 (x210→558; y479→382→439→399 during guard jump/dash); large-crate destruction still unproven | Only targeted breakable-crate test remains |
+| Liselot movement, switch, airborne leap | Level 2 | **OBSERVED** x580→1380→1314 across corridor; separately controlled from Andre; second-airborne-jump activation specifically still unproven | Only a direct double-jump assertion remains |
 | Pushable small crate | Level 2 | **OBSERVED** fall left to x~714,y497 in real run 38464588882; other controller sequences pushed right. Game mechanic can work; route consistency is automation-quality issue | Do not repeat once satisfied absent product regression |
 | Soldier patrol and collision/death | Level 2 | **OBSERVED** patrol traversed alive in 38461623946, died on guard in 38472669676; read-only patrol observer. | Already sufficient basic guard-collision demonstration |
-| Spike hazard, recovery | Level 2/6 | Liselot performed natural jump over corridor to exit in 38464588882; death/revival mechanics still independent | One representative hazard/respawn check if needed |
+| Spike hazard, recovery | Level 2/6 | **OBSERVED** Liselot crossed hazard corridor alive to x1380 in 38464588882; spike-kill and checkpoint revival still separate | One representative hazard/respawn check if needed |
 | Piggyback and interaction/talk | Levels 3–4 | SOURCE/MAP instructions present, no live proof | Targeted real input proof (one of 3 or 4) |
 | Checkpoint and restart | Level 5 (also 21–22, 25, 27, 30, 36) | SOURCE/MAP checkpoint objects and tutorial, no live respawn proof | One checkpoint→death→respawn example |
 | Moving platform, triggered platform | Levels 1/13 | SOURCE/MAP; level 13 explicitly teaches landing-triggered movement | One moving and one triggered-platform observation |
@@ -34,7 +40,7 @@
 ## Active QA runs
 
 - Original slow route runner `qa/rev52-observed-playthrough`: diagnostic source for prior successful mechanics; **not** a release readiness gate by itself. Repeated controller precision failures must not monopolize work.
-- New separate branch `qa/gate2a-mechanics-coverage`: bounded, one-pass real-input mechanics smoke, run **38480810765** (verify outcome; currently queued/in progress at creation).
+- New separate branch `qa/gate2a-mechanics-coverage`: explicit matrix + bounded real-input smoke. Runs **38480810765/38481259245/38481655023** exposed UI/cinematic classifier limitations before any mechanic assertions; marked QA automation inconclusive, **not a product RED**. Stop retrying this harness unless there is genuinely new UI evidence.
 - Continue with new *mechanic classes* and normal progression verification, then stop once confidence is supported. Report any genuinely broken mechanic with a reproducible sequence and rendered evidence.
 
 ## Acceptance boundary
