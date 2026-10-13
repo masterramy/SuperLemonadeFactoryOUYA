@@ -5,6 +5,42 @@ patrol around x382. This controller gains altitude before horizontal air-dash.
 It never edits position, health, save data, collisions, enemies, or game time.
 """
 
+def wait_for_guard_window(read_state, sleep, poll_seconds=0.14,
+                          max_observations=110):
+    """Wait for a real LEFT-moving patrol separated from grounded Andre.
+
+    In genuine run 38461623946 the first guard cleared when Andre was
+    x300 and army x345 moving LEFT. Failed run 38472669676 launched with
+    army x428 moving RIGHT, ultimately colliding at x494. Observe first;
+    do not send input while the enemy's phase is unsuitable. The returned
+    state is not a victory claim. Purely QA read-only telemetry.
+    """
+    d=read_state()
+    # Historical pure controller mocks do not contain the QA-only
+    # moving-patrol fields. Live observer must contain both.
+    if 'armyX' not in d or 'armyVx' not in d:
+        return d
+    for _ in range(max_observations):
+        if d.get('p1dead') or d.get('p2dead'):
+            raise RuntimeError(f'guard death while awaiting safe patrol: {d}')
+        x=float(d['armyX'])
+        vx=float(d['armyVx'])
+        px=float(d['p1x'])
+        delta=x-px
+        if x<0:
+            raise RuntimeError(f'guard patrol telemetry missing: {d}')
+        if vx<-1.0 and 35.0<=delta<=80.0:
+            return d
+        # Once a left-moving enemy is inside 28px of idle Andre, there
+        # is not enough space for a safe jump setup. Fail closed rather
+        # than wait motionless to die on the upper platform.
+        if -12.0<=delta<28.0 and vx<-1.0:
+            raise RuntimeError(f'guard too close before safe dash: {d}')
+        sleep(poll_seconds)
+        d=read_state()
+    raise RuntimeError(f'guard safe leftward patrol window not observed: {d}')
+
+
 def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounded_retries=1):
     d=read_state()
     if d.get('p1dead') or d.get('p2dead'):
@@ -120,6 +156,7 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             if not (260.0 <= ux <= 335.0 and 375.0 <= uy <= 415.0):
                 raise RuntimeError(f'upper platform landing not proven before guard dash: {upper}')
             capture('guard-upper-platform-landed')
+            wait_for_guard_window(read_state, sleep)
 
             # Dash only from the verified higher platform, without
             # mid-air ADB reads/screenshots. X must follow a directional
