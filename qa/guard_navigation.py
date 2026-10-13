@@ -102,7 +102,8 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             down('C')
             sleep(0.34)
             up('C')
-            capture('guard-helper-step-apex')
+            # In-air screenshot capture takes long enough to consume the jump
+            # window (real run 38349561527). Read state without a capture.
             apex = read_state()
             if apex.get('p1dead') or apex.get('p2dead'):
                 raise RuntimeError(f'death during helper step jump: {apex}')
@@ -116,7 +117,6 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             # normal facing-correct midair dash. No physics/save edits.
             sleep(0.22)
             high = read_state()
-            capture('guard-helper-airborne-clearance')
             if high.get('p1dead') or high.get('p2dead'):
                 raise RuntimeError(f'death while rising above guard: {high}')
             if float(high['p1y']) + 41.0 >= 390.0:
