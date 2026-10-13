@@ -1,6 +1,6 @@
 import unittest
 from PIL import Image,ImageDraw
-from screen_navigation import classify_screen,system_dialog_target,retry_level_select_transition
+from screen_navigation import classify_screen,system_dialog_target,retry_level_select_transition,advance_cutscene_to_gameplay
 
 
 class ScreenNavigationTests(unittest.TestCase):
@@ -71,6 +71,36 @@ class ScreenNavigationTests(unittest.TestCase):
         d.rectangle((0,850,1919,1079),fill=(145,124,109))
         d.rectangle((1640,20,1890,150),fill=(70,65,54))
         self.assertEqual(classify_screen(im),'gameplay')
+
+    def test_story_cutscene_is_not_level_select_even_with_purple_accents(self):
+        # Run 38368800892 captured real black-letterboxed dialogue,
+        # misclassified as Level Select and interrupted with repeat taps.
+        im=Image.new('RGB',(1920,1080),(211,189,178))
+        d=ImageDraw.Draw(im)
+        d.rectangle((0,0,1919,159),fill=(0,0,0))
+        d.rectangle((0,866,1919,1079),fill=(0,0,0))
+        d.rectangle((110,195,1820,530),fill=(250,250,250))
+        d.rectangle((440,420,800,550),fill=(130,65,159))
+        self.assertEqual(classify_screen(im),'cutscene')
+
+    def test_story_advances_only_with_confirmed_cutscene_frames(self):
+        labels=iter(['cutscene','cutscene','gameplay'])
+        calls=[]
+        outcome=advance_cutscene_to_gameplay(
+            lambda:next(labels),
+            lambda:calls.append('tap'),
+            lambda:calls.append('wait'),
+            attempts=4)
+        self.assertEqual(outcome,'gameplay')
+        self.assertEqual(calls,['tap','wait','tap','wait'])
+
+    def test_cutscene_unknown_must_not_receive_blind_actions(self):
+        taps=[]
+        with self.assertRaisesRegex(RuntimeError,'Unknown'):
+            advance_cutscene_to_gameplay(
+                lambda:'unknown',lambda:taps.append('tap'),
+                lambda:None,attempts=3)
+        self.assertEqual(taps,[])
 
     def test_title_menu_and_level_select_classification(self):
         def frame():return Image.new('RGB',(1920,1080),(211,189,178))
