@@ -42,6 +42,43 @@ class LedgeNavigationTests(unittest.TestCase):
             clear_tall_ledge(lambda:dict(pos),lambda *a:None,lambda:None,lambda *a:None,attempts=2)
 
 
+    def test_real_crate_landing_triggers_second_normal_jump_before_wall(self):
+        # Real emulator 38464588882: crate fell to x716,y497;
+        # Andre x730,y457 ON the crate, not past the tall wall.
+        # The old retry reset to x690, walking him OFF the crate!
+        pos={'p1x':706.39,'p1y':479.11,
+             'crateX':716.,'crateY':497.1,'p1dead':False,'p2dead':False}
+        launched=[]; actions=[]
+        def hold(direction, seconds):
+            actions.append((direction,round(seconds,2)))
+            if direction=='RIGHT':
+                pos['p1x']=730.0
+            else:
+                pos['p1x']-=seconds*210
+        def ground_jump():
+            # Simulate regular inputs and post-physics box landing.
+            pos.update(p1x=730.0,p1y=457.19)
+        def crate_jump():
+            launched.append(dict(pos))
+            pos.update(p1x=770.0,p1y=359.0)
+        out=clear_tall_ledge(lambda:dict(pos),hold,ground_jump,
+                             lambda _:None,attempts=4,crate_jump=crate_jump)
+        self.assertEqual(len(launched),1)
+        self.assertAlmostEqual(launched[0]['p1x'],730)
+        self.assertAlmostEqual(launched[0]['p1y'],457.19)
+        self.assertEqual(out['p1x'],770)
+        self.assertFalse(any(d=='LEFT' for d,_ in actions))
+
+    def test_crate_stage_cannot_be_mistaken_for_final_wall_clearance(self):
+        pos={'p1x':730.,'p1y':457.19,'crateX':716.,'crateY':497.1,
+             'p1dead':False,'p2dead':False}
+        launches=[]
+        with self.assertRaisesRegex(RuntimeError,'Tall platform not crossed'):
+            clear_tall_ledge(lambda:dict(pos),lambda *a:None,lambda:None,
+                             lambda *a:None,attempts=2,
+                             crate_jump=lambda:launches.append(True))
+        self.assertTrue(launches)
+
     def test_apex_first_jump_holds_c_before_right(self):
         from ledge_navigation import apex_first_jump_right
         log=[]
