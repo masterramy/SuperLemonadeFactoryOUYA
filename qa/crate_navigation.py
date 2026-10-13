@@ -33,8 +33,19 @@ def move_crate_off_left_ledge(read_state, hold, jump_right, capture, pause=None,
         capture(f"crate-approach-{attempt:02d}")
         jump_right()  # authentic female jump/double-jump key events
         d=observed()
-        if float(d["p2x"])>1020:
-            raise RuntimeError(f"unsafe jump toward spike corridor: {d}")
+        if float(d["p2x"])>1120.0 or (float(d["p2x"])>1020.0 and float(d["p2y"])>395.0):
+            raise RuntimeError(f"unsafe jump near spikes without recovery room: {d}")
+        # Real run 38463869038: a legitimate double-jump went x809 to
+        # x1046,y257, alive and well above the spike strip. Brake LEFT
+        # immediately while airborne, before a slow screenshot or idle wait
+        # lets gravity/continued RIGHT momentum carry her into the hazards.
+        for correction in range(8):
+            if float(d["p2x"])<=975.0:
+                break
+            hold("LEFT",0.14)
+            d=observed()
+            if float(d["p2x"])>1120.0 or (float(d["p2x"])>1020.0 and float(d["p2y"])>430.0):
+                raise RuntimeError(f"airborne spike recovery unsafe: {d}")
     else:
         raise RuntimeError(f"Liselot not right of crate after ordinary jumps: {d}")
 
