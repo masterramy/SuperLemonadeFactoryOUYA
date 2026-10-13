@@ -1,9 +1,38 @@
 """Regression contract for Level 2's authored movable-crate puzzle."""
 import unittest
-from crate_navigation import move_crate_off_left_ledge
+from crate_navigation import move_crate_off_left_ledge, reach_right_side_without_pushing
 
 
 class CratePuzzleTests(unittest.TestCase):
+    def test_ground_approach_keeps_authored_crate_left_and_unchanged(self):
+        # Real run 38473523858: advancing directly to x825 shoved
+        # the crate from x763 past x1092 (wrong edge). Stage on
+        # FLOOR at x690 then jump above it without touching its side.
+        p={'p2x':580.,'p2y':479.11,'crateX':763.,'crateY':377.1,
+           'p1dead':False,'p2dead':False}
+        launches=[];steps=[]
+        def walk(direction,sec):
+            steps.append((direction,sec))
+            p['p2x']+= (1 if direction=='RIGHT' else -1)*min(210*sec,47)
+        def jump():
+            launches.append(dict(p))
+            p.update(p2x=842.,p2y=359.11)
+        out=reach_right_side_without_pushing(lambda:dict(p),walk,jump,
+                                              lambda tag:None)
+        self.assertEqual(len(launches),1)
+        self.assertGreaterEqual(launches[0]['p2x'],670.)
+        self.assertLessEqual(launches[0]['p2x'],715.)
+        self.assertEqual(out['crateX'],763.)
+        self.assertGreaterEqual(out['p2x'],out['crateX']+32.)
+        self.assertTrue(all(s<=.25 for _,s in steps))
+
+    def test_ground_approach_rejects_previously_shoved_crate(self):
+        p={'p2x':851.,'p2y':359.11,'crateX':1092.17,'crateY':427.1,
+           'p1dead':False,'p2dead':False}
+        with self.assertRaisesRegex(RuntimeError,'crate.*wrong|crate.*unsafe'):
+            reach_right_side_without_pushing(lambda:dict(p),
+                lambda *a:None,lambda:None,lambda *a:None)
+
     def test_jumps_to_right_then_pushes_crate_completely_off_left_edge(self):
         state={"p2x":809.6,"p2y":359.11,"crateX":842.0,"crateY":360.0,
                "p1dead":False,"p2dead":False}
