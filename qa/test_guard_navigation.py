@@ -58,16 +58,15 @@ class GuardPassTests(unittest.TestCase):
                 if dashes==1: p.update(p1x=250.13,p1y=439.11)
                 else: p['p1x']+=500*t
             elif jumps==2 and 'RIGHT' in held: p['p1x']+=210*t
-            if jumps==2 and t>=0.40 and 'RIGHT' not in held: p['p1y']=399.0
+            if jumps==2 and .20<=t<=.25 and 'RIGHT' not in held: p['p1y']=321.0
         out=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
         self.assertGreaterEqual(out['p1x'],510.)
-        self.assertEqual(jumps,3)
+        self.assertEqual(jumps,2)
         self.assertIn('guard-helper-step-apex',captures)
         self.assertIn('guard-helper-airborne-clearance',captures)
         self.assertNotIn('guard-upper-platform-stage',captures)
-        self.assertIn('guard-upper-platform-apex',captures)
-        self.assertIn('guard-upper-platform-flight-00',captures)
-        self.assertIn('guard-upper-platform-after-dash',captures)
+        self.assertIn('guard-high-air-dash-early',captures)
+        self.assertIn('guard-high-air-dash-late',captures)
         self.assertNotIn(0.16,sleeps)  # extra delay makes Andre fall from the apex
         self.assertFalse(out['p1dead'])
         self.assertEqual(held,set())
@@ -105,11 +104,11 @@ class GuardPassTests(unittest.TestCase):
                 p['p1x']=290.0
             if jumps==2 and t>=.30 and 'RIGHT' not in held:
                 p['p1y']=439.0
-            if jumps==3 and t>=.40 and 'RIGHT' not in held:
-                p['p1y']=399.0
+            if jumps==3 and .20<=t<=.25 and 'RIGHT' not in held:
+                p['p1y']=320.0
         result=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
         self.assertGreaterEqual(result['p1x'],510.)
-        self.assertGreaterEqual(jumps,4)
+        self.assertGreaterEqual(jumps,3)
         self.assertIn('guard-ground-helper-takeoff',captures)
         self.assertIn('guard-ground-helper-landed',captures)
         self.assertEqual(held,set())
