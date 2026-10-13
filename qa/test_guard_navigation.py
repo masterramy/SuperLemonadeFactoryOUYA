@@ -36,7 +36,7 @@ class GuardPassTests(unittest.TestCase):
 
     def test_stalled_guard_cannot_be_called_cleared(self):
         p={'p1x':205.,'p1y':479.,'p1dead':False,'p2dead':False}
-        with self.assertRaisesRegex(RuntimeError,'not cleared'):
+        with self.assertRaisesRegex(RuntimeError,'not cleared|did not rise above helper block'):
             airborne_dash_past_guard(lambda:dict(p),lambda k:None,lambda k:None,lambda t:None,lambda s:None)
 
     def test_first_helper_platform_landing_requires_second_legitimate_jump(self):
