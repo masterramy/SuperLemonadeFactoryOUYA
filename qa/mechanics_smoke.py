@@ -31,8 +31,7 @@ def still_alive(d):
     return d
 
 def screenshot(tag):
-    p=g.run(["adb","exec-out","screencap","-p"],check=False,capture=True)
-    # g.run text=True cannot reliably transport PNG. Use raw bytes here.
+    # Binary PNG capture: never request the text-decoded subprocess wrapper.
     import subprocess
     p=subprocess.run(["adb","exec-out","screencap","-p"],capture_output=True)
     if p.returncode==0 and p.stdout:
