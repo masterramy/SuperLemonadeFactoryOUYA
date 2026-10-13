@@ -77,10 +77,23 @@ def main():
         lambda:g.shell("input tap 560 392"),
         lambda:time.sleep(4), attempts=3)
     if label=="cutscene":
+        # No taps on an unclassified cinematic transition. Screenshot and
+        # wait up to 6 seconds for loading/fading frames to resolve.
         from screen_navigation import advance_cutscene_to_gameplay
-        advance_cutscene_to_gameplay(frame,lambda:g.shell("input tap 960 540"),
-                                    lambda:time.sleep(2),attempts=8)
+        def observed_story():
+            for probe in range(4):
+                current=frame()
+                if current!="unknown":
+                    return current
+                screenshot(f"level1-cinematic-transition-{probe:02d}")
+                time.sleep(1.5)
+            return "unknown"
+        advance_cutscene_to_gameplay(
+            observed_story,
+            lambda:g.shell("input tap 960 540"),
+            lambda:time.sleep(2),attempts=8)
     elif label!="gameplay":
+        screenshot("level1-unexpected-post-select")
         raise RuntimeError(f"Expected gameplay or cutscene after Level 1 select, got {label}")
     g.locate_state()
     d=still_alive(g.wait_for_level(1))
