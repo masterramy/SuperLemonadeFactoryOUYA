@@ -169,7 +169,7 @@ def state():
     for line in txt.splitlines():
         if "=" not in line: continue
         k,v=line.split("=",1); d[k]=v
-    for k in ("p1x","p1y","p1vx","p1vy","p2x","p2y","p2vx","p2vy","exitX","exitY"):
+    for k in ("p1x","p1y","p1vx","p1vy","p2x","p2y","p2vx","p2vy","armyX","armyY","armyVx","exitX","exitY"):
         if k in d:
             try:d[k]=float(d[k])
             except:pass
