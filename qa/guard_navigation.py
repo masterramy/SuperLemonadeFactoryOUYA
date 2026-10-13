@@ -114,7 +114,10 @@ def airborne_dash_past_guard(read_state, keydown, keyup, sleep, capture, grounde
             if upper.get('p1dead') or upper.get('p2dead'):
                 raise RuntimeError(f'death landing on legitimate upper ledge: {upper}')
             ux,uy=float(upper['p1x']),float(upper['p1y'])
-            if not (270.0 <= ux <= 335.0 and 375.0 <= uy <= 415.0):
+            # Rendered run 38458084249: x267.04,y399.11 is a real
+            # grounded landing on the authored x260..520, top-y440
+            # ledge. Do not disqualify a valid foothold by 3 pixels.
+            if not (260.0 <= ux <= 335.0 and 375.0 <= uy <= 415.0):
                 raise RuntimeError(f'upper platform landing not proven before guard dash: {upper}')
             capture('guard-upper-platform-landed')
 
