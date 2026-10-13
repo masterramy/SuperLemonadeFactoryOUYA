@@ -1,0 +1,67 @@
+name: Gate2A Rev52 Exact Corresponding Source Archive
+on:
+  push:
+    branches:
+      - qa/rev52-publication-prep
+    paths:
+      - .github/workflows/gate2a-rev52-corresponding-source.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Archive immutable exact validated product commit, not QA branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          product=0d5fd0bb63558ad6659ba31552deaede4745382b
+          tree=ba0cfae73f758b3d4c9157e1e496357faf59acda
+          test "$(git rev-parse "$product^{commit}")" = "$product"
+          test "$(git rev-parse "$product^{tree}")" = "$tree"
+          mkdir -p source-proof
+          git archive --format=zip --output=SuperLimeadeFactory-Rev52-Corresponding-Source.zip "$product"
+          python3 - <<'PY'
+          import subprocess, zipfile, hashlib, pathlib
+          p=pathlib.Path('SuperLimeadeFactory-Rev52-Corresponding-Source.zip')
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None, 'Source ZIP CRC failure'
+              actual=set(z.namelist())
+              tracked=subprocess.check_output(
+                  ['git','ls-tree','-r','--name-only','0d5fd0bb63558ad6659ba31552deaede4745382b'],
+                  text=True).splitlines()
+              assert set(tracked)==actual, (
+                  'Tracked source/archived content mismatch',
+                  len(tracked), len(actual), list(set(tracked)^actual)[:10])
+              for required in ('LICENSE','README.md','SOURCE_DISCLOSURE.md',
+                               'BUILD_ANDROID_PRODUCTION.bat','BUILD_AAB_PRODUCTION.bat',
+                               'release/PLAY_CONSOLE_ANSWERS.md'):
+                  assert required in actual, required
+              h=hashlib.sha256(p.read_bytes()).hexdigest()
+              receipt=(
+                  'product_commit=0d5fd0bb63558ad6659ba31552deaede4745382b\n'
+                  'product_tree=ba0cfae73f758b3d4c9157e1e496357faf59acda\n'
+                  f'archive_bytes={p.stat().st_size}\n'
+                  f'archive_sha256={h}\n'
+                  f'archive_entries={len(actual)}\n'
+                  'archive_crc=PASS\n'
+                  'archive_tracks_exact_git_tree=PASS\n'
+                  'production_signing_secret_included=NO\n'
+                  'production_signing_status=OWNER_LOCAL_PENDING\n'
+                  'promotion_status=MASTER_PENDING\n'
+              )
+              pathlib.Path('source-proof/REV52_SOURCE_IDENTITY.txt').write_text(receipt)
+              print(receipt)
+          PY
+      - name: Preserve exact source + receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-rev52-exact-corresponding-source
+          path: |
+            SuperLimeadeFactory-Rev52-Corresponding-Source.zip
+            source-proof/REV52_SOURCE_IDENTITY.txt
+          if-no-files-found: error
