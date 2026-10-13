@@ -36,6 +36,39 @@ package
 	{		
 		
 		public var __levelOver:Boolean = false;
+
+        // QA-ONLY READ-ONLY OBSERVATION. Never include in a shipping branch.
+        // This writes live coordinates and completion state; it never changes
+        // collision, movement, checkpoints, progress, or saves.
+        private var qaProbeFrame:int = 0;
+        private function qaObserve():void
+        {
+            qaProbeFrame++;
+            if (qaProbeFrame % 20 != 0 || player1 == null || player2 == null)
+                return;
+            try {
+                var f:File = File.applicationStorageDirectory.resolvePath("qa-natural-route.txt");
+                var stream:FileStream = new FileStream();
+                stream.open(f, FileMode.WRITE);
+                stream.writeUTFBytes("level=" + Registry.levelNumber +
+                    ",world=" + Registry.levelType +
+                    ",hardcore=" + Registry.hardCore +
+                    ",p1x=" + int(player1.x) +
+                    ",p1y=" + int(player1.y) +
+                    ",p2x=" + int(player2.x) +
+                    ",p2y=" + int(player2.y) +
+                    ",p1active=" + player1._currentlyControlled +
+                    ",p2active=" + player2._currentlyControlled +
+                    ",p1dead=" + player1.dead +
+                    ",p2dead=" + player2.dead +
+                    ",p1piggyback=" + player1._isPiggyBacking +
+                    ",p2piggyback=" + player2._isPiggyBacking +
+                    ",finished=" + levelFinished +
+                    ",completionUI=" + __levelOver + "\\n");
+                stream.close();
+            }
+            catch (e:Error) { }
+        }
 		
 		override public function create():void
 		{
@@ -75,6 +108,7 @@ package
 		override public function update():void
 		{
 			super.update();
+            qaObserve();
 			
 			if (pauseFrameConsumed || FlxG.paused)
 				return;
