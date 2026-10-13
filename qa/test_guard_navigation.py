@@ -58,7 +58,7 @@ class GuardPassTests(unittest.TestCase):
                 if dashes==1: p.update(p1x=250.13,p1y=439.11)
                 else: p['p1x']+=500*t
             elif jumps==2 and 'RIGHT' in held: p['p1x']+=210*t
-            if jumps==2 and .20<=t<=.25 and 'RIGHT' not in held: p['p1y']=321.0
+            if jumps==2 and t>=.50 and 'RIGHT' not in held: p['p1y']=399.0
         def guarded_observation():
             # ADB state observation takes real elapsed time. From the second
             # helper jump until its air dash, there must be no read/capture
@@ -68,7 +68,8 @@ class GuardPassTests(unittest.TestCase):
             return dict(p)
         out=airborne_dash_past_guard(guarded_observation,down,up,sleep,captures.append)
         self.assertGreaterEqual(out['p1x'],510.)
-        self.assertEqual(jumps,2)
+        self.assertEqual(jumps,3)
+        self.assertIn('guard-upper-platform-landed',captures)
         self.assertNotIn('guard-helper-step-apex',captures)
         # No screenshot while the real game clock advances through the dash.
         # Those slow captures caused actual guard collision in run 38357033825.
@@ -147,11 +148,12 @@ class GuardPassTests(unittest.TestCase):
                 p['p1x']+=210*t
             if jumps==2 and t>=.30 and 'RIGHT' not in held:
                 p['p1y']=439.0
-            if jumps==3 and .20<=t<=.25 and 'RIGHT' not in held:
-                p['p1y']=320.0
+            if jumps==3 and t>=.50 and 'RIGHT' not in held:
+                p['p1y']=399.0
         result=airborne_dash_past_guard(lambda:dict(p),down,up,sleep,captures.append)
         self.assertGreaterEqual(result['p1x'],510.)
-        self.assertGreaterEqual(jumps,3)
+        self.assertGreaterEqual(jumps,4)
+        self.assertIn('guard-upper-platform-landed',captures)
         self.assertIn('guard-ground-helper-takeoff',captures)
         self.assertIn('guard-ground-helper-landed',captures)
         self.assertEqual(held,set())
