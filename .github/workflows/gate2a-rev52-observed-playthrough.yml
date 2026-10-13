@@ -54,13 +54,13 @@ jobs:
           path: runtime
           github-token: ${{ github.token }}
           repository: masterramy/SuperLemonadeFactoryOUYA
-          run-id: 38359601668
+          run-id: 38462999144
 
       - name: Verify observation runtime identity and no shipping delta
         shell: bash
         run: |
           set -euo pipefail
-          expected=62ca3dc76807c521caf7ea2cb0d575331ae3ea59cd61c0972542aba2f107fd13
+          expected=b20c289529dd2d4a6b3c53cbffb977776609c8afd44786db9c0fafe48aeae893
           test "$(sha256sum runtime/dist/emulator-qa/SLF-emulator-x64.apk | cut -d' ' -f1)" = "$expected"
           cat runtime/qa-delta.txt
           # Windows observer builder writes CRLF; strip CR without
