@@ -471,6 +471,8 @@ package
             // y, velocity, collision or any gameplay state.
             var qaMovingX:Number = -1;
             var qaMovingY:Number = -1;
+            var qaMoving2X:Number = -1;
+            var qaMoving2Y:Number = -1;
             var qaMovingCount:int = 0;
             if (levelBlocks != null && levelBlocks.members != null)
             {
@@ -484,6 +486,11 @@ package
                         {
                             qaMovingX = qaPlatform.x;
                             qaMovingY = qaPlatform.y;
+                        }
+                        else if (qaMovingCount == 2)
+                        {
+                            qaMoving2X = qaPlatform.x;
+                            qaMoving2Y = qaPlatform.y;
                         }
                     }
                 }
@@ -556,6 +563,9 @@ package
                     "movingPlatformCount=" + qaMovingCount + "\n" +
                     "movingPlatformX=" + qaMovingX.toFixed(2) + "\n" +
                     "movingPlatformY=" + qaMovingY.toFixed(2) + "\n" +
+                    "movingPlatform2X=" + qaMoving2X.toFixed(2) + "\n" +
+                    "movingPlatform2Y=" + qaMoving2Y.toFixed(2) + "\n" +
+                    "p2FloorTouch=" + player2.isTouching(FlxObject.FLOOR) + "\n" +
                     "crateX=" + (qaCrate != null ? qaCrate.x.toFixed(2) : "-1.00") + "\n" +
                     "crateY=" + (qaCrate != null ? qaCrate.y.toFixed(2) : "-1.00") + "\n" +
 					"exitX=" + exitX.toFixed(2) + "\n" +
