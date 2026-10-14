@@ -6,7 +6,7 @@ on:
       - src/PCMenuState.as
       - src/PCPlayState.as
       - qa/mechanics_factory13_probe.py
-      - .github/workflows/gate2a-isolated-scene-mechanics.yml
+      - .github/workflows/gate2a-original-factory13-mechanics.yml
   workflow_dispatch:
 permissions:
   contents: read
