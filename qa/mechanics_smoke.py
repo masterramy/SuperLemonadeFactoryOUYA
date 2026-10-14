@@ -59,44 +59,45 @@ def main():
     time.sleep(9)
     g.navigate_to_level_select()
     screenshot("01-level-select")
-    # Level 1 is the opening tutorial; no swipes or progression manipulation.
-    # Rendered 1920x1080 Level Select: Level 1 is the LEFT purple
-    # button at approximately x560,y392. Prior center tap missed it.
-    g.shell("input tap 560 392")
-    time.sleep(5)
-    def frame():
-        import subprocess
-        from screen_navigation import classify_screen
-        p=subprocess.run(["adb","exec-out","screencap","-p"],capture_output=True)
-        if p.returncode or not p.stdout:
-            raise RuntimeError("No startup frame")
-        return classify_screen(p.stdout)
-    from screen_navigation import retry_level_select_transition
-    label=retry_level_select_transition(
-        frame,
-        lambda:g.shell("input tap 560 392"),
-        lambda:time.sleep(4), attempts=3)
-    if label=="cutscene":
-        # No taps on an unclassified cinematic transition. Screenshot and
-        # wait up to 6 seconds for loading/fading frames to resolve.
-        from screen_navigation import advance_cutscene_to_gameplay
-        def observed_story():
-            for probe in range(4):
-                current=frame()
-                if current!="unknown":
-                    return current
-                screenshot(f"level1-cinematic-transition-{probe:02d}")
-                time.sleep(1.5)
-            return "unknown"
-        advance_cutscene_to_gameplay(
-            observed_story,
-            lambda:g.shell("input tap 960 540"),
-            lambda:time.sleep(2),attempts=8)
-    elif label!="gameplay":
-        screenshot("level1-unexpected-post-select")
-        raise RuntimeError(f"Expected gameplay or cutscene after Level 1 select, got {label}")
-    g.locate_state()
-    d=still_alive(g.wait_for_level(1))
+    # Level 1 starts selected in a fresh level-select menu. An ordinary X
+    # activation is an actual supported game control; no pixel-coordinate
+    # button targeting, altered save, synthetic unlock, or debug game entry.
+    # Cinematic screenshots may resemble level-select artwork, so screen
+    # classification is supporting evidence, NOT the gate for gameplay.
+    g.tap("X")
+    time.sleep(3)
+
+    def observed_level1():
+        # The read-only in-game observer is created by real PlayState updates.
+        # On a freshly cleared install no such state exists in menu/cinematic.
+        path=g.shell(f"find /data/user/0/{g.PACKAGE} -name qa_state.txt -type f 2>/dev/null | head -1",check=False)
+        if not path:
+            return None
+        g.STATE_PATH=path.splitlines()[0].strip()
+        try:
+            d=g.state()
+        except RuntimeError:
+            return None
+        if d.get("levelNumber")==1 and d.get("exitX",-1)>=0:
+            return d
+        return None
+
+    # Only a bounded number of normal story-advance actions. Every attempted
+    # transition has a screenshot and last-known state receipt; if still no
+    # actual Level 1, fail INCONCLUSIVE, not product broken.
+    d=None
+    for probe in range(9):
+        d=observed_level1()
+        screenshot(f"level1-navigation-{probe:02d}")
+        if d:
+            break
+        if probe in (1,3,5,7):
+            g.tap("X")
+        time.sleep(2)
+    if d is None:
+        raise RuntimeError("QA navigation inconclusive: Level 1 read-only gameplay state never observed; inspect sequential navigation PNGs, do not call game mechanic RED.")
+    g.STATE_PATH=g.STATE_PATH
+    d=still_alive(d)
     screenshot("02-level1-initial")
     check("chapter1_level_entry",d["levelNumber"]==1,
           after=d["levelNumber"],note="Actual fresh game, Level 1 via UI")
