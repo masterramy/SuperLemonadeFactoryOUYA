@@ -519,9 +519,9 @@ package
 					"armyX=" + (army != null ? army.x.toFixed(2) : "-1.00") + "\n" +
 					"armyY=" + (army != null ? army.y.toFixed(2) : "-1.00") + "\n" +
 					"armyVx=" + (army != null ? army.velocity.x.toFixed(2) : "0.00") + "\n" +
-                    "movingPlatformCount=" + qaMovingCount + "\\n" +
-                    "movingPlatformX=" + qaMovingX.toFixed(2) + "\\n" +
-                    "movingPlatformY=" + qaMovingY.toFixed(2) + "\\n" +
+                    "movingPlatformCount=" + qaMovingCount + "\n" +
+                    "movingPlatformX=" + qaMovingX.toFixed(2) + "\n" +
+                    "movingPlatformY=" + qaMovingY.toFixed(2) + "\n" +
                     "crateX=" + (qaCrate != null ? qaCrate.x.toFixed(2) : "-1.00") + "\n" +
                     "crateY=" + (qaCrate != null ? qaCrate.y.toFixed(2) : "-1.00") + "\n" +
 					"exitX=" + exitX.toFixed(2) + "\n" +
