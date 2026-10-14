@@ -84,55 +84,60 @@ def main():
     if not start.get("p2controlled"):
         verdict("checkpoint","INCONCLUSIVE_PLAYER_NOT_CONTROLLED");return
 
-    # Actual p2 starts x620 on the left floor (560..770, top840).
-    # Approach the original right-moving platform without stepping blindly
-    # into the spike gap. Four finite actions, no position injection.
-    staged=start
-    for i in range(4):
-        x=f(staged,"p2x")
-        if 700<=x<=763:break
-        if x>763 or g.is_death(staged):
-            verdict("checkpoint","INCONCLUSIVE_START_STAGING");return
-        g.hold("RIGHT", .30 if x<680 else .18)
-        staged=save("03-safe-approach-%02d"%i)
-    if not (695<=f(staged,"p2x")<=763 and not g.is_death(staged)):
-        verdict("checkpoint","INCONCLUSIVE_COULD_NOT_STAGE");return
-    save("04-before-authentic-gap-jump",True)
-
-    # Ordinary held C, release, then second C for female double jump.
-    # One continuous real rightward crossing, original collisions untouched.
-    g.ev(g.KEY["RIGHT"],True)
-    try:
-        g.ev(g.KEY["C"],True);time.sleep(.25)
-        g.ev(g.KEY["C"],False);time.sleep(.14)
-        g.ev(g.KEY["C"],True);time.sleep(.07)
-        g.ev(g.KEY["C"],False);time.sleep(.58)
-    finally:
-        g.ev(g.KEY["RIGHT"],False)
-    time.sleep(.24)
-    cross=save("05-original-bridge-double-jump",True)
-    if g.is_death(cross) or f(cross,"p2x")<f(staged,"p2x")+45:
-        verdict("checkpoint","INCONCLUSIVE_BRIDGE_CROSSING");return
-
-    # No blind full-width walk. Observe at every bounded input.
-    # Stop before the authored worker patrol to the right of x1210.
+    # First real CI 38649249279: ordinary RIGHT legitimately advanced
+    # Liselot 620 -> 696.21 -> 837.54, alive y799.11. The original
+    # harness's x>763 stop was an invalid assumption. The authored Level13
+    # mover spans the floor gap, so treat actual x837 as PROGRESS, not RED.
+    #
+    # Proceed by a small bounded ordinary-input route, read state each step.
+    # Never teleport, change speed, force CP overlap, change lives or saves.
     seen=None
+    rode_probe=False
+    s=start
     for i in range(14):
-        s=save("06-checkpoint-approach-%02d"%i,image=(i in (0,6,13)))
+        s=save("03-authentic-checkpoint-approach-%02d"%i,
+               image=(i in (0,2,4,8,13)))
         if activated(s,start):
             seen=s
             break
         if g.is_death(s):
             verdict("checkpoint","INCONCLUSIVE_DEATH_BEFORE_TOUCH");return
         x,y=f(s,"p2x"),f(s,"p2y")
-        if x>1125 or x<700:
-            verdict("checkpoint","INCONCLUSIVE_POSITION_OUTSIDE_SAFE_WINDOW");return
-        if x>=1010 and y<760:
-            time.sleep(.30) # Let real gravity settle onto checkpoint.
-        elif x>=1055:
-            g.hold("LEFT",.12)
+        if x>1140 or x<590:
+            verdict("checkpoint","INCONCLUSIVE_POSITION_OUTSIDE_BOUND");return
+        # One OPTIONAL no-input platform-carry observation at the genuinely
+        # supported crossing. Distinguish character translation from mere
+        # autonomous platform movement. Never require this for CP acceptance.
+        if (not rode_probe and 790<=x<=950 and 775<=y<=825
+            and truth(s,"p2FloorTouch")):
+            rode_probe=True
+            x0,p0=x,f(s,"movingPlatform2X")
+            time.sleep(.38)
+            stationary=save("04-no-direction-held-platform-contact",True)
+            dx=f(stationary,"p2x")-x0
+            dp=f(stationary,"movingPlatform2X")-p0
+            if (abs(dx)>4 and abs(dp)>4 and
+                abs(dx-dp)<16 and
+                abs(f(stationary,"p2y")-y)<12 and
+                truth(stationary,"p2FloorTouch")):
+                verdict("platform_carry","OBSERVED_REAL_NO_INPUT_PLATFORM_RIDE")
+            else:
+                verdict("platform_carry","INCONCLUSIVE_NO_SYNCHRONOUS_CARRY")
+            if activated(stationary,start):
+                seen=stationary
+                break
+            if g.is_death(stationary):
+                verdict("checkpoint","INCONCLUSIVE_DEATH_DURING_RIDE_PROBE");return
+            s=stationary
+            x,y=f(s,"p2x"),f(s,"p2y")
+        # When high above the checkpoint, let actual gravity bring
+        # Liselot down before walking past it.
+        if x>=1000 and y<760:
+            time.sleep(.25)
+        elif x>1055:
+            g.hold("LEFT",.055)
         else:
-            g.hold("RIGHT",.17 if x<970 else .10)
+            g.hold("RIGHT",.18 if x<700 else (.12 if x<900 else .055))
     if seen is None:
         verdict("checkpoint","INCONCLUSIVE_NO_CONFIRMED_TOUCH");return
     verdict("checkpoint","OBSERVED_ORIGINAL_LISELOT_ACTIVATION")
