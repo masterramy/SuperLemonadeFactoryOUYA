@@ -1,0 +1,72 @@
+name: Gate2A Management25 Real Moving Block Recheck
+on:
+  push:
+    branches: [qa/gate2a-chapter25-management-observer]
+    paths: [.github/workflows/gate2a-management25-runtime-recheck.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  mechanics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Pin original candidate and QA-only source deltas
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only 0d5fd0bb63558ad6659ba31552deaede4745382b..HEAD -- src data tools application.xml | sort | tr -d '\r')" = "$(printf 'src/PCMenuState.as\nsrc/PCPlayState.as')"
+          test "$(git show HEAD:src/PCMenuState.as | grep -c 'QA-ONLY ISOLATED SCENE ENTRY')" -eq 1
+      - name: Install exact pure-QA Python dependencies
+        run: |
+          python3 -m pip install --quiet Pillow==11.3.0
+          python3 -m py_compile qa/mechanics_management25_probe.py qa/observed_playthrough.py
+          PYTHONPATH=qa python3 -m unittest -v qa.test_progress_guard
+      - name: Reuse source-guarded successful Windows APK from prior run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-management25-original-scene-apk
+          path: runtime
+          github-token: ${{ github.token }}
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          run-id: 38493706607
+      - name: Audit artifact identity, independent of old failed Linux script
+        run: |
+          set -euo pipefail
+          tr -d '\r' < runtime/qa-isolated-identity.txt > runtime/qa-isolated-identity.unix.txt
+          tr -d '\r' < runtime/qa-isolated-delta.txt > runtime/qa-isolated-delta.unix.txt
+          grep -Fx source_identity=QA_ISOLATED__NOT_SHIPPING_OR_NATURAL_UNLOCK runtime/qa-isolated-identity.unix.txt
+          grep -Fx src/PCMenuState.as runtime/qa-isolated-delta.unix.txt
+          grep -Fx src/PCPlayState.as runtime/qa-isolated-delta.unix.txt
+          apk=runtime/dist/emulator-qa/SLF-emulator-x64.apk
+          test -f "$apk"
+          actual="$(sha256sum "$apk" | cut -d' ' -f1)"
+          grep -Fx "apk_sha256=$actual" runtime/qa-isolated-identity.unix.txt
+          test "$(stat -c %s "$apk")" -gt 15000000
+          echo "QA-only APK SHA256: $actual"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: QA-only original Management25 moving block actual runtime recheck
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: python3 qa/mechanics_management25_probe.py
+      - name: Preserve screenshots and actual QA observer states
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-management25-real-block-recheck
+          path: isolated-management25-evidence
+          if-no-files-found: warn
