@@ -30,7 +30,7 @@ The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **3
 | Checkpoint and restart | Level 5 (also 21–22, 25, 27, 30, 36) | SOURCE/MAP checkpoint objects and tutorial, no live respawn proof | One checkpoint→death→respawn example |
 | Moving platform, triggered platform | Levels 1/13 | SOURCE/MAP; level 13 explicitly teaches landing-triggered movement | One moving and one triggered-platform observation |
 | Collectible bottle/sugar/lives, persistence | Level 1 and Level 9 | SOURCE/MAP; level 9 explains collected bottle turns orange | One bottle+revisit or save/reload proof |
-| Pause/resume and menu restart | Level 11 or any level | SOURCE/MAP Level 11 help prompt; separate Q5 workflows exist | One runtime demonstration or existing verified equivalent |
+| Pause/resume and menu restart | Level 11 or any level | Source + **isolated QA emulator PAUSE/FREEZE/RESUME PASS** CI38491390824 on original Warehouse1 map; normal P control; touch and exact shipping remain separate | Done: specific pause/freeze/resume via normal P in original map QA emulator; physical/touch gate still open |
 | Real level completion and unlock | Any representative naturally solved stage | Strict `levelFinished && levelOverMenu && both alive` classifier. No current natural Level2 win. New isolated QA Level1 movement/jump/switch/double-jump success DOES NOT change authentic progression status. | At least one real finish, Next Level transition, reopen/relaunch persistence |
 | Factory chapter title, geometry, mechanic variety | Level 13 / sample 16–22 | SOURCE/MAP reviewed | Enter chapter normally; inspect, exercise at least one unique feature |
 | Management chapter title, geometry, mechanic variety | Level 25 / sample 27–36 | SOURCE/MAP reviewed | Enter chapter normally; inspect, exercise at least one unique feature |
@@ -43,6 +43,12 @@ The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **3
 - **38488276112** (commit 6d1b47ca): source-confirmed Y cinematic skip (PCCinematicState.as) was issued via adb shell input keyevent KEYCODE_Y. Sequential screenshots remained on the opening dialogue. This emulator injection method has not proved the Y control was received; no real gameplay-state snapshot was produced. Product verdict: INCONCLUSIVE, not RED. The cinematic itself loaded correctly.
 - **Stop-loss triggered:** screen-navigation/input dispatch is the repeated failure, not a demonstrated game mechanics regression. Do not queue another UI pixel classifier or cutscene-input permutation merely to make CI green. Choose a different bounded evidence path for unproven mechanics, distinguishing isolated QA-only scene evidence from authentic unlock/persistence, or obtain actual Fold/manual user-input evidence. Never edit saves, grant synthetic unlocks, teleport, alter physics, or force completion to claim release progression.
 - **Current status:** piggyback, triggered moving platform, checkpoint/respawn, collectible persistence, pause/restart, real finish→unlock, later chapter rendering remain unverified at this cutoff. Previous genuine Level2 mechanics evidence remains valid. No new product RED.
+
+## 2026-10-14 pause/freeze/resume observed in independent input run
+
+- **CI38491390824 SUCCESS**, same exact clean QA-Rev52 observation APK as CI38490845197, no source rebuild. Original authored Warehouse Level1 loaded through explicit QA-only entry. Actual normal hardware P input caused `paused:false → true`, genuine rendered PAUSED overlay and Restart/To Menu buttons; while paused RIGHT input left Andre `p1x=20→20` over a bounded observed interval. Second P resumed `paused:true → false`; ordinary RIGHT advanced Andre `p1x=20→93.92` alive. Both players remained alive and no Level Complete was claimed.
+- ZIP GitHub artifact **11862061923**, 179,597 bytes, SHA256 `6f8bc18dc7ea756534ae0f05601b1abb0291a30b9e25a39231de1cbb0493f42a`, saved in Drive ARTIFACTS **`1m_DyFkwhTAmV9PVimiC4V8xqMB-T_nXs`**, independently cold-hash matched and CRC verified.
+- Upgrade **pause → input freezes → resume → input responsive** to **ISOLATED ORIGINAL-MAP EMULATOR OBSERVED**. Do not mistake it for touch-specific pause/real Fold/Play-delivered/cross-process persistence proof.
 
 ## 2026-10-14 ACTUAL isolated-Rev52-mechanics runtime result
 
