@@ -69,24 +69,24 @@ package
 		
 		
 		// QA-ONLY ISOLATED SCENE ENTRY. NOT SHIPPING, NOT PROGRESSION PROOF.
-		// Directly enter original authored Warehouse Level 1 without title/menu
+		// Directly enter original authored Management Level 32 without title/menu
 		// and its cinematic. This neither changes the map/physics/saves nor
 		// grants completion/unlocks. Inputs and actual mechanics remain real.
 		// Delete this complete block before ANY candidate promotion.
-		private function qaEnterUnmodifiedWarehouseLevel8():void
+		private function qaEnterUnmodifiedManagementLevel32():void
 		{
-			Registry.levelType = 1;
+			Registry.levelType = 3;
 			Registry.levelNumber = 8;
 			Registry.playersNo = 1;
 			Registry.hardCore = false;
 			Registry.oldSchoolMode = false;
-			Registry.level = XML(new Registry.Level8);
+			Registry.level = XML(new Registry.Level32);
 			FlxG.switchState(new PCPlayState());
 		}
 
 		override public function create():void
 		{
-			qaEnterUnmodifiedWarehouseLevel8();
+			qaEnterUnmodifiedManagementLevel32();
 			return;
 			
 			Registry.oldSchoolMode = false;
