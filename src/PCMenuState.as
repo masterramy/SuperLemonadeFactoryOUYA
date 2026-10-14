@@ -68,25 +68,25 @@ package
 		private var headingTxt:FlxText;
 		
 		
-		// QA-ONLY ISOLATED SCENE ENTRY ORIGINAL FACTORY LEVEL13. NOT SHIPPING. NO PROGRESSION PROOF.
-		// Directly enter original authored Factory Chapter stage 13 gameplay without level selection
+		// QA-ONLY ISOLATED SCENE ENTRY ORIGINAL MANAGEMENT LEVEL25. NOT SHIPPING. NO PROGRESSION PROOF.
+		// Directly enter original authored Management Chapter stage 25 gameplay without level selection
 		// and its cinematic. This neither changes the map/physics/saves nor
 		// grants completion/unlocks. Inputs and actual mechanics remain real.
 		// Delete this complete block before ANY candidate promotion.
-		private function qaEnterUnmodifiedFactoryStage13():void
+		private function qaEnterUnmodifiedManagementStage25():void
 		{
-			Registry.levelType = 2;
+			Registry.levelType = 3;
 			Registry.levelNumber = 1;
 			Registry.playersNo = 1;
 			Registry.hardCore = false;
 			Registry.oldSchoolMode = false;
-			Registry.level = XML(new Registry.Level13);
+			Registry.level = XML(new Registry.Level25);
 			FlxG.switchState(new PCPlayState());
 		}
 
 		override public function create():void
 		{
-			qaEnterUnmodifiedFactoryStage13();
+			qaEnterUnmodifiedManagementStage25();
 			return;
 			
 			Registry.oldSchoolMode = false;
