@@ -73,20 +73,20 @@ package
 		// and its cinematic. This neither changes the map/physics/saves nor
 		// grants completion/unlocks. Inputs and actual mechanics remain real.
 		// Delete this complete block before ANY candidate promotion.
-		private function qaEnterUnmodifiedWarehouseLevel1():void
+		private function qaEnterUnmodifiedWarehouseLevel8():void
 		{
 			Registry.levelType = 1;
-			Registry.levelNumber = 1;
+			Registry.levelNumber = 8;
 			Registry.playersNo = 1;
 			Registry.hardCore = false;
 			Registry.oldSchoolMode = false;
-			Registry.level = XML(new Registry.Level1);
+			Registry.level = XML(new Registry.Level8);
 			FlxG.switchState(new PCPlayState());
 		}
 
 		override public function create():void
 		{
-			qaEnterUnmodifiedWarehouseLevel1();
+			qaEnterUnmodifiedWarehouseLevel8();
 			return;
 			
 			Registry.oldSchoolMode = false;
