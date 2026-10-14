@@ -57,7 +57,7 @@ def main():
       and start.get("levelNumber")==1 and start.get("exitX",-1)>0
       and not g.is_death(start),{"levelType":start.get("levelType"),
           "levelNumber":start.get("levelNumber"),"exitX":start.get("exitX")})
-    check("authored_platforms_present",start.get("movingPlatformCount",0)>=2,
+    check("authored_platforms_present",int(start.get("movingPlatformCount",0))>=2,
       {"count":start.get("movingPlatformCount"),
        "platformX":start.get("movingPlatformX"),
        "platformY":start.get("movingPlatformY")})
