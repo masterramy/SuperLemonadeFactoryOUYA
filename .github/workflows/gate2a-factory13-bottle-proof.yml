@@ -1,0 +1,127 @@
+name: Gate2A QA Original Factory13 Bottle Pickup
+on:
+  push:
+    branches: [qa/gate2a-factory13-real-bottle-pickup]
+    paths:
+      - src/PCMenuState.as
+      - src/PCPlayState.as
+      - qa/mechanics_factory13_bottle.py
+      - .github/workflows/gate2a-factory13-bottle-proof.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-qa-apk:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      PRODUCT_COMMIT: 0d5fd0bb63558ad6659ba31552deaede4745382b
+      SLF_NO_PAUSE: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+      - name: Guard QA-only Factory13 source delta, never confuse with shipping
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git cat-file -e "$env:PRODUCT_COMMIT^{commit}"
+          if($LASTEXITCODE -ne 0){ throw 'Missing canonical Rev52 commit' }
+          $paths=@(git diff --name-only "$env:PRODUCT_COMMIT..HEAD" -- src data application.xml BUILD_ANDROID_VALIDATION.bat BUILD_ANDROID_PRODUCTION.bat tools)
+          $bad=@($paths | Where-Object { $_ -notin @('src/PCPlayState.as','src/PCMenuState.as') })
+          if($bad.Count -gt 0){throw "Unexpected shipping-byte delta: $($bad -join ', ')"}
+          if($paths -notcontains 'src/PCMenuState.as' -or $paths -notcontains 'src/PCPlayState.as'){throw 'Missing QA-only entry or read-only observer'}
+          $menu=Get-Content -Raw src/PCMenuState.as
+          $observer=Get-Content -Raw src/PCPlayState.as
+          if(-not $menu.Contains('qaEnterUnmodifiedFactoryStage13')){throw 'Not the QA Factory13 entry'}
+          if(-not $observer.Contains('observationOnly=true') -or -not $observer.Contains('hasCollectedCap=') -or -not $observer.Contains('bottleAlive=')){throw 'Missing read-only collectible observer'}
+          $paths | Set-Content qa-isolated-delta.txt
+          "source_identity=QA_ISOLATED__NOT_SHIPPING_OR_NATURAL_UNLOCK" | Set-Content qa-isolated-identity.txt
+          "shipping_product=$env:PRODUCT_COMMIT" | Add-Content qa-isolated-identity.txt
+          "qa_head=$(git rev-parse HEAD)" | Add-Content qa-isolated-identity.txt
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - name: Ensure Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME }
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($null -eq $sdk){ $sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat' } else { $sdkPath=$sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){throw 'Android SDK failure'}
+          Remove-Item -LiteralPath AIRSDK_Windows.zip -Force -ErrorAction SilentlyContinue
+      - name: Build exact QA-only original map x64 runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File tools/build-emulator-apk.ps1
+          if($LASTEXITCODE -ne 0){throw "QA apk build failed: $LASTEXITCODE"}
+          $apk='dist/emulator-qa/SLF-emulator-x64.apk'
+          if(-not(Test-Path $apk)){throw 'Missing QA APK'}
+          $h=(Get-FileHash -Algorithm SHA256 $apk).Hash.ToLowerInvariant()
+          "apk_sha256=$h" | Add-Content qa-isolated-identity.txt
+          "apk_bytes=$((Get-Item $apk).Length)" | Add-Content qa-isolated-identity.txt
+          Get-Content qa-isolated-identity.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-factory13-bottle-qa-apk
+          path: |
+            dist/emulator-qa/SLF-emulator-x64.apk
+            qa-isolated-identity.txt
+            qa-isolated-delta.txt
+          if-no-files-found: error
+  mechanics:
+    needs: isolated-qa-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Pure QA test suite
+        run: |
+          python3 -m pip install --quiet Pillow==11.3.0
+          python3 -m py_compile qa/mechanics_factory13_bottle.py
+          PYTHONPATH=qa python3 -m unittest -v qa.test_progress_guard
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gate2a-factory13-bottle-qa-apk
+          path: runtime
+      - name: Verify correct QA identity and artifact
+        run: |
+          set -euo pipefail
+          tr -d '\r' < runtime/qa-isolated-identity.txt > runtime/qa-isolated-identity.unix.txt
+          tr -d '\r' < runtime/qa-isolated-delta.txt > runtime/qa-isolated-delta.unix.txt
+          grep -Fx 'source_identity=QA_ISOLATED__NOT_SHIPPING_OR_NATURAL_UNLOCK' runtime/qa-isolated-identity.unix.txt
+          grep -Fx src/PCMenuState.as runtime/qa-isolated-delta.unix.txt
+          grep -Fx src/PCPlayState.as runtime/qa-isolated-delta.unix.txt
+          sha256sum runtime/dist/emulator-qa/SLF-emulator-x64.apk
+          actual="$(sha256sum runtime/dist/emulator-qa/SLF-emulator-x64.apk | cut -d' ' -f1)"
+          grep -Fx "apk_sha256=$actual" runtime/qa-isolated-identity.unix.txt
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Real original Factory13 bottle pickup observation, QA-only
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: python3 qa/mechanics_factory13_bottle.py
+      - name: Retain true observations even if QA inconclusive
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate2a-factory13-bottle-evidence
+          path: qa-factory13-bottle-evidence
+          if-no-files-found: warn
