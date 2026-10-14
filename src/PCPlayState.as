@@ -466,6 +466,29 @@ package
 					}
 				}
 
+            // QA-only read-only observed first *authored* moving platform.
+            // Moving sprites are already in levelBlocks; do not alter path, x,
+            // y, velocity, collision or any gameplay state.
+            var qaMovingX:Number = -1;
+            var qaMovingY:Number = -1;
+            var qaMovingCount:int = 0;
+            if (levelBlocks != null && levelBlocks.members != null)
+            {
+                for each (var qaCandidate:FlxBasic in levelBlocks.members)
+                {
+                    var qaPlatform:FlxSprite = qaCandidate as FlxSprite;
+                    if (qaPlatform != null && qaPlatform.path != null)
+                    {
+                        qaMovingCount++;
+                        if (qaMovingCount == 1)
+                        {
+                            qaMovingX = qaPlatform.x;
+                            qaMovingY = qaPlatform.y;
+                        }
+                    }
+                }
+            }
+
             // QA-only movable-crate positions; never modify game state.
             var qaCrate:Crate = null;
             if (crates != null && crates.members != null &&
@@ -496,6 +519,9 @@ package
 					"armyX=" + (army != null ? army.x.toFixed(2) : "-1.00") + "\n" +
 					"armyY=" + (army != null ? army.y.toFixed(2) : "-1.00") + "\n" +
 					"armyVx=" + (army != null ? army.velocity.x.toFixed(2) : "0.00") + "\n" +
+                    "movingPlatformCount=" + qaMovingCount + "\\n" +
+                    "movingPlatformX=" + qaMovingX.toFixed(2) + "\\n" +
+                    "movingPlatformY=" + qaMovingY.toFixed(2) + "\\n" +
                     "crateX=" + (qaCrate != null ? qaCrate.x.toFixed(2) : "-1.00") + "\n" +
                     "crateY=" + (qaCrate != null ? qaCrate.y.toFixed(2) : "-1.00") + "\n" +
 					"exitX=" + exitX.toFixed(2) + "\n" +
