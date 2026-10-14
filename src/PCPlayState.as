@@ -506,6 +506,12 @@ package
                 }
             }
 
+            // QA ONLY: patrol positioning is observation, never steering.
+            var qaEnemy:FlxSprite = null;
+            if (enemies != null && enemies.members != null &&
+                enemies.members.length > 0 && enemies.members[0] != null)
+                qaEnemy = enemies.members[0] as FlxSprite;
+
             // QA-only movable-crate positions; never modify game state.
             var qaCrate:Crate = null;
             if (crates != null && crates.members != null &&
@@ -542,6 +548,8 @@ package
                     "p2CheckpointY=" + player2.checkPointValue.y.toFixed(2) + "\n" +
                     "andreCheckpointChecked=" + qaAndreChecked + "\n" +
                     "liselotCheckpointChecked=" + qaLiselotChecked + "\n" +
+                    "enemy0X=" + (qaEnemy != null ? qaEnemy.x.toFixed(2) : "-1.00") + "\n" +
+                    "enemy0Y=" + (qaEnemy != null ? qaEnemy.y.toFixed(2) : "-1.00") + "\n" +
                     "p1Lives=" + _hud.mLives + "\n" +
                     "p2Lives=" + _hud.fLives + "\n" +
                     "timeLeft=" + Registry.timeLeft.toFixed(2) + "\n" +
