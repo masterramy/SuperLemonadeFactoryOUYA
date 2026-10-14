@@ -183,7 +183,14 @@ def main():
         verdict("respawn","INCONCLUSIVE_DEATH_OBSERVED_BUT_RESPAWN_NOT_PROVEN")
 
 if __name__=="__main__":
-    try:main()
+    try:
+        main()
+        # FAIL CLOSED: stage launch or a mere input script cannot yield GREEN.
+        # A green job requires BOTH original checkpoint activation AND
+        # genuine death followed by original respawn at the checkpoint.
+        if (R["verdict"].get("checkpoint")!="OBSERVED_ORIGINAL_LISELOT_ACTIVATION"
+            or R["verdict"].get("respawn")!="OBSERVED_ORIGINAL_CHECKPOINT_RESPAWN_EMULATOR_ONLY"):
+            raise RuntimeError("QA evidence incomplete; runtime mechanic INCONCLUSIVE, not a game defect")
     except Exception as exc:
         R["error"]={"message":str(exc),"traceback":traceback.format_exc()}
         (OUT/"verdict.json").write_text(json.dumps(R,indent=2),encoding="utf8")
