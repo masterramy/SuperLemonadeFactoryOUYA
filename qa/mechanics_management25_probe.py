@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """QA ONLY original Management stage25 and moving-platform proof.
 
-The app's original authored Level13 data/physics are unchanged. QA-only
-menu hook starts stage13 (normally preceded by a story cutscene); the tester
+The app's original authored Level25 data/physics are unchanged. QA-only
+menu hook starts stage25 (normally preceded by a story cutscene); the tester
 never edits progress or grants completion. No inference about natural Factory
 unlock, exact release binary, or physical touch controls.
 """
@@ -30,7 +30,7 @@ def snap(name):
 def check(label,passed,details):
     S["checks"][label]={"passed":bool(passed),"details":details}
     (OUT/"results.json").write_text(json.dumps(S,indent=2),encoding="utf8")
-    if not passed:raise RuntimeError(f"QA stage13 {label} inconclusive: {details}")
+    if not passed:raise RuntimeError(f"QA stage25 {label} inconclusive: {details}")
 
 def main():
     g.OUT=OUT
@@ -53,7 +53,7 @@ def main():
     g.locate_state()
     g.wait_for_level(1,30)
     start=snap("01-original-management25-entry")
-    check("correct_authored_factory_chapter",start.get("levelType")==3
+    check("correct_authored_management_chapter",start.get("levelType")==3
       and start.get("levelNumber")==1 and start.get("exitX",-1)>0
       and not g.is_death(start),{"levelType":start.get("levelType"),
           "levelNumber":start.get("levelNumber"),"exitX":start.get("exitX")})
