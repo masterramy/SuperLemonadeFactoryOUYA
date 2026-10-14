@@ -1,7 +1,7 @@
 name: Gate2A Isolated Scene Runtime Retest No Rebuild
 on:
   push:
-    branches: [qa/gate2a-direct-scene-clean]
+    branches: [qa/gate2a-direct-scene-input-fixed]
     paths: [.github/workflows/gate2a-isolated-scene-runtime-retest.yml]
   workflow_dispatch:
 permissions:
