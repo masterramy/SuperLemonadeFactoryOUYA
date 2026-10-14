@@ -557,6 +557,8 @@ package
                     "liselotCheckpointChecked=" + qaLiselotChecked + "\n" +
                     "enemy0X=" + (qaEnemy != null ? qaEnemy.x.toFixed(2) : "-1.00") + "\n" +
                     "enemy0Y=" + (qaEnemy != null ? qaEnemy.y.toFixed(2) : "-1.00") + "\n" +
+                    "hasTalkedToEnemy=" + hasTalkedToEnemy + "\n" +
+                    "hasTalkedToAndre=" + hasTalkedToAndre + "\n" +
                     "p1Lives=" + _hud.mLives + "\n" +
                     "p2Lives=" + _hud.fLives + "\n" +
                     "timeLeft=" + Registry.timeLeft.toFixed(2) + "\n" +
