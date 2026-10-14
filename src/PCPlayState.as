@@ -503,6 +503,8 @@ package
 					"levelFinished=" + levelFinished + "\n" +
 					"levelOverMenu=" + __levelOver + "\n" +
 					"paused=" + FlxG.paused + "\n" +
+                    "talkedToAndre=" + hasTalkedToAndre + "\n" +
+                    "talkedToEnemy=" + hasTalkedToEnemy + "\n" +
 					"observationOnly=true\n";
 
 				var qaDir:File = File.applicationStorageDirectory.resolvePath("SUPERLEMONADEFACTORY");
