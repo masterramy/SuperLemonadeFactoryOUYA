@@ -519,6 +519,18 @@ package
                 enemies.members.length > 0 && enemies.members[0] != null)
                 qaEnemy = enemies.members[0] as FlxSprite;
 
+            // QA ONLY: observe original SoftDrink object and pickup result.
+            // Read-only; do not kill, revive, relocate or mark collectibles.
+            var qaBottle:SoftDrink = null;
+            if (pickUps != null && pickUps.members != null)
+            {
+                for each (var qaPickCandidate:FlxBasic in pickUps.members)
+                {
+                    var qaDrink:SoftDrink = qaPickCandidate as SoftDrink;
+                    if (qaDrink != null) { qaBottle = qaDrink; break; }
+                }
+            }
+
             // QA-only movable-crate positions; never modify game state.
             var qaCrate:Crate = null;
             if (crates != null && crates.members != null &&
@@ -557,6 +569,10 @@ package
                     "liselotCheckpointChecked=" + qaLiselotChecked + "\n" +
                     "enemy0X=" + (qaEnemy != null ? qaEnemy.x.toFixed(2) : "-1.00") + "\n" +
                     "enemy0Y=" + (qaEnemy != null ? qaEnemy.y.toFixed(2) : "-1.00") + "\n" +
+                    "hasCollectedCap=" + hasCollectedCap + "\n" +
+                    "bottleAlive=" + (qaBottle != null ? qaBottle.alive : false) + "\n" +
+                    "bottleX=" + (qaBottle != null ? qaBottle.x.toFixed(2) : "-1.00") + "\n" +
+                    "bottleY=" + (qaBottle != null ? qaBottle.y.toFixed(2) : "-1.00") + "\n" +
                     "p1Lives=" + _hud.mLives + "\n" +
                     "p2Lives=" + _hud.fLives + "\n" +
                     "timeLeft=" + Registry.timeLeft.toFixed(2) + "\n" +
