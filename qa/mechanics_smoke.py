@@ -82,18 +82,21 @@ def main():
             return d
         return None
 
-    # Only a bounded number of normal story-advance actions. Every attempted
-    # transition has a screenshot and last-known state receipt; if still no
-    # actual Level 1, fail INCONCLUSIVE, not product broken.
+    # Source-confirmed normal cinematic control: PCCinematicState.as uses
+    # FlxG.keys.justPressed("Y") to fade and load PCPlayState, as advertised
+    # on the actual rendered "PRESS Y TO SKIP CUT SCENE" UI. The prior run
+    # 38487820204 captured nine authentic story frames; X only advanced text.
+    # One ordinary Y skip is appropriate and is NOT synthetic progression.
+    screenshot("level1-before-ordinary-Y-cinematic-skip")
+    g.shell("input keyevent KEYCODE_Y")
+    time.sleep(5)
     d=None
-    for probe in range(9):
+    for probe in range(7):
         d=observed_level1()
-        screenshot(f"level1-navigation-{probe:02d}")
+        screenshot(f"level1-post-Y-skip-{probe:02d}")
         if d:
             break
-        if probe in (1,3,5,7):
-            g.tap("X")
-        time.sleep(2)
+        time.sleep(1.5)
     if d is None:
         raise RuntimeError("QA navigation inconclusive: Level 1 read-only gameplay state never observed; inspect sequential navigation PNGs, do not call game mechanic RED.")
     g.STATE_PATH=g.STATE_PATH
