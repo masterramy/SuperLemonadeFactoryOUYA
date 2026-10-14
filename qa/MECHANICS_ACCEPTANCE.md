@@ -37,6 +37,13 @@ The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **3
 | Air dash | Level 32 | SOURCE/MAP explicit tutorial | One real airborne X/action response |
 | Later-level breadth | Map definitions 1–36 sequentially scanned | SOURCE/MAP, representative mechanics recur | Representative load/render checks, not all levels cleared pixel-by-pixel |
 
+## 2026-10-14 bounded Level 1 navigation investigation — STOP-LOSS
+
+- **38487820204** (commit b5a0b6e8): genuine fresh Level 1 entry reached the Warehouse story cinematic, not gameplay. Nine chronological screenshots show multiple distinct authentic dialogue lines responding to ordinary X input. Failure was a QA cutoff before the cinematic finished, not a gameplay mechanic failure. Full screenshots resolved the false level-select classification.
+- **38488276112** (commit 6d1b47ca): source-confirmed Y cinematic skip (PCCinematicState.as) was issued via adb shell input keyevent KEYCODE_Y. Sequential screenshots remained on the opening dialogue. This emulator injection method has not proved the Y control was received; no real gameplay-state snapshot was produced. Product verdict: INCONCLUSIVE, not RED. The cinematic itself loaded correctly.
+- **Stop-loss triggered:** screen-navigation/input dispatch is the repeated failure, not a demonstrated game mechanics regression. Do not queue another UI pixel classifier or cutscene-input permutation merely to make CI green. Choose a different bounded evidence path for unproven mechanics, distinguishing isolated QA-only scene evidence from authentic unlock/persistence, or obtain actual Fold/manual user-input evidence. Never edit saves, grant synthetic unlocks, teleport, alter physics, or force completion to claim release progression.
+- **Current status:** piggyback, triggered moving platform, checkpoint/respawn, collectible persistence, pause/restart, real finish→unlock, later chapter rendering remain unverified at this cutoff. Previous genuine Level2 mechanics evidence remains valid. No new product RED.
+
 ## Active QA runs
 
 - Original slow route runner `qa/rev52-observed-playthrough`: diagnostic source for prior successful mechanics; **not** a release readiness gate by itself. Repeated controller precision failures must not monopolize work.
