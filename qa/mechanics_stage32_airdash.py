@@ -22,12 +22,13 @@ report = {
                "not real Fold hardware or touchscreen parity"]
 }
 
-def record(label):
+def record(label, capture=True):
     st = g.state()
     report["observations"].append({"label": label, "state": st})
     with (OUT / "state-trace.jsonl").open("a", encoding="utf8") as f:
         f.write(json.dumps({"label": label, "state": st}, sort_keys=True) + "\n")
-    g.screenshot(label)
+    if capture:
+        g.screenshot(label)
     (OUT / "results.json").write_text(json.dumps(report, indent=2), encoding="utf8")
     return st
 
@@ -72,7 +73,9 @@ def main():
     time.sleep(.11)
     g.ev(g.KEY["C"], False)
     time.sleep(.04)
-    airborne = record("03-after-real-C-jump")
+    # Do NOT screenshot before the X input: screenshot latency can let
+    # the short original jump land and falsely invalidate an air-dash.
+    airborne = record("03-after-real-C-jump", capture=False)
     is_airborne = (float(airborne["p1y"]) < float(initial["p1y"]) - 4
                    and float(airborne["p1vy"]) < 0
                    and not g.is_death(airborne))
@@ -96,11 +99,17 @@ def main():
     after = record("05-dash-released")
 
     dash_velocity = abs(float(during.get("p1vx", 0)))
+    baseline_velocity = abs(float(airborne.get("p1vx", 0)))
     displacement = abs(float(during.get("p1x", 0)) - float(airborne["p1x"]))
     really_airborne_at_dash = float(during["p1y"]) < float(initial["p1y"]) - 3
-    dash_pass = (really_airborne_at_dash and dash_velocity >= 330
+    # PlayerMale.update sets +/-500 on X, but FlxObject.postUpdate
+    # clamps read-only final velocity to Character.maxVelocity.x=210.
+    # Compare against normal baseline, not unreachable 500 telemetry.
+    dash_pass = (really_airborne_at_dash and dash_velocity >= 180
+                 and dash_velocity > baseline_velocity + 100
                  and displacement > 8 and not g.is_death(during))
     report["conclusions"]["dash_speed_during_real_X"] = dash_velocity
+    report["conclusions"]["pre_dash_speed"] = baseline_velocity
     report["conclusions"]["airborne_during_X"] = really_airborne_at_dash
     report["conclusions"]["dash_displacement"] = displacement
     report["conclusions"]["airdash"] = ("OBSERVED_PASS_ISOLATED_QA_EMULATOR"
