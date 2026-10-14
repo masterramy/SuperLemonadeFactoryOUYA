@@ -68,8 +68,26 @@ package
 		private var headingTxt:FlxText;
 		
 		
+		// QA-ONLY ISOLATED SCENE ENTRY. NOT SHIPPING, NOT PROGRESSION PROOF.
+		// Directly enter original authored Warehouse Level 1 without title/menu
+		// and its cinematic. This neither changes the map/physics/saves nor
+		// grants completion/unlocks. Inputs and actual mechanics remain real.
+		// Delete this complete block before ANY candidate promotion.
+		private function qaEnterUnmodifiedWarehouseLevel1():void
+		{
+			Registry.levelType = 1;
+			Registry.levelNumber = 1;
+			Registry.playersNo = 1;
+			Registry.hardCore = false;
+			Registry.oldSchoolMode = false;
+			Registry.level = XML(new Registry.Level1);
+			FlxG.switchState(new PCPlayState());
+		}
+
 		override public function create():void
 		{
+			qaEnterUnmodifiedWarehouseLevel1();
+			return;
 			
 			Registry.oldSchoolMode = false;
 			
