@@ -20,18 +20,18 @@ The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **3
 
 | Mechanic family | Representative scene | Evidence at current cutoff | Required for signoff |
 |---|---|---|---|
-| Startup, title typography, UI navigation | Rev52 title at 1920/2560, Warehouse level-select | Title screenshots PASS; Level2 selected through genuine UI | Verify new smoke Level1 selection |
+| Startup, title typography, UI navigation | Rev52 title at 1920/2560, Warehouse level-select | Title screenshots PASS; Level2 selected through genuine UI | Title/Level2 UI already old real-touch proved; isolated Level1 via QA hook now runtime observed but NATURAL Level1 launch remains separate |
 | Andre move, sustained jump, air dash | Level 2 | **OBSERVED** in real run38464588882 (x210→558; y479→382→439→399 during guard jump/dash); large-crate destruction still unproven | Only targeted breakable-crate test remains |
-| Liselot movement, switch, airborne leap | Level 2 | **OBSERVED** x580→1380→1314 across corridor; separately controlled from Andre; second-airborne-jump activation specifically still unproven | Only a direct double-jump assertion remains |
+| Liselot movement, switch, airborne leap | Level 2 | **OBSERVED** x580→1380→1314 across corridor; separately controlled from Andre; second-airborne-jump activation specifically still unproven | Direct second airborne upward-velocity impulse observed in QA isolated Level1 CI38490845197; exact-shipping/device parity remains |
 | Pushable small crate | Level 2 | **OBSERVED** fall left to x~714,y497 in real run 38464588882; other controller sequences pushed right. Game mechanic can work; route consistency is automation-quality issue | Do not repeat once satisfied absent product regression |
 | Soldier patrol and collision/death | Level 2 | **OBSERVED** patrol traversed alive in 38461623946, died on guard in 38472669676; read-only patrol observer. | Already sufficient basic guard-collision demonstration |
 | Spike hazard, recovery | Level 2/6 | **OBSERVED** Liselot crossed hazard corridor alive to x1380 in 38464588882; spike-kill and checkpoint revival still separate | One representative hazard/respawn check if needed |
-| Piggyback and interaction/talk | Levels 3–4 | SOURCE/MAP instructions present, no live proof | Targeted real input proof (one of 3 or 4) |
+| Piggyback and interaction/talk | Levels 3–4 | SOURCE/MAP instructions present, no live proof (QA-only original Level1 does not exercise B) | Targeted real input proof (one of 3 or 4) |
 | Checkpoint and restart | Level 5 (also 21–22, 25, 27, 30, 36) | SOURCE/MAP checkpoint objects and tutorial, no live respawn proof | One checkpoint→death→respawn example |
 | Moving platform, triggered platform | Levels 1/13 | SOURCE/MAP; level 13 explicitly teaches landing-triggered movement | One moving and one triggered-platform observation |
 | Collectible bottle/sugar/lives, persistence | Level 1 and Level 9 | SOURCE/MAP; level 9 explains collected bottle turns orange | One bottle+revisit or save/reload proof |
 | Pause/resume and menu restart | Level 11 or any level | SOURCE/MAP Level 11 help prompt; separate Q5 workflows exist | One runtime demonstration or existing verified equivalent |
-| Real level completion and unlock | Any representative naturally solved stage | Strict `levelFinished && levelOverMenu && both alive` classifier. No current natural Level2 win. | At least one real finish, Next Level transition, reopen/relaunch persistence |
+| Real level completion and unlock | Any representative naturally solved stage | Strict `levelFinished && levelOverMenu && both alive` classifier. No current natural Level2 win. New isolated QA Level1 movement/jump/switch/double-jump success DOES NOT change authentic progression status. | At least one real finish, Next Level transition, reopen/relaunch persistence |
 | Factory chapter title, geometry, mechanic variety | Level 13 / sample 16–22 | SOURCE/MAP reviewed | Enter chapter normally; inspect, exercise at least one unique feature |
 | Management chapter title, geometry, mechanic variety | Level 25 / sample 27–36 | SOURCE/MAP reviewed | Enter chapter normally; inspect, exercise at least one unique feature |
 | Air dash | Level 32 | SOURCE/MAP explicit tutorial | One real airborne X/action response |
@@ -43,6 +43,14 @@ The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **3
 - **38488276112** (commit 6d1b47ca): source-confirmed Y cinematic skip (PCCinematicState.as) was issued via adb shell input keyevent KEYCODE_Y. Sequential screenshots remained on the opening dialogue. This emulator injection method has not proved the Y control was received; no real gameplay-state snapshot was produced. Product verdict: INCONCLUSIVE, not RED. The cinematic itself loaded correctly.
 - **Stop-loss triggered:** screen-navigation/input dispatch is the repeated failure, not a demonstrated game mechanics regression. Do not queue another UI pixel classifier or cutscene-input permutation merely to make CI green. Choose a different bounded evidence path for unproven mechanics, distinguishing isolated QA-only scene evidence from authentic unlock/persistence, or obtain actual Fold/manual user-input evidence. Never edit saves, grant synthetic unlocks, teleport, alter physics, or force completion to claim release progression.
 - **Current status:** piggyback, triggered moving platform, checkpoint/respawn, collectible persistence, pause/restart, real finish→unlock, later chapter rendering remain unverified at this cutoff. Previous genuine Level2 mechanics evidence remains valid. No new product RED.
+
+## 2026-10-14 ACTUAL isolated-Rev52-mechanics runtime result
+
+- **Run38490845197 SUCCESS**, source-verified isolated original Level1 from exact canonical Rev52 candidate `0d5fd0bb63558ad6659ba31552deaede4745382b`. Game data/physics/source are unchanged except the QA-only menu entry and read-only PCPlayState observation in the test APK. Runner uses the **two genuine X intro inputs** required by `PCIntroState.as` to reach the QA-only menu hook; it neither edits save/unlocks, teleports player positions, nor forces completion.
+- Six timestamped actual PlayState records and 8 rendered screenshots read end to end in evidence artifact **11862060943**: initial original Warehouse Level1, Andre x20→100.56 controlled real walk, held jump p1y499.11→449.66 with p1vy−225.92, V switch p1controlled true→false and p2controlled false→true, Liselot x20→73.76 with ordinary RIGHT. **Both alive, no finish.**
+- Female second airborne C press produced **observed distinct renewed upward impulse**, p2vy **−44.2 before → −224.2 after** while x remained 73.76, p2y165.57→119.27: a real double-jump response, not merely two sent keycodes. Upgrade *only the isolated QA emulator double-jump mechanic* to OBSERVED.
+- Exact evidence ZIP 449,447 bytes SHA256 `12ece39d5e243b30933f9bc9ca95fec81938017f99281c6e0ba8a2ebe62e7283` preserved in owning Drive ARTIFACTS ID `12EVHsl9dvQ3jdMkzWpcOPycG_Kx3bNkJ`. Cold-downloaded Drive copy hash equals originally fetched GitHub artifact; CRC PASS.
+- All these mechanics are **ISOLATED QA-EMULATOR OBSERVED** on an exact Rev52 gameplay-source-derived APK, not exact unmodified release APK, natural title/menu navigation, genuine completion/unlock persistence, physical device, or Play certification. Those stay separate gates.
 
 ## New QA-only execution lane: authored direct-scene smoke
 
