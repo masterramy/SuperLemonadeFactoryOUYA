@@ -59,6 +59,15 @@ def main():
     g.shell("wm dismiss-keyguard",check=False)
     g.shell(f"am start -W -n {g.PACKAGE}/.AIRAppEntry")
     time.sleep(8)
+    # PCIntroState.as (exact Rev52) counts two ordinary Action presses to
+    # enter PCMenuState. That menu has the QA-only direct scene entry.
+    # This deliberately avoids title/cinematic vision/tap classifiers.
+    g.screenshot("00-intro-before-two-normal-action-inputs")
+    g.tap("X")
+    time.sleep(.75)
+    g.tap("X")
+    time.sleep(3)
+    g.screenshot("00-after-normal-intro-actions")
     g.locate_state()
     d=g.wait_for_level(1,30)
     record("01-original-level1-loaded",d)
