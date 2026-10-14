@@ -489,6 +489,23 @@ package
                 }
             }
 
+            // QA ONLY: observe actual original checkpoint flags and each
+            // character's respawn position. Never set checked/reset/dead/lives.
+            var qaAndreChecked:Boolean = false;
+            var qaLiselotChecked:Boolean = false;
+            if (checkPoints != null && checkPoints.members != null)
+            {
+                for each (var qaCheckCandidate:FlxBasic in checkPoints.members)
+                {
+                    var qaCheck:CheckPoint = qaCheckCandidate as CheckPoint;
+                    if (qaCheck != null && qaCheck.checked)
+                    {
+                        if (qaCheck.type == 0) qaAndreChecked = true;
+                        else if (qaCheck.type == 1) qaLiselotChecked = true;
+                    }
+                }
+            }
+
             // QA-only movable-crate positions; never modify game state.
             var qaCrate:Crate = null;
             if (crates != null && crates.members != null &&
@@ -519,6 +536,15 @@ package
 					"armyX=" + (army != null ? army.x.toFixed(2) : "-1.00") + "\n" +
 					"armyY=" + (army != null ? army.y.toFixed(2) : "-1.00") + "\n" +
 					"armyVx=" + (army != null ? army.velocity.x.toFixed(2) : "0.00") + "\n" +
+                    "p1CheckpointX=" + player1.checkPointValue.x.toFixed(2) + "\n" +
+                    "p1CheckpointY=" + player1.checkPointValue.y.toFixed(2) + "\n" +
+                    "p2CheckpointX=" + player2.checkPointValue.x.toFixed(2) + "\n" +
+                    "p2CheckpointY=" + player2.checkPointValue.y.toFixed(2) + "\n" +
+                    "andreCheckpointChecked=" + qaAndreChecked + "\n" +
+                    "liselotCheckpointChecked=" + qaLiselotChecked + "\n" +
+                    "p1Lives=" + _hud.mLives + "\n" +
+                    "p2Lives=" + _hud.fLives + "\n" +
+                    "timeLeft=" + Registry.timeLeft.toFixed(2) + "\n" +
                     "movingPlatformCount=" + qaMovingCount + "\n" +
                     "movingPlatformX=" + qaMovingX.toFixed(2) + "\n" +
                     "movingPlatformY=" + qaMovingY.toFixed(2) + "\n" +
