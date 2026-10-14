@@ -50,6 +50,14 @@ The independent new Level 1 smoke attempts **38480810765**, **38481259245**, **3
 - ZIP GitHub artifact **11862061923**, 179,597 bytes, SHA256 `6f8bc18dc7ea756534ae0f05601b1abb0291a30b9e25a39231de1cbb0493f42a`, saved in Drive ARTIFACTS **`1m_DyFkwhTAmV9PVimiC4V8xqMB-T_nXs`**, independently cold-hash matched and CRC verified.
 - Upgrade **pause → input freezes → resume → input responsive** to **ISOLATED ORIGINAL-MAP EMULATOR OBSERVED**. Do not mistake it for touch-specific pause/real Fold/Play-delivered/cross-process persistence proof.
 
+## 2026-10-14 VERIFIED additional mechanic — P pause / freeze / resume
+
+- GitHub CI **38491390824 SUCCESS**, exact clean QA-only original Warehouse Level1 runtime derived from Rev52 product `0d5fd0bb63558ad6659ba31552deaede4745382b` using the same QA-only built APK as the isolated movement/jump proof; only the menu scene-entry and read-only PCPlayState observer diverge from production source. Script `qa/mechanics_pause_probe.py` on branch `qa/gate2a-direct-scene-pause-proof` @`10af5b5cd0cf0cf6e1414d1dda73992b727cf24f`.
+- Independently reviewed **5 sequential state records and five screenshots**: normal stage paused=false, pressing ordinary P produced paused=true; attempted RIGHT input left Andre **p1x20.0→20.0 while paused**; P resumed paused=false; new RIGHT input moved Andre **p1x20.0→93.92** with both players alive and no completion. Actual `pause-results.json` all four assertions true. Do not count merely having a pause icon or static code as this proof.
+- CRC-PASS original GitHub artifact **11862061923**, **179,597 bytes**, SHA256 **`6f8bc18dc7ea756534ae0f05601b1abb0291a30b9e25a39231de1cbb0493f42a`**. Uploaded and independently cold-downloaded identical ZIP in Gate2A Drive `ARTIFACTS`: **`1m_DyFkwhTAmV9PVimiC4V8xqMB-T_nXs`**.
+- Status: **OBSERVED PASS: isolated QA-emulator keyboard P pause/resume/gameplay freeze**. This does *not* establish mobile touch pause, exact unmodified release APK, native device, saved progress, legitimate Level2 completion, or release readiness.
+- Remaining distinct mechanics: piggyback/talk, checkpoint death→respawn, moving/triggered platforms, collectible/revisit, chapter 2/3 runtime, representative airborne dash, natural completion→unlock/restart saved.
+
 ## 2026-10-14 ACTUAL isolated-Rev52-mechanics runtime result
 
 - **Run38490845197 SUCCESS**, source-verified isolated original Level1 from exact canonical Rev52 candidate `0d5fd0bb63558ad6659ba31552deaede4745382b`. Game data/physics/source are unchanged except the QA-only menu entry and read-only PCPlayState observation in the test APK. Runner uses the **two genuine X intro inputs** required by `PCIntroState.as` to reach the QA-only menu hook; it neither edits save/unlocks, teleports player positions, nor forces completion.
