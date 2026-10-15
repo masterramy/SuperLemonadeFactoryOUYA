@@ -1,4 +1,4 @@
-SUPER LEMONADE FACTORY - WINDOWS SOURCE BUILD PACKAGE
+SUPER LIMEADE FACTORY - REV52 WINDOWS SOURCE BUILD PACKAGE
 
 QUICKEST TEST BUILD
 Double-click:
@@ -37,8 +37,18 @@ APK: dist\local-apk\LAST_BUILD_ERROR.txt
 AAB: dist\local-aab\LAST_BUILD_ERROR.txt
 
 SOURCE IDENTITY
-The package's gameplay/runtime source is pinned to the adaptive-touch + lime candidate:
-  runtime commit 4255f0aae89ec9ef31ea16471858b1ec1c48d728
-  runtime tree   372a480318cb475e62fb2bbbfe10665d52b10a0c
+The package's original game/branding source is pinned to the exact Rev52 candidate:
+  runtime commit 0d5fd0bb63558ad6659ba31552deaede4745382b
+  runtime tree   ba0cfae73f758b3d4c9157e1e496357faf59acda
 
 The surrounding source-package branch adds Windows build tooling only; it does not intentionally alter gameplay/runtime source beyond that runtime candidate.
+
+REV52 LOCAL ARCHIVE PROVENANCE FIX (October 14, 2026)
+The base Rev52 source ZIP retained obsolete builder source-tree pins.
+This independent QA release-tooling branch corrects only the local build wrapper
+and its readme; original gameplay, level assets, save behavior and app ID
+are UNCHANGED. The archive builder verifies all other original Rev52 tracked
+blobs remotely against GitHub's immutable commit tree before producing an AAB.
+Only a PRODUCTION-signed AAB with the owner-held UPLOAD certificate may go to Play.
+Do NOT upload disposable validation AABs to Google Play.
+No production release or public rollout is authorized by this tooling correction.
