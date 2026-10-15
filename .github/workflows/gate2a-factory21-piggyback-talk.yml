@@ -33,7 +33,7 @@ jobs:
           if($paths -notcontains 'src/PCMenuState.as' -or $paths -notcontains 'src/PCPlayState.as'){throw 'Missing QA-only entry or read-only observer'}
           $menu=Get-Content -Raw src/PCMenuState.as
           $observer=Get-Content -Raw src/PCPlayState.as
-          if(-not $menu.Contains('qaEnterUnmodifiedManagementLevel34')){throw 'Not the QA Factory21 entry'}
+          if(-not $menu.Contains('qaEnterUnmodifiedFactoryLevel21')){throw 'Not the QA Factory21 entry'}
           if(-not $observer.Contains('observationOnly=true') -or -not $observer.Contains('hasTalkedToAndre=') -or -not $observer.Contains('p1piggy=') -or -not $observer.Contains('p2piggy=')){throw 'Missing read-only conversation flag observer'}
           $paths | Set-Content qa-isolated-delta.txt
           "source_identity=QA_ISOLATED__NOT_SHIPPING_OR_NATURAL_UNLOCK" | Set-Content qa-isolated-identity.txt
