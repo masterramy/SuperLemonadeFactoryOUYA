@@ -33,7 +33,7 @@ def advance(which,target,label):
   s=snap(label+"-"+str(i), i==0 or i==9)
   if g.is_death(s):return None
   x=f(s,"p1x" if which==1 else "p2x")
-  if abs(x-target)<32:return s
+  if abs(x-target)<(14 if which==2 else 22):return s
   if x>target+60 or x<0:return None
   # Real original walk speed; bounded, no injected velocity/position
   g.hold("RIGHT" if x<target else "LEFT",min(.33,max(.09,abs(x-target)/220)))
