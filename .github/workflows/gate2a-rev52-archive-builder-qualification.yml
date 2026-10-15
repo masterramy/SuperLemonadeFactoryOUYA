@@ -89,6 +89,8 @@ jobs:
           Remove-Item -LiteralPath AIRSDK_Windows.zip -Force -ErrorAction SilentlyContinue
       - name: Build and verify exact-source extracted archive AAB with validation certificate only
         shell: pwsh
+        env:
+          GH_API_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
           $zip=Join-Path $env:RUNNER_TEMP 'slf-rev52-source.zip'
