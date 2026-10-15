@@ -53,14 +53,20 @@ def main():
  # The original Liselot start x620 on solid floor x560..770 top840.
  # Stage near x743 only, safely on the actual starting solid floor.
  state=snap("02-female-selected",True)
- for i in range(7):
+ for i in range(11):
   x=val(state,"p2x")
-  if 735<=x<=759:break
-  if x>765 or g.is_death(state):
-   verdict("board","INCONCLUSIVE_STAGING");return
-  g.hold("RIGHT",min(.32,max(.09,(743-x)/195)))
-  state=snap("03-authentic-right-on-solid-"+str(i))
- if not(728<=val(state,"p2x")<=764):
+  if 732<=x<=758:break
+  if g.is_death(state) or x>800:
+   verdict("board","INCONCLUSIVE_REAL_HAZARD_OR_OUT_OF_RANGE");return
+  if x>758:
+   # First CI38697063685: .29 sec overshot x686.13->771.69 alive
+   # before boarding. Ordinary reverse a small amount onto the solid;
+   # do NOT teleport, reset, or edit collision. Stop if correction fails.
+   g.hold("LEFT",.08)
+  else:
+   g.hold("RIGHT",min(.18,max(.045,(738-x)/330)))
+  state=snap("03-authentic-normal-input-on-solid-"+str(i))
+ if not(726<=val(state,"p2x")<=765 and not g.is_death(state)):
   verdict("board","INCONCLUSIVE_NOT_NEAR_AUTHORED_EDGE");return
  # Original second 40px-wide moving platform moves between x770..980
  # (read-only telemetry). Wait for its natural return toward its left end.
