@@ -68,25 +68,25 @@ package
 		private var headingTxt:FlxText;
 		
 		
-		// QA-ONLY ISOLATED SCENE ENTRY ORIGINAL MANAGEMENT LEVEL34. NOT SHIPPING. NO PROGRESSION PROOF.
-		// Directly enter original authored Management original authored global Level34 gameplay without level selection
+		// QA-ONLY ISOLATED SCENE ENTRY ORIGINAL FACTORY LEVEL21. NOT SHIPPING. NO PROGRESSION PROOF.
+		// Directly enter original authored Factory original global Level21 gameplay without level selection
 		// and its cinematic. This neither changes the map/physics/saves nor
 		// grants completion/unlocks. Inputs and actual mechanics remain real.
 		// Delete this complete block before ANY candidate promotion.
-		private function qaEnterUnmodifiedManagementLevel34():void
+		private function qaEnterUnmodifiedFactoryLevel21():void
 		{
-			Registry.levelType = 3;
-			Registry.levelNumber = 10;
+			Registry.levelType = 2;
+			Registry.levelNumber = 9;
 			Registry.playersNo = 1;
 			Registry.hardCore = false;
 			Registry.oldSchoolMode = false;
-			Registry.level = XML(new Registry.Level34);
+			Registry.level = XML(new Registry.Level21);
 			FlxG.switchState(new PCPlayState());
 		}
 
 		override public function create():void
 		{
-			qaEnterUnmodifiedManagementLevel34();
+			qaEnterUnmodifiedFactoryLevel21();
 			return;
 			
 			Registry.oldSchoolMode = false;
