@@ -73,7 +73,14 @@ function Get-GitBlobSha1AfterCrlfToLf([string]$Path) {
 function Verify-ArchiveSource {
   $treeUrl = "https://api.github.com/repos/$RepoFullName/git/trees/${FrozenTree}?recursive=1"
   try {
-    $remote = Invoke-RestMethod -Uri $treeUrl -Headers @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' }
+    # Public source verification is unchanged; optional ephemeral GitHub
+    # Actions read token avoids anonymous shared-runner rate limits.
+    # Never log/persist the token. Ordinary owner Windows builds need none.
+    $headers = @{ 'User-Agent'='SuperLemonadeFactory-LocalAABBuilder' }
+    if (-not [string]::IsNullOrWhiteSpace($env:GH_API_TOKEN)) {
+      $headers['Authorization'] = "Bearer $($env:GH_API_TOKEN)"
+    }
+    $remote = Invoke-RestMethod -Uri $treeUrl -Headers $headers
   } catch {
     throw "Could not verify the downloaded source archive against the frozen GitHub tree. Internet access to api.github.com is required for archive-mode provenance. $($_.Exception.Message)"
   }
