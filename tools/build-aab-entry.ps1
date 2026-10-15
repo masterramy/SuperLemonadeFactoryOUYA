@@ -10,8 +10,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$FrozenCommit = '4255f0aae89ec9ef31ea16471858b1ec1c48d728'
-$FrozenTree = '372a480318cb475e62fb2bbbfe10665d52b10a0c'
+$FrozenCommit = '0d5fd0bb63558ad6659ba31552deaede4745382b'
+$FrozenTree = 'ba0cfae73f758b3d4c9157e1e496357faf59acda'
 $RepoFullName = 'masterramy/SuperLemonadeFactoryOUYA'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
@@ -84,6 +84,7 @@ function Verify-ArchiveSource {
     'BUILD_AAB_VALIDATION.bat',
     'BUILD_AAB_PRODUCTION.bat',
     'tools/build-aab-entry.ps1',
+    'BUILD_WINDOWS_README.txt',
     'tools/bootstrap-local-toolchain.ps1',
     '.github/workflows/gate2a-windows-aab-builders-validation.yml'
   )
@@ -94,7 +95,8 @@ function Verify-ArchiveSource {
     'BUILD_ANDROID_PRODUCTION.bat',
     'BUILD_WINDOWS_README.txt',
     'tools/build-apk.ps1',
-    '.github/workflows/gate2a-adaptive-source-builders-validation.yml'
+    '.github/workflows/gate2a-adaptive-source-builders-validation.yml',
+    '.github/workflows/gate2a-rev52-archive-builder-qualification.yml'
   )
   $expected = @{}
   foreach ($entry in @($remote.tree)) {
