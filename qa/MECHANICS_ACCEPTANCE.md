@@ -2,6 +2,14 @@
 
 **2026-10-13 owner clarification.** The purpose is to establish that the shipped game *works as intended*, not to write an infallible AI speedrunner or tune movement timings pixel-by-pixel. A representative real-input demonstration is sufficient for recurring mechanics unless regression evidence requires more.
 
+## 2026-10-15 binary ABI/Play preflight — important exact Fold APK correction
+
+Read-only independent inspection of actual Rev52 build artifacts from GitHub Actions `38213530317`, source pin `0d5fd0bb63558ad6659ba31552deaede4745382b`. **The old standalone `SLF-validation.apk` is only `armeabi-v7a` (32-bit)**, despite correct versionName 1.9/package/versionCode. Samsung officially states Galaxy S24 onward excludes 32-bit-only Android apps, so **DO NOT tell the user to install that standalone Rev52 validation APK on their Samsung Galaxy Z Fold7**. This is an artifact architecture mismatch, not a proven engine defect. Source: https://docs.samsungknox.com/dev/knox-sdk/kbas/kba-1150-sunsetting-32-bit-app-support-on-samsung-devices/
+
+The **actual Rev52 `SLF-validation.aab` carries `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`**. Independently extracted the real `base/lib/arm64-v8a/libCore.so`, read its ELF PT_LOAD program headers, and confirmed both segment alignments exactly **16,384 bytes**. Original AAB 46,036,148 bytes SHA256 `f319f0848bb6a6ebc3320bc6eef3f2a41d41a67cd7748d39c0c7ed14404ba7e9`; original standalone APK 28,003,855 bytes SHA256 `0fc66634d4c1924bb800e1d75fd7ba2a793de70ff368989a65afca1261931b80`. Both ZIP CRC PASS.
+
+Further read-only source cross-check PASS: descriptor `com.ramybaheeg.slfport`, version 1.9, targetSdk36, `android:appCategory="game"`; `PlayState.as` requires BOTH players at exit to invoke `levelOver()`; `PCPlayState.as` completion writes next-level unlock, writes collectible flag when collected, closes save; level selection reloads both arrays. **This is source-wiring confidence only, NEVER runtime proof of natural victory/bottle persistence.** Existing validation bundle signer is disposable; NOT Play-upload signed and NEVER upload this file. Owner-only local production upload key/cert and Console are still gates. For Fold use a Play-delivered app-bundle split APK from an owner-signed internal track, or a newly built proper ARM64 standalone test APK (not yet delivered).
+
 ## Evidence rules
 - **OBSERVED**: genuine emulator inputs + actual rendered frames or read-only state response. Not merely an injected key or a green static unit test.
 - **SOURCE/MAP**: source or authored level evidence, useful to choose tests but **not** a runtime PASS.
