@@ -82,41 +82,12 @@ package
 			
 			FlxG.playMusic(Registry.SndEcho, 1.0);
 			
-			FlxG.bgColor = 0xffF8CB8F;
-			
-			//	Make the gradient retro looking and "chunky" with the chucnkSize parameter (here set to 4)
-			var gradient2:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, FlxG.height, [0xffcac5ac, 0xffdedbc3 , 0xffdfdcc4], 10 ); //0xffd6d3ba
-			gradient2.x = 0;
-			gradient2.y = 0;
-			add(gradient2);
-			
-			//Bubbles
-			var gibs:FlxEmitter = new FlxEmitter(0,FlxG.height);
-			gibs.setSize(FlxG.width,0);
-			gibs.setXSpeed(-15,15);
-			gibs.setYSpeed(-5,-20);
-			gibs.setRotation(0,0);
-			gibs.gravity = -20;
-			gibs.makeParticles(ImgLeaves,50,8,true,0);
-			add(gibs);
-			gibs.start(false, 0, 0.75);	
-			
-			bgBags = new FlxSprite(60, 0, ImgSugarBagsAndCrate);
-			bgBags.y = FlxG.height - bgBags.height;
-			add(bgBags);
-			
-			bgShelf = new FlxSprite(110, 110, ImgShelf);
-			bgShelf.x = FlxG.width - bgShelf.width;			
-			bgShelf.y = FlxG.height - bgShelf.height;
-			add(bgShelf);			
-			
-			// Stable static logo. The legacy CenterSlideFX reveal corrupts the logo
-			// after returning to this state on current AIR/Android.
-			var pic:FlxSprite = new FlxSprite(0, 0, Registry.ImgLogo);
-			pic.x = FlxG.width / 2 - pic.width / 2;
-			pic.y = (FlxG.height / 2 - pic.height / 2 ) - 100;
-			add(pic);
-			
+			FlxG.bgColor = 0xff102a16;
+			// Use the same native 640x360 pixel-art branding as the opening screen.
+			// This menu variant replaces the decorative TAP TO START area with
+			// a dedicated panel for genuine FlxButton controls below.
+			add(new FlxSprite(0, 0, Registry.ImgTitleMenu));
+
 			if (Registry.mouseEnabled)
 				FlxG.mouse.show();
 			else
@@ -124,46 +95,46 @@ package
 			
 			buttonsGroup = new FlxGroup();
 			
-			playBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 - 20 , "Play", this.onLevelSelect);
+			playBtn = new FlxButton(120, 291, "Play", this.onLevelSelect);
 			playBtn.soundOver = ping;
 			playBtn.soundDown = ping2;
-			playBtn.color = 0xC082FF;
+			playBtn.color = 0x48A936;
 			playBtn.label.color = 0xffffff;
 			buttonsGroup.add(playBtn);
 			
-			playBtn.highlightedText = "Factory Floor";
+			playBtn.highlightedText = "Play";
 			
 			playBtn.status = FlxButton.HIGHLIGHT;
 			
-			optionsBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 + 10, "options", this.onOptions );
+			optionsBtn = new FlxButton(224, 291, "options", this.onOptions );
 			optionsBtn.soundOver = ping;
 			optionsBtn.soundDown = ping2;
-			optionsBtn.color = 0xC082FF;
+			optionsBtn.color = 0x48A936;
 			optionsBtn.label.color = 0xffffff;
 			buttonsGroup.add(optionsBtn);	
-			optionsBtn.highlightedText = "Output Ratio";
+			optionsBtn.highlightedText = "Options";
 
-			helpBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 + 40, "help", this.onHelp);
+			helpBtn = new FlxButton(328, 291, "help", this.onHelp);
 			helpBtn.soundOver = ping;
 			helpBtn.soundDown = ping2;			
-			helpBtn.color = 0xC082FF;
+			helpBtn.color = 0x48A936;
 			helpBtn.label.color = 0xffffff;
 			buttonsGroup.add(helpBtn);			
-			helpBtn.highlightedText = "Customer Service";
+			helpBtn.highlightedText = "Help";
 
-			creditsBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 + 70, "credits", this.onCredits);
+			creditsBtn = new FlxButton(432, 291, "credits", this.onCredits);
 			creditsBtn.soundOver = ping;
 			creditsBtn.soundDown = ping2;
-			creditsBtn.color = 0xC082FF;
+			creditsBtn.color = 0x48A936;
 			creditsBtn.label.color = 0xffffff;
 			buttonsGroup.add(creditsBtn);
-			creditsBtn.highlightedText = "Ingredients";
+			creditsBtn.highlightedText = "Credits";
 			
 			
 			//oldSchoolBtn = new FlxButton(FlxG.width / 2 - 40, FlxG.height / 2 + 130, "old school", this.onOldSchool);
 			//oldSchoolBtn.soundOver = ping;
 			//oldSchoolBtn.soundDown = ping2;
-			//oldSchoolBtn.color = 0xC082FF;
+			//oldSchoolBtn.color = 0x48A936;
 			//oldSchoolBtn.label.color = 0xffffff;
 			//buttonsGroup.add(oldSchoolBtn);
 			//oldSchoolBtn.highlightedText = "3 Lives";
@@ -283,12 +254,12 @@ package
 			}
 			
 			headingTxt = new FlxText(FlxG.width/2 - 40 , FlxG.height-50, FlxG.width/2, "", true);
-			headingTxt.color = 0x8000FF;
+			headingTxt.color = 0xffffff;
 			headingTxt.size = 8;
 			headingTxt.alignment = "left";
 			add(headingTxt);
 			
-			headingTxt.text = "--FULL GAME UNLOCKED--\n" + headingTxt.text;
+			headingTxt.text = "";
 			
 //Get the version number
 			var xml : XML = NativeApplication.nativeApplication.applicationDescriptor;
@@ -298,7 +269,7 @@ package
 			////FlxG.log("Version " + version);
 			
 			versionText = new FlxText(-60 , FlxG.height-34, FlxG.width, "", true);
-			versionText.color = 0x8000FF;
+			versionText.color = 0xffffff;
 			versionText.size = 8;
 			versionText.alignment = "right";
 			versionText.text = "Version: " + version;
@@ -435,6 +406,34 @@ package
 			}
 		}		
 		
+		// Direct tap hit-testing for the four REAL menu buttons. This feeds the
+		// existing callbacks and does not modify gameplay touch/control routes.
+		public function activateMenuButtonAt(gameX:Number, gameY:Number):Boolean
+		{
+			if (fading) return true;
+			var items:Array = [playBtn, optionsBtn, helpBtn, creditsBtn];
+			for (var i:int = 0; i < items.length; i++)
+			{
+				var b:FlxButton = items[i] as FlxButton;
+				if (b != null && gameX >= b.x && gameX <= b.x + b.width &&
+					gameY >= b.y && gameY <= b.y + b.height)
+				{
+					fading = true;
+					currentButton = i;
+					FlxG.play(Registry.SndPing, Registry.pingVolume);
+					switch (i)
+					{
+						case 0: onLevelSelect(); break;
+						case 1: onOptions(); break;
+						case 2: onHelp(); break;
+						case 3: onCredits(); break;
+					}
+					return true;
+				}
+			}
+			return false;
+		}
+
 		public function onLevelSelect():void 
 		{
 			//FlxG.switchState(new PCLevelSelectState());

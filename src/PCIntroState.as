@@ -70,7 +70,10 @@ package
 			
 			//FlxG.camera.zoom = 1;
 				
-			FlxG.bgColor = 0xffd3bdb2;
+			FlxG.bgColor = 0xff102a16;
+			// Title art is drawn at the game's native 640x360, with real start input
+			// handled by the existing controller/mouse/touch logic below.
+			add(new FlxSprite(0, 0, Registry.ImgTitleIntro));
 			
 			logo = new FlxSprite(0, 0, Registry.ImgLogo);
 			logo.x = FlxG.width / 2 - logo.width / 2;
@@ -79,31 +82,37 @@ package
 			
 			andre = new FlxSprite(FlxG.width+200, 0, Registry.ImgAndre);
 			add(andre);
+			andre.visible = false;
 			andre.y = FlxG.height - andre.height + 60;
 			andre.drag.x = 2000;
 			andre.velocity.x = -1810;
 			
 			liselot = new FlxSprite(FlxG.width-20-239-640, 0, Registry.ImgLiselot);
 			add(liselot);
+			liselot.visible = false;
 			liselot.y = FlxG.height - liselot.height + 60;		
 			liselot.drag.x = 2000;	
 			liselot.velocity.x = 1700;
 				
 			worker = new FlxSprite(FlxG.width+200, 0, Registry.ImgWorker);
 			add(worker);
+			worker.visible = false;
 			worker.y = FlxG.height - worker.height + 60;
 			worker.drag.x = 2000;
 			//worker.velocity.x = -1630;
 			
 			army = new FlxSprite(FlxG.width-20-239-640, 0, Registry.ImgArmy);
 			add(army);
+			army.visible = false;
 			army.y = FlxG.height - army.height + 60;
 			army.drag.x = 2000;
 			//army.velocity.x = 1630;
 			
 			// Draw the edition mark after the character sprites so its title text
 			// remains legible throughout the entrance animation.
-			add(logo);
+			// Logo and the start prompt are already present in ImgTitleIntro.
+			// Keep the original logo instance inert for compatibility, but do not render it.
+			logo.visible = false;
 			
 			FlxG.play(Registry.SndOnShoulders,0.9);
 			FlxG.stage.align = "TL";
@@ -184,7 +193,7 @@ package
 						worker.velocity.x = -1630;
 						army.velocity.x = 1630;		
 						FlxG.play(Registry.SndJump, 0.9);
-						FlxG.fade(0xffd3bdb2, 1, endFade);
+						FlxG.fade(0xff102a16, 1, endFade);
 						
 					}	
 				
@@ -214,7 +223,7 @@ package
 					worker.velocity.x = -1630;
 					army.velocity.x = 1630;		
 					FlxG.play(Registry.SndJump, 0.9);
-					FlxG.fade(0xffd3bdb2, 1, endFade);
+					FlxG.fade(0xff102a16, 1, endFade);
 					
 				}				
 				

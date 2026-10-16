@@ -11,6 +11,8 @@ package
 			[Embed(source="../data/C64.ttf",fontFamily="commodore",embedAsCFF="false")] public static var c64:String;
 			
 			[Embed(source = "../data/logo.png")] public static  var ImgLogo:Class;
+			[Embed(source = "../data/branding/title_intro_640.png")] public static var ImgTitleIntro:Class;
+			[Embed(source = "../data/branding/title_menu_640.png")] public static var ImgTitleMenu:Class;
 			[Embed(source = "../data/illustration/andre_drawing.png")] public static  var ImgAndre:Class;
 			[Embed(source = "../data/illustration/liselot_drawing.png")] public static  var ImgLiselot:Class;
 			[Embed(source = "../data/illustration/worker_drawing.png")] public static  var ImgWorker:Class;

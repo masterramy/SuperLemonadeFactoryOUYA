@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <application xmlns="http://ns.adobe.com/air/application/51.3">
   <id>com.ramybaheeg.slfport</id>
-  <versionNumber>1.9</versionNumber>
+  <versionNumber>1.9.1</versionNumber>
   <supportedProfiles>mobileDevice</supportedProfiles>
   <filename>Super Limeade Factory</filename>
   <name>Super Limeade Factory</name>

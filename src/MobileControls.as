@@ -392,6 +392,13 @@ package
 						pulseKey(KEY_X);
 						setTimeout(function():void { if (FlxG.state is PCIntroState) pulseKey(KEY_X); }, 180);
 					}
+					else if (FlxG.state is PCMenuState)
+					{
+						var titleMenu:PCMenuState = FlxG.state as PCMenuState;
+						var gameX:Number = (e.stageX - bounds.x) / bounds.width * FlxG.width;
+						var gameY:Number = (e.stageY - bounds.y) / bounds.height * FlxG.height;
+						if (!titleMenu.activateMenuButtonAt(gameX, gameY)) pulseKey(KEY_X);
+					}
 					else pulseKey(KEY_X);
 				}
 				else if (ax >= ay) pulseKey(dx < 0 ? KEY_LEFT : KEY_RIGHT);
@@ -534,8 +541,11 @@ package
 		{
 			clearOverlay(bounds, mode);
 			lastControlX = lastControlY = lastControlW = lastControlH = NaN;
-			if (mode == "intro")
-				drawHint(bounds.x, bounds.y + bounds.height * 0.80, bounds.width, bounds.height * 0.14, "TAP TO START", 0xd3bdb2, 0.0, 0x7725a1);
+			if (mode == "intro" || (mode == "menu" && FlxG.state is PCMenuState))
+			{
+				// Title has embedded TAP TO START; menu displays genuine buttons.
+				// Avoid duplicate overlay text obscuring the approved branding.
+			}
 			else if (mode == "cinematic")
 			{
 				drawHint(bounds.x + bounds.width * 0.72, bounds.y + bounds.height * 0.035, bounds.width * 0.25, bounds.height * 0.08, "TAP TO SKIP", 0x000000, 1.0, 0xffffff);
