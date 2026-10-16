@@ -1,0 +1,153 @@
+name: QA - Super Limeade v1.9.1 Branded Intro and Menu
+
+on:
+  push:
+    branches:
+      - qa/gate2a-v191-title-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Verify native assets and presentation-only diff
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import subprocess
+          base='0d5fd0bb63558ad6659ba31552deaede4745382b'
+          images=['data/branding/title_intro_640.png','data/branding/title_menu_640.png']
+          for p in images:
+              im=Image.open(p)
+              assert im.size==(640,360) and im.mode=='RGB',(p,im.size,im.mode)
+          changed=set(subprocess.check_output(['git','diff','--name-only',base+'..HEAD'],text=True).splitlines())
+          allowed=set(images+['src/Registry.as','src/PCIntroState.as','src/PCMenuState.as','src/MobileControls.as','application.xml','tools/build-emulator-apk.ps1','.github/workflows/gate2a-v191-title-menu-qa.yml'])
+          unexpected=changed-allowed
+          assert not unexpected,unexpected
+          src=Path('src/PCMenuState.as').read_text()
+          touch=Path('src/MobileControls.as').read_text()
+          assert 'Registry.ImgTitleMenu' in src and 'activateMenuButtonAt' in src
+          assert 'activateMenuButtonAt(gameX, gameY)' in touch
+          assert '<versionNumber>1.9.1</versionNumber>' in Path('application.xml').read_text()
+          print('PASS static source scope, title/menu PNG, real direct menu touch, 1.9.1 identity')
+          PY
+
+  windows-apk:
+    needs: source-guard
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - name: Install Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){ $env:ANDROID_SDK_ROOT=$env:ANDROID_HOME }
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($null -eq $sdk){ $sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat' } else { $sdkPath=$sdk.Source }
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){throw 'Android SDK setup failed'}
+          Remove-Item -LiteralPath 'AIRSDK_Windows.zip' -Force -ErrorAction SilentlyContinue
+      - name: Compile real game SWF and build QA x64 Android APK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -File tools/build-emulator-apk.ps1
+          if($LASTEXITCODE -ne 0){throw "Android title/menu QA build failed: $LASTEXITCODE"}
+          foreach($p in @('bin/SLFforOuya.swf','dist/emulator-qa/SLF-emulator-x64.apk','dist/emulator-qa/proof/aapt-badging.txt')){
+            if(-not(Test-Path $p)){throw "Missing output: $p"}
+          }
+          Get-FileHash -Algorithm SHA256 'dist/emulator-qa/SLF-emulator-x64.apk' | Format-List
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-v191-branded-menu-windows-build
+          path: |
+            dist/emulator-qa
+          if-no-files-found: warn
+
+  render-menu:
+    needs: windows-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: limeade-v191-branded-menu-windows-build
+          path: qa-apk
+      - name: Prepare emulator capture
+        shell: bash
+        run: |
+          cat > run-branded-title.sh <<'EOS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p title-menu-render
+          adb install -r qa-apk/SLF-emulator-x64.apk
+          adb shell pm clear com.ramybaheeg.slfport
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1 || true
+          adb shell settings put system user_rotation 1 >/dev/null 2>&1 || true
+          adb shell wm user-rotation lock 1 >/dev/null 2>&1 || true
+          adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+          adb shell am start -W -n com.ramybaheeg.slfport/.AIRAppEntry | tee title-menu-render/launch.txt
+          sleep 10
+          adb exec-out screencap -p > title-menu-render/01-real-title.png
+          adb shell input tap 960 850
+          sleep 5
+          adb exec-out screencap -p > title-menu-render/02-real-menu.png
+          adb shell input tap 480 900
+          sleep 5
+          adb exec-out screencap -p > title-menu-render/03-after-play.png
+          adb logcat -d > title-menu-render/logcat.txt || true
+          python3 - <<'PY'
+          import os
+          from PIL import Image
+          for name in ['01-real-title.png','02-real-menu.png','03-after-play.png']:
+            im=Image.open('title-menu-render/'+name)
+            assert im.width>=1000 and im.height>=500,(name,im.size)
+            print(name, im.size)
+          PY
+          EOS
+          chmod +x run-branded-title.sh
+      - name: Install Pillow for image checks
+        shell: bash
+        run: python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash run-branded-title.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-v191-branded-menu-actual-emulator-captures
+          path: title-menu-render
+          if-no-files-found: warn
