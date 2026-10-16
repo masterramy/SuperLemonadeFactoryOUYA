@@ -72,7 +72,7 @@ try {
   $badging=(& $Aapt dump badging $Apk 2>&1 | Out-String)
   if($LASTEXITCODE -ne 0){ Fail 'aapt badging failed for emulator APK.' }
   $badging | Set-Content -LiteralPath (Join-Path $ProofDir 'aapt-badging.txt') -Encoding utf8
-  foreach($pattern in @("package: name='com\.ramybaheeg\.slfport'","versionName='1\.9'","versionCode='1009000'","sdkVersion:'21'","targetSdkVersion:'36'")){
+  foreach($pattern in @("package: name='com\.ramybaheeg\.slfport'","versionName='1\.9\.1'","versionCode='1009001'","sdkVersion:'21'","targetSdkVersion:'36'")){
     if($badging -notmatch $pattern){ Fail "Emulator APK metadata verification failed: $pattern" }
   }
   $permissions=(& $Aapt dump permissions $Apk 2>&1 | Out-String)
@@ -90,8 +90,8 @@ try {
     'air_sdk=51.3.4.3',
     'arch=x86_64',
     'package=com.ramybaheeg.slfport',
-    'version_name=1.9',
-    'version_code=1009000',
+    'version_name=1.9.1',
+    'version_code=1009001',
     'min_sdk=21',
     'target_sdk=36',
     'effective_permissions=none',
