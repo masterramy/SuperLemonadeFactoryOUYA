@@ -1,0 +1,121 @@
+name: QA - Real DEV Android Touch Flow After System Dialog Guard
+on:
+  push:
+    branches:
+      - qa/gate2a-dev-emulator-dialog-detection
+    paths:
+      - .github/workflows/gate2a-dev-emulator-dialog-guard.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  physical-ui-equivalent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: limeade-postlaunch-disposable-android-phone
+          run-id: 39070580119
+          github-token: ${{ github.token }}
+          path: qa-apk
+      - name: Prepare observation script and Pillow
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow==11.3.0
+          mkdir -p results
+          cat > test-real-android.py <<'PY'
+          import hashlib,io,re,subprocess,time,xml.etree.ElementTree as ET
+          from pathlib import Path
+          from PIL import Image,ImageChops
+          OUT=Path('results');OUT.mkdir(exist_ok=True)
+          APP='com.ramybaheeg.slfport.dev'
+          def command(*parts,timeout=35,check=True):
+              p=subprocess.run(parts,capture_output=True,text=True,timeout=timeout)
+              if check and p.returncode:raise RuntimeError(f'{parts} code{p.returncode}: {p.stderr}')
+              return p.stdout
+          def shell(s):return command('adb','shell',s)
+          def shot(name):
+              p=subprocess.run(['adb','exec-out','screencap','-p'],capture_output=True,timeout=30)
+              if p.returncode or not p.stdout:raise RuntimeError('Real screenshot unavailable')
+              f=OUT/name;f.write_bytes(p.stdout);return f
+          def dismiss_android_system_dialog():
+              # Accept only the actual system-ANR Wait button, never guess
+              # an unseen game UI target.  If uiautomator fails, leave
+              # dialog in place and fail the visual progression test.
+              try:
+                  command('adb','shell','uiautomator','dump','/sdcard/qa_window.xml',timeout=30)
+                  blob=command('adb','shell','cat','/sdcard/qa_window.xml',timeout=15)
+                  nodes=list(ET.fromstring(blob).iter('node'))
+                  texts=' '.join(n.get('text','') for n in nodes).lower()
+                  if "isn't responding" not in texts and 'not responding' not in texts:return False
+                  waits=[n for n in nodes if n.get('text','').strip().lower()=='wait']
+                  for node in waits:
+                      b=re.findall(r'\d+',node.get('bounds',''))
+                      if len(b)==4:
+                          x=(int(b[0])+int(b[2]))//2;y=(int(b[1])+int(b[3]))//2
+                          shell(f'input tap {x} {y}')
+                          print('Dismissing positively identified Android system ANR with Wait',x,y)
+                          return True
+              except Exception as e:print('System dialog inspection unavailable:',type(e).__name__,str(e)[:180])
+              return False
+          apk='qa-apk/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk'
+          command('adb','install','-r',apk,timeout=60)
+          shell('pm clear '+APP)
+          shell('wm size 1920x1080')
+          shell('wm density 420')
+          shell('settings put secure immersive_mode_confirmations confirmed')
+          shell('settings put system accelerometer_rotation 0')
+          shell('settings put system user_rotation 1')
+          command('adb','shell','am','start','-W','-n',APP+'/.AIRAppEntry',timeout=60)
+          time.sleep(8)
+          for _ in range(3):
+              if not dismiss_android_system_dialog():break
+              time.sleep(3)
+          a=shot('01-title-after-dialog-check.png')
+          shell('input tap 960 850')
+          time.sleep(4)
+          dismiss_android_system_dialog()
+          b=shot('02-after-real-title-tap.png')
+          shell('input tap 480 900')
+          time.sleep(4)
+          dismiss_android_system_dialog()
+          c=shot('03-after-real-play-tap.png')
+          command('adb','logcat','-d',check=False) if False else None
+          def changed_fraction(p,q):
+              x=Image.open(p).convert('RGB').resize((320,180))
+              y=Image.open(q).convert('RGB').resize((320,180))
+              aa=x.tobytes();bb=y.tobytes()
+              return sum(abs(a-b)>20 for a,b in zip(aa,bb))/len(aa)
+          t1=changed_fraction(a,b);t2=changed_fraction(a,c)
+          (OUT/'metrics.txt').write_text(f'title_to_menu_changed_pixel_fraction={t1:.6f}\ntitle_to_after_play_changed_pixel_fraction={t2:.6f}\n')
+          print('REAL Android progression pixel fractions',t1,t2)
+          if max(t1,t2)<0.04:
+              raise RuntimeError('No significant real UI progression; cannot claim gameplay/touch QA PASS')
+          if dismiss_android_system_dialog():
+              raise RuntimeError('Unexpected persistent Android system ANR')
+          print('PASS real Android screen progressed after ordinary touch input')
+          PY
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: python test-real-android.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-dev-emulator-real-screen-progress-check
+          path: results/
+          if-no-files-found: warn
