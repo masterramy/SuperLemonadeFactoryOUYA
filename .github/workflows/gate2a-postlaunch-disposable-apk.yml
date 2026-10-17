@@ -2,9 +2,10 @@ name: QA Limeade Postlaunch Disposable APK
 on:
   push:
     branches:
-      - qa/gate2a-postlaunch-phone-receipt-correction
+      - qa/gate2a-postlaunch-autonomous-bridge-character-preview
     paths:
       - qa/postlaunch-source-overlay.zip
+      - qa/autonomous-extension-overlay.zip
       - .github/workflows/gate2a-postlaunch-disposable-apk.yml
   workflow_dispatch:
 permissions:
@@ -36,6 +37,16 @@ jobs:
           if(-not(Test-Path src/CloudProgressCodec.as) -or -not(Test-Path src/GraphicsMode.as)){throw 'Overlay failed'}
           "postlaunch_overlay_sha256=$hash" | Set-Content qa-postlaunch-source.txt
           'source_branch=qa/gate2a-v191-title-integration' | Add-Content qa-postlaunch-source.txt
+      - name: Apply autonomously implemented cloud bridge, controller QA and sprite preview
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $overlay='qa/autonomous-extension-overlay.zip'
+          $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
+          if($actual -ne 'e430d98f528a999a6e0c146a2bf953f55603075e46baf365f10aba353e249b64'){throw "Autonomous extension SHA mismatch: $actual"}
+          Expand-Archive -LiteralPath $overlay -DestinationPath . -Force
+          python qa/postlaunch/test_autonomous_integrity.py
+          if($LASTEXITCODE -ne 0){throw 'Autonomous bridge/character frame contracts failed'}
       - name: Static checks
         shell: pwsh
         run: |
