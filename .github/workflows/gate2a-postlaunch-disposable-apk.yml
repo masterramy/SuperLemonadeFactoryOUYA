@@ -2,10 +2,11 @@ name: QA Limeade Postlaunch Disposable APK
 on:
   push:
     branches:
-      - qa/gate2a-postlaunch-autonomous-bridge-character-preview
+      - qa/gate2a-postlaunch-options-direct-touch-repair
     paths:
       - qa/postlaunch-source-overlay.zip
       - qa/autonomous-extension-overlay.zip
+      - qa/options-direct-touch-fix.zip
       - .github/workflows/gate2a-postlaunch-disposable-apk.yml
   workflow_dispatch:
 permissions:
@@ -48,6 +49,16 @@ jobs:
           python -m pip install --quiet --disable-pip-version-check pillow==11.3.0
           python qa/postlaunch/test_autonomous_integrity.py
           if($LASTEXITCODE -ne 0){throw 'Autonomous bridge/character frame contracts failed'}
+      - name: Apply safe Options mobile button hit-testing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $file='qa/options-direct-touch-fix.zip'
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+          if($sha -ne 'eb4f77bc1acf364db4e57a24d0e33760c14774f955107ace9a09adf034c778a1'){throw 'Options fix SHA mismatch'}
+          Expand-Archive -LiteralPath $file -DestinationPath . -Force
+          python qa/postlaunch/test_options_touch_safety.py
+          if($LASTEXITCODE -ne 0){throw 'Options touch guard contract failed'}
       - name: Static checks
         shell: pwsh
         run: |
