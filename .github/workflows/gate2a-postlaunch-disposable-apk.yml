@@ -78,6 +78,14 @@ jobs:
           if($rc -ne 0){throw "Disposable Android APK build failed $rc"}
           if(-not(Test-Path dist/postlaunch-disposable/SLF-DEV-PHONE.apk)){throw 'Missing QA APK'}
           Get-Content dist/postlaunch-disposable/SLF_DISPOSABLE_APK_RECEIPT.txt | Write-Host
+      - name: Build separately signed x64 emulator QA APK
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/postlaunch/build_disposable_android.ps1 -Target emulator *> qa-postlaunch-emulator-apk.log
+          $rc=$LASTEXITCODE
+          Get-Content qa-postlaunch-emulator-apk.log | Select-Object -Last 60
+          if($rc -ne 0){throw "QA emulator APK build failed $rc"}
+          if(-not(Test-Path dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk)){throw 'Missing x64 QA APK'}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -86,8 +94,50 @@ jobs:
             qa-postlaunch-source.txt
             qa-postlaunch-compile.log
             qa-postlaunch-apk.log
+            qa-postlaunch-emulator-apk.log
+            dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
             POSTLAUNCH_AIR_STDOUT.txt
             POSTLAUNCH_AIR_STDERR.txt
             dist/postlaunch-disposable/SLF-DEV-PHONE.apk
             dist/postlaunch-disposable/SLF_DISPOSABLE_APK_RECEIPT.txt
+          if-no-files-found: warn
+
+  emulate-and-capture:
+    needs: build-disposable
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: limeade-postlaunch-disposable-android-phone
+          path: qa-package
+      - name: Expand and check source recorder
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -o qa/postlaunch-source-overlay.zip 'qa/postlaunch/capture_android_emulator.sh' -d .
+          bash -n qa/postlaunch/capture_android_emulator.sh
+          test -s qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash qa/postlaunch/capture_android_emulator.sh qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-postlaunch-actual-gameplay-video-and-screens
+          path: qa/postlaunch-real-emulator/
           if-no-files-found: warn
