@@ -1,0 +1,57 @@
+name: QA - Build Complete v1.9.1 Source and Owner Signing Kit
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - qa/gate2a-v191-title-integration
+    paths:
+      - qa/package_v191.py
+      - .github/workflows/gate2a-v191-owner-release-package.yml
+
+permissions:
+  contents: read
+
+jobs:
+  owner-kit-and-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Reconstruct full exact-source v1.9.1 and owner signing kit
+        shell: bash
+        run: |
+          python qa/package_v191.py
+          python - <<'PY'
+          import hashlib,zipfile,json,pathlib
+          r=json.loads(pathlib.Path('v191-package/RELEASE_RECEIPT.json').read_text())
+          for label in ['source','kit']:
+              path=pathlib.Path('v191-package')/r[label]
+              assert path.exists() and path.stat().st_size==r[label+'_bytes']
+              assert hashlib.sha256(path.read_bytes()).hexdigest()==r[label+'_sha256']
+              z=zipfile.ZipFile(path)
+              assert z.testzip() is None
+          kit=zipfile.ZipFile('v191-package/'+r['kit'])
+          assert r['source'] in kit.namelist()
+          assert 'SIGN_V191.bat' in kit.namelist()
+          assert 'PUBLISH_SOURCE_V191.bat' in kit.namelist()
+          assert not any(n.lower().endswith(('.p12','.pfx','.jks','.pem','.key','.keystore')) for n in zipfile.ZipFile('v191-package/'+r['source']).namelist())
+          assert r['gameplay_changes'] is False
+          print('PASS full source and owner kit SHA, ZIP CRC, no private signing keys, no gameplay source deltas')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: limeade-v191-owner-full-windows-production-kit
+          path: v191-package/SUPER_LIMEADE_FACTORY_V1.9.1_TITLE_MENU_WINDOWS_RELEASE_KIT.zip
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: limeade-v191-full-corresponding-source-only
+          path: v191-package/SUPER_LIMEADE_FACTORY_1.9.1_TITLE_MENU_CORRESPONDING_SOURCE.zip
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: limeade-v191-build-proof-and-diff
+          path: v191-package/RELEASE_RECEIPT.json
+          if-no-files-found: error
