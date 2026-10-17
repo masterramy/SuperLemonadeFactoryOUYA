@@ -38,10 +38,26 @@ jobs:
           assert r['gameplay_changes'] is False
           print('PASS full source and owner kit SHA, ZIP CRC, no private signing keys, no gameplay source deltas')
           PY
+      - name: Expand complete kit as one-extractable deliverable
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          p=Path('v191-package/SUPER_LIMEADE_FACTORY_V1.9.1_TITLE_MENU_WINDOWS_RELEASE_KIT.zip')
+          out=Path('v191-package/owner-zip-root')
+          out.mkdir(parents=True,exist_ok=True)
+          with ZipFile(p) as z:
+              assert z.testzip() is None
+              z.extractall(out)
+          assert (out/'SIGN_V191.bat').exists()
+          assert (out/'SUPER_LIMEADE_FACTORY_1.9.1_TITLE_MENU_CORRESPONDING_SOURCE.zip').exists()
+          print('PASS single-extract Windows signing kit layout')
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: limeade-v191-owner-full-windows-production-kit
-          path: v191-package/SUPER_LIMEADE_FACTORY_V1.9.1_TITLE_MENU_WINDOWS_RELEASE_KIT.zip
+          path: v191-package/owner-zip-root/
           compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
