@@ -273,6 +273,7 @@ package
 			versionText.size = 8;
 			versionText.alignment = "right";
 			versionText.text = "Version: " + version;
+			versionText.visible = false; // artwork already carries unobtrusive v1.9 identity
 			add(versionText);	
 			
 			//latestText = new FlxText(0 , FlxG.height-22, FlxG.width, Registry.newVersionText, true);
@@ -287,16 +288,8 @@ package
 				FlxG.ouyaController.o.reset();
 			}
 			
-			buttonEmitter = new FlxEmitter(0,FlxG.height);
-			buttonEmitter.setSize(80,20);
-			buttonEmitter.setXSpeed(-15,15);
-			buttonEmitter.setYSpeed(-15,15);
-			buttonEmitter.setRotation(0,0);
-			buttonEmitter.gravity = 0;
-			buttonEmitter.makeParticles(ImgLeaves,12,8,true,0);
-			add(buttonEmitter);
-			buttonEmitter.start(false, 0.25, 0.02);
-			// TURN OFF
+			// The legacy floating bubble particles obscure the real Play label.
+			// Keep the new title/menu controls readable; no particle emitter here.
 			
 			
 			//if ( FlxG.debug) FlxG.showDebugger();
@@ -352,7 +345,7 @@ package
 				if (i == currentButton) 
 				{
 					(buttonsGroup.members[i] as FlxButton).status = FlxButton.HIGHLIGHT;
-					buttonEmitter.at(buttonsGroup.members[i]);
+					// No particle effect over the branded menu.
 					
 				}
 				else 
