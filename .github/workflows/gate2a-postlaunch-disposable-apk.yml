@@ -1,0 +1,93 @@
+name: QA Limeade Postlaunch Disposable APK
+on:
+  push:
+    branches:
+      - qa/gate2a-postlaunch-fourtracks-dev-apk
+    paths:
+      - qa/postlaunch-source-overlay.zip
+      - .github/workflows/gate2a-postlaunch-disposable-apk.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-disposable:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Verify and apply isolated source overlay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $overlay='qa/postlaunch-source-overlay.zip'
+          $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
+          if($hash -ne '7209119665afb3f3ad76b6e2df8bc9caa36905d278bb6764dfcc4abd5a0d21dd'){throw "Incorrect overlay digest: $hash"}
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path $overlay).Path)
+          try {
+            foreach($entry in $zip.Entries){
+              if($entry.FullName.Contains('..') -or $entry.FullName.StartsWith('/') -or $entry.FullName.Contains('\')){
+                throw "Unsafe overlay member: $($entry.FullName)"
+              }
+            }
+          } finally {$zip.Dispose()}
+          Expand-Archive -LiteralPath $overlay -DestinationPath . -Force
+          if(-not(Test-Path src/CloudProgressCodec.as) -or -not(Test-Path src/GraphicsMode.as)){throw 'Overlay failed'}
+          "postlaunch_overlay_sha256=$hash" | Set-Content qa-postlaunch-source.txt
+          'source_branch=qa/gate2a-v191-title-integration' | Add-Content qa-postlaunch-source.txt
+      - name: Static checks
+        shell: pwsh
+        run: |
+          python -m pip install --quiet --disable-pip-version-check pillow==11.3.0
+          python qa/postlaunch/validate_postlaunch.py
+          if($LASTEXITCODE -ne 0){throw 'Static source checks failed'}
+          python qa/postlaunch/test_cloud_merge_contract.py
+          if($LASTEXITCODE -ne 0){throw 'Cloud merge checks failed'}
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - name: Install Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){$env:ANDROID_SDK_ROOT=$env:ANDROID_HOME}
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($sdk){$sdkPath=$sdk.Source}else{$sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat'}
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){throw 'Android SDK setup failed'}
+          Remove-Item -LiteralPath AIRSDK_Windows.zip -Force -ErrorAction SilentlyContinue
+      - name: Compile postlaunch ActionScript
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/postlaunch/compile_wip.ps1 *> qa-postlaunch-compile.log
+          $rc=$LASTEXITCODE
+          Get-Content qa-postlaunch-compile.log | Select-Object -Last 40
+          if($rc -ne 0 -or -not(Test-Path bin/SLFforOuya-postlaunch-wip.swf)){throw "AIR compile failed $rc"}
+      - name: Package signed isolated Android QA APK
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/postlaunch/build_disposable_android.ps1 -Target phone *> qa-postlaunch-apk.log
+          $rc=$LASTEXITCODE
+          Get-Content qa-postlaunch-apk.log | Select-Object -Last 60
+          if($rc -ne 0){throw "Disposable Android APK build failed $rc"}
+          if(-not(Test-Path dist/postlaunch-disposable/SLF-DEV-PHONE.apk)){throw 'Missing QA APK'}
+          Get-Content dist/postlaunch-disposable/SLF_DISPOSABLE_APK_RECEIPT.txt | Write-Host
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-postlaunch-disposable-android-phone
+          path: |
+            qa-postlaunch-source.txt
+            qa-postlaunch-compile.log
+            qa-postlaunch-apk.log
+            POSTLAUNCH_AIR_STDOUT.txt
+            POSTLAUNCH_AIR_STDERR.txt
+            dist/postlaunch-disposable/SLF-DEV-PHONE.apk
+            dist/postlaunch-disposable/SLF_DISPOSABLE_APK_RECEIPT.txt
+          if-no-files-found: warn
