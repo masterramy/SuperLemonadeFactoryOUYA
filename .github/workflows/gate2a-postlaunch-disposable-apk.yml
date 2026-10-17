@@ -43,8 +43,9 @@ jobs:
           $ErrorActionPreference='Stop'
           $overlay='qa/autonomous-extension-overlay.zip'
           $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
-          if($actual -ne 'e430d98f528a999a6e0c146a2bf953f55603075e46baf365f10aba353e249b64'){throw "Autonomous extension SHA mismatch: $actual"}
+          if($actual -ne '38084c18d9a1effc30860a9d877ed929af87c5058179c18e9491ec94a46fd6a3'){throw "Autonomous extension SHA mismatch: $actual"}
           Expand-Archive -LiteralPath $overlay -DestinationPath . -Force
+          python -m pip install --quiet --disable-pip-version-check pillow==11.3.0
           python qa/postlaunch/test_autonomous_integrity.py
           if($LASTEXITCODE -ne 0){throw 'Autonomous bridge/character frame contracts failed'}
       - name: Static checks
