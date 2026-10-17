@@ -36,18 +36,53 @@ jobs:
           adb shell settings put secure immersive_mode_confirmations confirmed || true
           adb shell am start -W -n com.ramybaheeg.slfport.dev/.AIRAppEntry
           sleep 9
+          # Dismiss ONLY the explicitly identified Android Pixel Launcher ANR "Wait" button.
+          # Never blind-tap game coordinates for a suspected system dialog.
+          dismiss_dialog() {
+            python - <<'PY'
+          import re,subprocess,xml.etree.ElementTree as ET,time
+          def sh(*args,timeout=30):
+              return subprocess.run(args,capture_output=True,text=True,timeout=timeout,check=False)
+          try:
+              p=sh('adb','shell','uiautomator','dump','/sdcard/qa_window.xml')
+              if p.returncode: raise RuntimeError('UIAutomator dump unavailable')
+              q=sh('adb','shell','cat','/sdcard/qa_window.xml')
+              nodes=list(ET.fromstring(q.stdout).iter('node'))
+              texts=' '.join(n.get('text','') for n in nodes).lower()
+              if "isn't responding" not in texts and 'not responding' not in texts:
+                  print('No identified Android ANR; leaving UI untouched.')
+              else:
+                  waits=[n for n in nodes if n.get('text','').strip().lower()=='wait']
+                  if not waits: raise RuntimeError('Android ANR has no identifiable Wait target')
+                  bounds=re.findall(r'\d+',waits[0].get('bounds',''))
+                  if len(bounds)!=4:raise RuntimeError('Unexpected Wait bounds')
+                  x=(int(bounds[0])+int(bounds[2]))//2
+                  y=(int(bounds[1])+int(bounds[3]))//2
+                  print('Detected system ANR, press ONLY Wait:',x,y)
+                  out=sh('adb','shell','input','tap',str(x),str(y))
+                  if out.returncode:raise RuntimeError('Android Wait tap failed')
+                  time.sleep(3)
+          except Exception as e:
+              print('Dialog inspection not conclusive:',type(e).__name__,str(e)[:160])
+          PY
+          }
+          dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/01_title.png
           adb shell input tap 960 850
           sleep 4
+          dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/02_menu.png
           adb shell input tap 1165 895
           sleep 4
+          dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/03_options_before.png
           adb shell input tap 452 632
           sleep 3
+          dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/04_options_after.png
           adb shell input tap 452 632
           sleep 3
+          dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/05_options_restored.png
           python - <<'PY'
           from PIL import Image, ImageChops,ImageStat
