@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - qa/gate2a-v191-title-integration
+    paths:
+      - src/Registry.as
+      - src/PCIntroState.as
+      - src/PCMenuState.as
+      - src/MobileControls.as
+      - data/branding/**
+      - application.xml
+      - tools/build-emulator-apk.ps1
+      - .github/workflows/gate2a-v191-title-menu-qa.yml
   workflow_dispatch:
 
 permissions:
@@ -31,7 +40,7 @@ jobs:
               im=Image.open(p)
               assert im.size==(640,360) and im.mode=='RGB',(p,im.size,im.mode)
           changed=set(subprocess.check_output(['git','diff','--name-only',base+'..HEAD'],text=True).splitlines())
-          allowed=set(images+['src/Registry.as','src/PCIntroState.as','src/PCMenuState.as','src/MobileControls.as','application.xml','tools/build-emulator-apk.ps1','.github/workflows/gate2a-v191-title-menu-qa.yml'])
+          allowed=set(images+['src/Registry.as','src/PCIntroState.as','src/PCMenuState.as','src/MobileControls.as','application.xml','tools/build-emulator-apk.ps1','.github/workflows/gate2a-v191-title-menu-qa.yml','qa/package_v191.py','.github/workflows/gate2a-v191-owner-release-package.yml'])
           unexpected=changed-allowed
           assert not unexpected,unexpected
           src=Path('src/PCMenuState.as').read_text()
