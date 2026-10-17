@@ -76,11 +76,11 @@ jobs:
           sleep 4
           dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/03_options_before.png
-          adb shell input tap 452 632
+          adb shell input tap 525 666
           sleep 3
           dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/04_options_after.png
-          adb shell input tap 452 632
+          adb shell input tap 525 666
           sleep 3
           dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/05_options_restored.png
@@ -97,12 +97,19 @@ jobs:
           print(v)
           assert v['01_title_02_menu']>0.05
           assert v['02_menu_03_options_before']>0.05
-          # One small label change, not wholesale navigation away from Options.
-          assert 0.005 < v['03_options_before_04_options_after'] < 5, 'Not an in-place graphics label change'
-          assert 0.005 < v['04_options_after_05_options_restored'] < 5, 'Second graphics press did not restore label'
-          restored=diff(a[2],a[4])
-          print('restored Options difference',restored)
-          assert restored<0.2, 'Options was not restored after toggling twice'
+          # Verify graphics-label pixels, not merely a small change elsewhere
+          # (e.g. Delete progress confirmation on the same Options page).
+          label_roi=(690,610,1250,735)
+          labels=[im.crop(label_roi) for im in a[2:5]]
+          label_change=diff(labels[0],labels[1])
+          label_restore=diff(labels[1],labels[2])
+          label_roundtrip=diff(labels[0],labels[2])
+          (p/'label_roi_diffs.txt').write_text(f'change={label_change} restore={label_restore} roundtrip={label_roundtrip}')
+          print('graphics label ROI',label_change,label_restore,label_roundtrip)
+          assert v['03_options_before_04_options_after']<5, 'Unexpected navigation away from Options'
+          assert 0.05 < label_change < 20, 'Graphics label failed to change in place'
+          assert 0.05 < label_restore < 20, 'Graphics label failed to restore'
+          assert label_roundtrip<0.1, 'Graphics label did not return to Classic'
           PY
           EOS
           chmod +x run-qa.sh
