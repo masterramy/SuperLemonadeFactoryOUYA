@@ -72,7 +72,7 @@ jobs:
           sleep 4
           dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/02_menu.png
-          adb shell input tap 1165 895
+          adb shell input tap 810 895
           sleep 4
           dismiss_dialog
           adb exec-out screencap -p > graphics-options-qa/03_options_before.png
@@ -97,7 +97,12 @@ jobs:
           print(v)
           assert v['01_title_02_menu']>0.05
           assert v['02_menu_03_options_before']>0.05
-          assert v['03_options_before_04_options_after']>0.005
+          # One small label change, not wholesale navigation away from Options.
+          assert 0.005 < v['03_options_before_04_options_after'] < 5, 'Not an in-place graphics label change'
+          assert 0.005 < v['04_options_after_05_options_restored'] < 5, 'Second graphics press did not restore label'
+          restored=diff(a[2],a[4])
+          print('restored Options difference',restored)
+          assert restored<0.2, 'Options was not restored after toggling twice'
           PY
           EOS
           chmod +x run-qa.sh
