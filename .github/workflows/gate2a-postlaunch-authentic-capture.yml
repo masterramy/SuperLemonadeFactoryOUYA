@@ -1,0 +1,91 @@
+name: QA Limeade Authentic Gameplay Capture
+on:
+  push:
+    branches:
+      - qa/gate2a-postlaunch-fourtracks-dev-apk
+    paths:
+      - .github/workflows/gate2a-postlaunch-authentic-capture.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  genuine-gameplay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: limeade-postlaunch-disposable-android-phone
+          run-id: 39010661812
+          github-token: ${{ github.token }}
+          path: qa-package
+      - name: Prepare real touch and video capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
+          mkdir -p genuine
+          cat > genuine/capture.sh <<'EOS'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          apk='qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk'
+          pkg='com.ramybaheeg.slfport.dev'
+          adb install -r "$apk" | tee genuine/install.txt
+          adb shell pm clear "$pkg"
+          adb shell wm size 1920x1080
+          adb shell wm density 420
+          adb shell settings put secure immersive_mode_confirmations confirmed || true
+          adb shell am start -W -n "$pkg/.AIRAppEntry" | tee genuine/launch.txt
+          sleep 8
+          adb exec-out screencap -p > genuine/01_title.png
+          adb shell input tap 960 850
+          sleep 3
+          adb exec-out screencap -p > genuine/02_menu.png
+          adb shell input tap 480 900
+          sleep 3
+          adb exec-out screencap -p > genuine/03_level_select.png
+          adb shell input tap 560 390
+          sleep 3
+          adb exec-out screencap -p > genuine/04_cinematic.png
+          # Exactly the original game's MobileControls cinematic SKIP touch zone,
+          # upper-right 72%+ width / under 18% height. No save or scene bypass.
+          adb shell input tap 1650 90
+          sleep 7
+          adb exec-out screencap -p > genuine/05_after_original_skip.png
+          adb shell screenrecord --size 1920x1080 --bit-rate 6500000 --time-limit 20 /sdcard/slf_true_game.mp4 &
+          rec=$!
+          sleep 3
+          for i in 1 2 3 4 5; do
+            adb shell input swipe 280 890 560 890 500
+            adb shell input tap 1790 930
+            sleep 1
+          done
+          wait "$rec"
+          adb pull /sdcard/slf_true_game.mp4 genuine/recorded_game.mp4
+          sha256sum "$apk" genuine/recorded_game.mp4 > genuine/provenance.sha256
+          printf 'method=real_android_emulator_screenrecord\napp=com.ramybaheeg.slfport.dev\nno_teleport_or_save_edit=true\nQA_only_requires_visual_review=true\n' > genuine/provenance.txt
+          ffprobe -v error -show_entries stream=width,height,codec_name -select_streams v:0 -of default=noprint_wrappers=1 genuine/recorded_game.mp4 > genuine/video_metadata.txt
+          EOS
+          chmod +x genuine/capture.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash genuine/capture.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-authentic-ordinary-touch-gameplay-capture
+          path: genuine/
+          if-no-files-found: warn
