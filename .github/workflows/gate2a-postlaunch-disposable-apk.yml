@@ -2,7 +2,7 @@ name: QA Limeade Postlaunch Disposable APK
 on:
   push:
     branches:
-      - qa/gate2a-postlaunch-cloud-schema-hardening
+      - qa/gate2a-postlaunch-controller-diag-remaster-map
     paths:
       - qa/postlaunch-source-overlay.zip
       - .github/workflows/gate2a-postlaunch-disposable-apk.yml
@@ -22,7 +22,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $overlay='qa/postlaunch-source-overlay.zip'
           $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
-          if($hash -ne 'dd0dc8b69adf1781f5368f3152469b3abbabcedec0c4f7e0c9d02ed301b5fef0'){throw "Incorrect overlay digest: $hash"}
+          if($hash -ne '165461eaefec079b7c78239b74f1c144cab521ac9bedf83468a3872df5f6d067'){throw "Incorrect overlay digest: $hash"}
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path $overlay).Path)
           try {
