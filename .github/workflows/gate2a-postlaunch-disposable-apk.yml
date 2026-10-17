@@ -22,7 +22,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $overlay='qa/postlaunch-source-overlay.zip'
           $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
-          if($hash -ne '4700339cd3cd234b12ea9ad21ae29b19429dba6d39faacdc0537aab198496612'){throw "Incorrect overlay digest: $hash"}
+          if($hash -ne '5ba869ad0d98be617071939d5f8bfc39d4199bd318cb3bf092ab5a534815cd72'){throw "Incorrect overlay digest: $hash"}
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path $overlay).Path)
           try {
