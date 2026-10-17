@@ -2,7 +2,7 @@ name: QA Limeade Postlaunch Disposable APK
 on:
   push:
     branches:
-      - qa/gate2a-postlaunch-controller-diag-remaster-map
+      - qa/gate2a-postlaunch-phone-receipt-correction
     paths:
       - qa/postlaunch-source-overlay.zip
       - .github/workflows/gate2a-postlaunch-disposable-apk.yml
@@ -22,7 +22,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $overlay='qa/postlaunch-source-overlay.zip'
           $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $overlay).Hash.ToLowerInvariant()
-          if($hash -ne '165461eaefec079b7c78239b74f1c144cab521ac9bedf83468a3872df5f6d067'){throw "Incorrect overlay digest: $hash"}
+          if($hash -ne '014a184df730aaf3ade26bd01fa8dd55e3aa68c2e07970a00f9aff6dcc87b164'){throw "Incorrect overlay digest: $hash"}
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path $overlay).Path)
           try {
@@ -99,6 +99,8 @@ jobs:
             POSTLAUNCH_AIR_STDOUT.txt
             POSTLAUNCH_AIR_STDERR.txt
             dist/postlaunch-disposable/SLF-DEV-PHONE.apk
+            dist/postlaunch-disposable/SLF_DEV_PHONE_RECEIPT.txt
+            dist/postlaunch-disposable/SLF_DEV_EMULATOR_RECEIPT.txt
             dist/postlaunch-disposable/SLF_DISPOSABLE_APK_RECEIPT.txt
           if-no-files-found: warn
 
