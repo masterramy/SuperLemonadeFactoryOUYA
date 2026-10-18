@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
-          grep -Fxq 'source_zip_sha256=5a492bb235309529b585a7708c4b6b349b9de1b1a58f154943ef7b4f1d48f4fe' qa-package/qa-current-source-receipt.txt
+          tr -d '\r' < qa-package/qa-current-source-receipt.txt | grep -Fxq 'source_zip_sha256=5a492bb235309529b585a7708c4b6b349b9de1b1a58f154943ef7b4f1d48f4fe'
           mkdir -p qa/postlaunch
           for file in capture_graphics_options_targeted.sh verify_options_screen_evidence.py dismiss_android_immersive_prompt.py test_options_evidence_guard.py test_android_immersive_prompt.py; do
             cp "qa/current-options/$file" "qa/postlaunch/$file"
