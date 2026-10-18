@@ -97,6 +97,10 @@
     {
       "path": "src/MobileControls.as",
       "sha256": "f1fd23f851d00c4af3ad49e894629eb7f344b338f66a5999fa51f19df4bd6d31"
+    },
+    {
+      "path": "tools/postlaunch/prepare_semantic_remaster.py",
+      "sha256": "5ec3413068849485971a45f0a8d491cd5360a7187e4614ffbfaa4d3e41b3b6a2"
     }
   ]
 }
