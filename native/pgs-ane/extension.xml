@@ -1,0 +1,24 @@
+<extension xmlns="http://ns.adobe.com/air/extension/4.0">
+  <id>com.ramybaheeg.slfport.pgs.savedgames</id>
+  <versionNumber>0.1.0</versionNumber>
+  <platforms>
+    <platform name="Android-ARM">
+      <applicationDeployment>
+        <nativeLibrary>SLFPGSNative.jar</nativeLibrary>
+        <initializer>com.ramybaheeg.slfport.pgs.PGSExtension</initializer>
+      </applicationDeployment>
+    </platform>
+    <platform name="Android-ARM64">
+      <applicationDeployment>
+        <nativeLibrary>SLFPGSNative.jar</nativeLibrary>
+        <initializer>com.ramybaheeg.slfport.pgs.PGSExtension</initializer>
+      </applicationDeployment>
+    </platform>
+    <platform name="Android-x64">
+      <applicationDeployment>
+        <nativeLibrary>SLFPGSNative.jar</nativeLibrary>
+        <initializer>com.ramybaheeg.slfport.pgs.PGSExtension</initializer>
+      </applicationDeployment>
+    </platform>
+  </platforms>
+</extension>
