@@ -14,4 +14,6 @@ dependencies {
     // Must be supplied from a licensed Harman AIR SDK in the isolated builder.
     compileOnly files(System.getenv('AIR_FRE_JAR') ?: 'missing-FlashRuntimeExtensions.jar')
     implementation 'com.google.android.gms:play-services-games-v2:22.1.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }
