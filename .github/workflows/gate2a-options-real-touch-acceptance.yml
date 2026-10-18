@@ -1,0 +1,110 @@
+name: QA Limeade Options Real Touch Evidence
+on:
+  push:
+    branches: [qa/gate2a-graphics-options-proof-20261018]
+    paths: [.github/workflows/gate2a-options-real-touch-acceptance.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  options-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: limeade-postlaunch-disposable-android-phone
+          run-id: 39077206175
+          repository: masterramy/SuperLemonadeFactoryOUYA
+          github-token: ${{ github.token }}
+          path: qa-package
+      - name: Verify existing isolated APK and Python image library
+        shell: bash
+        run: |
+          test -s qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
+          python3 -m pip install --quiet --disable-pip-version-check pillow==11.3.0
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK=qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
+            PKG=com.ramybaheeg.slfport.dev
+            OUT=qa-options-real-proof
+            mkdir -p "$OUT"
+            sha256sum "$APK" > "$OUT/apk.sha256"
+            adb install -r "$APK" > "$OUT/install.txt"
+            adb shell pm clear "$PKG" >/dev/null
+            adb shell wm size 1920x1080
+            adb shell wm density 420
+            adb shell am start -W -n "$PKG/.AIRAppEntry" > "$OUT/launch.txt"
+            sleep 9
+            capture() {
+              local name="$1"
+              adb exec-out screencap -p > "$OUT/$name.png"
+              adb shell uiautomator dump /sdcard/limeade-current.xml >/dev/null 2>&1 || true
+              adb exec-out cat /sdcard/limeade-current.xml > "$OUT/$name.xml" 2>/dev/null || true
+            }
+            capture 00_initial
+            for attempt in 1 2; do
+              if grep -Eiq "launcher.*(isn.t responding|is not responding)" "$OUT/00_initial.xml"; then
+                printf "Launcher system ANR encountered, retry %s\n" "$attempt" >> "$OUT/environment.txt"
+                adb shell input tap 715 720
+                sleep 7
+                capture 00_initial
+              fi
+            done
+            adb shell input tap 960 850; sleep 5; capture 01_menu
+            adb shell input tap 810 900; sleep 5; capture 02_options_classic
+            adb shell input tap 495 655; sleep 3; capture 03_graphics_toggled
+            adb shell input tap 495 655; sleep 3; capture 04_graphics_restored
+            adb shell input tap 1400 750; sleep 3; capture 05_blank_touch
+            python3 - <<'PY'
+            import pathlib,hashlib,xml.etree.ElementTree as ET
+            from PIL import Image,ImageChops
+            r=pathlib.Path('qa-options-real-proof')
+            names=['01_menu','02_options_classic','03_graphics_toggled','04_graphics_restored','05_blank_touch']
+            pics=[]
+            for n in names:
+                p=r/(n+'.png')
+                if not p.is_file(): raise SystemExit('FAIL missing '+n)
+                im=Image.open(p).convert('RGB')
+                if im.size!=(1920,1080): raise SystemExit('FAIL viewport '+n)
+                pics.append(im)
+                xml=r/(n+'.xml')
+                if xml.is_file():
+                    t=' '.join((e.attrib.get('text','')+' '+e.attrib.get('content-desc','')).lower() for e in ET.parse(xml).getroot().iter())
+                    if "isn't responding" in t or "is not responding" in t: raise SystemExit('FAIL SYSTEM ANR '+n)
+            hashes=[hashlib.sha256((r/(n+'.png')).read_bytes()).hexdigest() for n in names]
+            if len(set(hashes))<5: raise SystemExit('FAIL duplicate screenshots')
+            def difference(a,b):
+                box=(655,625,1420,686)
+                v=ImageChops.difference(a.crop(box),b.crop(box))
+                return sum(1 for p in v.getdata() if max(p)>=35)
+            before,toggled,restored,blank=pics[1:]
+            delta=difference(before,toggled)
+            restored_diff=difference(before,restored)
+            blank_diff=difference(restored,blank)
+            (r/'metrics.txt').write_text(f'changed={delta}\nrestored_diff={restored_diff}\nblank_diff={blank_diff}\n')
+            if delta<160: raise SystemExit('FAIL graphics status label unchanged')
+            if restored_diff>1500 or blank_diff>1500: raise SystemExit('FAIL restore/blank tap')
+            print('PIXEL CONTRACT PASSED; raw screenshots still require independent visual acceptance')
+            PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-options-raw-screens-for-review
+          path: qa-options-real-proof/
+          if-no-files-found: warn
