@@ -1,0 +1,17 @@
+plugins {
+    id 'com.android.library' version '8.6.1'
+}
+android {
+    namespace 'com.ramybaheeg.slfport.pgs'
+    compileSdk 35
+    defaultConfig { minSdk 24; targetSdk 35 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+dependencies {
+    // Must be supplied from a licensed Harman AIR SDK in the isolated builder.
+    compileOnly files(System.getenv('AIR_FRE_JAR') ?: 'missing-FlashRuntimeExtensions.jar')
+    implementation 'com.google.android.gms:play-services-games-v2:22.1.0'
+}
