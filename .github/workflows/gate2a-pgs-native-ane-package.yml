@@ -5,6 +5,7 @@ on:
       - qa/gate2a-pgs-native-real-sdk-test
     paths:
       - native/pgs-ane/**
+      - qa/postlaunch/test_native_ane_packaging.py
       - .github/workflows/gate2a-pgs-native-ane-package.yml
   workflow_dispatch:
 permissions:
