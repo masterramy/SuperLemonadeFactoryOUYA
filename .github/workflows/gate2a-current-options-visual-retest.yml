@@ -1,0 +1,55 @@
+name: QA Limeade Exact-Source Graphics Options Recheck
+on:
+  push:
+    branches:
+      - qa/gate2a-current-options-visual-retest
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-current-options-retest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 39109114869
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: limeade-current-source-arm64-x64-and-receipts
+          path: qa-package
+      - name: Verify source-provenance and install target QA only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk
+          grep -Fxq 'source_zip_sha256=5a492bb235309529b585a7708c4b6b349b9de1b1a58f154943ef7b4f1d48f4fe' qa-package/qa-current-source-receipt.txt
+          mkdir -p qa/postlaunch
+          for file in capture_graphics_options_targeted.sh verify_options_screen_evidence.py dismiss_android_immersive_prompt.py test_options_evidence_guard.py test_android_immersive_prompt.py; do
+            cp "qa/current-options/$file" "qa/postlaunch/$file"
+          done
+          python3 -m pip install --quiet --break-system-packages pillow==11.3.0
+          bash -n qa/postlaunch/capture_graphics_options_targeted.sh
+          python3 qa/postlaunch/test_android_immersive_prompt.py
+          python3 qa/postlaunch/test_options_evidence_guard.py
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash qa/postlaunch/capture_graphics_options_targeted.sh qa-package/dist/postlaunch-disposable/SLF-DEV-EMULATOR-x64.apk qa-current-options-retest-evidence
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-current-source-options-actual-screens
+          path: qa-current-options-retest-evidence/
+          if-no-files-found: warn
