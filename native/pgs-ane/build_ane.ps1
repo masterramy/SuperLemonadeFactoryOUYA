@@ -14,7 +14,7 @@ try {
     foreach($p in @($compiler,$adt,$fre)) { if (!(Test-Path $p)) { throw "Missing native build input: $p" } }
     $env:AIR_FRE_JAR = $fre
     if (!(Get-Command gradle -ErrorAction SilentlyContinue)) { throw 'Gradle executable missing; install Gradle and Android SDK first' }
-    & gradle --no-daemon --console=plain assembleRelease
+    & gradle --no-daemon --console=plain testReleaseUnitTest assembleRelease
     if ($LASTEXITCODE -ne 0) { throw "Android Google SDK native compile failed ($LASTEXITCODE)" }
     $aar = Get-ChildItem -Path build/outputs/aar -Filter '*release.aar' | Select-Object -First 1
     if (-not $aar) { throw 'Missing built Android .aar' }
