@@ -89,6 +89,14 @@
     {
       "path": "qa/postlaunch/capture_graphics_options_targeted.sh",
       "sha256": "82fe94e6357524364dee1a21e769eef73d02914404d7cabbd467fd8af3cbb801"
+    },
+    {
+      "path": "src/PCOptionsState.as",
+      "sha256": "3b048b2635e7506d607e6d6f5ad7f442a67ebe04b7a6c82cf92f88883faa6266"
+    },
+    {
+      "path": "src/MobileControls.as",
+      "sha256": "f1fd23f851d00c4af3ad49e894629eb7f344b338f66a5999fa51f19df4bd6d31"
     }
   ]
 }
