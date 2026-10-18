@@ -1,0 +1,94 @@
+{
+  "source_drive_id": "13ZQxL3x4wUduzsAWTON7QUwubexT1VJ4",
+  "source_zip_sha256": "5a492bb235309529b585a7708c4b6b349b9de1b1a58f154943ef7b4f1d48f4fe",
+  "files": [
+    {
+      "path": "src/CloudSyncCoordinator.as",
+      "sha256": "f46689c527586569212394e6d73a6261bc43646608f4c2529f0a2470e35bd0d7"
+    },
+    {
+      "path": "src/ICloudSaveTransport.as",
+      "sha256": "1bbb20d6e26d108ecafb6a72d50dcc556b4ca0ab074c4c6eaed00f5978dc9f72"
+    },
+    {
+      "path": "src/PGSNativeTransport.as",
+      "sha256": "46ee321d86990cf02ed2a9dace5e2122d8fb96f6b9e080847a3a289339c3aa50"
+    },
+    {
+      "path": "src/org/flixel/system/input/FlxJoystick.as",
+      "sha256": "ddc4488740c4fd5d225a70ae0b3fddd97d27210da2255a38bfcb501be876d589"
+    },
+    {
+      "path": "src/FileLoaderState.as",
+      "sha256": "e72f486a2e2f46ee955350eac534938d4f6f297cba426fd338a7a0dd0012feab"
+    },
+    {
+      "path": "src/FilingCabinet.as",
+      "sha256": "a518c2794f0eb8317f2205e3dc5b1aaeb4b239d5ce483e4542ee48ed9ed8e636"
+    },
+    {
+      "path": "src/MenuState.as",
+      "sha256": "0dfa3aa6ce64690c1c568ec0f90daa5e9666153ea56370079ccac68ceb156705"
+    },
+    {
+      "path": "src/PCMenuState.as",
+      "sha256": "a5fc877d671165c8fc68e9262eca327921670e294ea377388acf1e6b7167405e"
+    },
+    {
+      "path": "src/WinniMenuState.as",
+      "sha256": "ca527d1ccd0de7ab0083041ba12779b8b7b64c84832973fe84ceb5b4d404e36c"
+    },
+    {
+      "path": "qa/postlaunch/test_autonomous_integrity.py",
+      "sha256": "d9ab256df6a7c687f3108753054a968f01643d0b2666ff4514ac68f3750be134"
+    },
+    {
+      "path": "qa/postlaunch/test_cloud_merge_contract.py",
+      "sha256": "a0ca2b8e76860fd54d136205ad0971a016140b8ea46fb5a337a4ca9b5a6b8f20"
+    },
+    {
+      "path": "qa/postlaunch/test_cloud_operation_identity.py",
+      "sha256": "f31913df1d0b82c1aa11da22ba3cb18e85f582b01b7d7f8ca8a89abcbd5cbedf"
+    },
+    {
+      "path": "qa/postlaunch/test_cloud_optin_auth.py",
+      "sha256": "ae41ad3de7b81ac3aa24b035b447aaf22d86d10118fb9e95a1b71f92d27f7d6b"
+    },
+    {
+      "path": "qa/postlaunch/test_cloud_transport_timeout.py",
+      "sha256": "86216d2a0dcd9e7980452e55f0f104204b1f3408e2bea742e849cc1e107994e9"
+    },
+    {
+      "path": "qa/postlaunch/test_controller_topology.py",
+      "sha256": "03c05e0823d303983e8bef613a46be5638f8e84b68710737438b7a3c5f1bd003"
+    },
+    {
+      "path": "qa/postlaunch/test_embed_paths.py",
+      "sha256": "37c72c818a58edac1450f15a2c1bb34e478fd6b42eb36a9ed58136f9dc01d17f"
+    },
+    {
+      "path": "qa/postlaunch/test_options_evidence_guard.py",
+      "sha256": "430594d79699bc9cd93c2f9ef79b231118d4b6501184ed2ac22ac53fcb7b836b"
+    },
+    {
+      "path": "qa/postlaunch/test_options_touch.py",
+      "sha256": "cf36fa65519036206a854070e96792873e44978273b2459dbd4eb33e7c4e8c5e"
+    },
+    {
+      "path": "qa/postlaunch/test_remaster_workpackage.py",
+      "sha256": "6ae5cc5ca98a65c54afc62a1fe5881f47ff0d66b687e3489f974fbaf840fc4b1"
+    },
+    {
+      "path": "qa/postlaunch/validate_postlaunch.py",
+      "sha256": "dc3395b4eaad2323cdd09a3c82bb53750a83d6978d905cb1cce3da500cf7c896"
+    },
+    {
+      "path": "qa/postlaunch/verify_options_screen_evidence.py",
+      "sha256": "b6f6f83ac6cd40ea7e27e330c2beddc59aa29e447e9a4d1a3824246b29fc13cd"
+    },
+    {
+      "path": "qa/postlaunch/capture_graphics_options_targeted.sh",
+      "sha256": "82fe94e6357524364dee1a21e769eef73d02914404d7cabbd467fd8af3cbb801"
+    }
+  ]
+}
