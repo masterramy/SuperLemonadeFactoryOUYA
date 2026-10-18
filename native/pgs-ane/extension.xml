@@ -1,4 +1,4 @@
-<extension xmlns="http://ns.adobe.com/air/extension/4.0">
+<extension xmlns="http://ns.adobe.com/air/extension/51.0">
   <id>com.ramybaheeg.slfport.pgs.savedgames</id>
   <versionNumber>0.1.0</versionNumber>
   <platforms>
