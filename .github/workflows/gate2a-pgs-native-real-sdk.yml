@@ -1,0 +1,50 @@
+name: QA Gate2A Native PGS Real Google SDK
+on:
+  push:
+    branches:
+      - qa/gate2a-pgs-native-real-sdk-test
+    paths:
+      - native/pgs-ane/**
+      - .github/workflows/gate2a-pgs-native-real-sdk.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-real-sdk-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Locate actual AIR FRE library
+        shell: bash
+        run: |
+          set -euo pipefail
+          jar="$(find /opt /home/runner/work /home/runner/.cache -name FlashRuntimeExtensions.jar -type f -print -quit 2>/dev/null || true)"
+          if [[ -z "$jar" ]]; then echo "Real AIR FRE JAR not located" >&2; exit 23; fi
+          echo "AIR_FRE_JAR=$jar" >> "$GITHUB_ENV"
+          echo "Real AIR library found"
+      - name: Compile against real Google Play Games v2 SDK
+        working-directory: native/pgs-ane
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --console=plain assembleRelease
+          find build/outputs/aar -name '*release.aar' -size +0c -print -quit | grep -q .
+          echo "PASS: real Google SDK and AIR FRE compile, not installed ANE/device authentication"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-native-real-sdk-aar
+          path: native/pgs-ane/build/outputs/aar/
+          if-no-files-found: warn
