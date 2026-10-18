@@ -2,7 +2,7 @@ name: QA Limeade Current Source Compile and Graphics Proof
 on:
   push:
     branches:
-      - qa/gate2a-current-source-proof-20261018
+      - qa/gate2a-drive-current-source-compile-20261018
   workflow_dispatch:
 permissions:
   contents: read
