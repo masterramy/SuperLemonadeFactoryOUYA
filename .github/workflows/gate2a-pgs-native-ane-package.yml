@@ -1,0 +1,53 @@
+name: QA Gate2A Native PGS Windows ANE Package
+on:
+  push:
+    branches:
+      - qa/gate2a-pgs-native-real-sdk-test
+    paths:
+      - native/pgs-ane/**
+      - .github/workflows/gate2a-pgs-native-ane-package.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-ane-package:
+    runs-on: windows-2025
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - name: Install Android SDK 35
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){$env:ANDROID_SDK_ROOT=$env:ANDROID_HOME}
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          $p=if($sdk){$sdk.Source}else{Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat'}
+          & $p 'platforms;android-35' 'build-tools;35.0.0'
+          if($LASTEXITCODE -ne 0){throw 'Android SDK35 installation failed'}
+      - name: Build real PGS native source and package isolated ANE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\\native\\pgs-ane\\build_ane.ps1 -AirHome $env:AIR_HOME *> native-pgs-ane-build.log
+          $rc=$LASTEXITCODE
+          Get-Content native-pgs-ane-build.log | Select-Object -Last 100
+          if($rc -ne 0 -or !(Test-Path native/pgs-ane/build/ane/SLFPGSSavedGames-dev.ane)){throw "ANE package failed $rc"}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gate2a-pgs-native-ane-raw-evidence
+          path: |
+            native-pgs-ane-build.log
+            native/pgs-ane/build/ane/*.ane
+          if-no-files-found: warn

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<platform xmlns="http://ns.adobe.com/air/extension/51.0">
+  <!-- Resolve Google libraries through AIR's Android Gradle integration.
+       Do not vendor a partial transitive dependency graph inside the ANE. -->
+  <gradle>
+    <repositories>
+      <repository>google()</repository>
+      <repository>mavenCentral()</repository>
+    </repositories>
+    <dependencies>
+      <dependency>implementation 'com.google.android.gms:play-services-games-v2:22.1.0'</dependency>
+    </dependencies>
+  </gradle>
+</platform>
