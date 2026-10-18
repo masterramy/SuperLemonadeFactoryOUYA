@@ -1,0 +1,117 @@
+name: QA Limeade Two-Controller and Cloud UI AIR Compile
+on:
+  push:
+    branches:
+      - qa/gate2a-fourtrack-dualpad-cloudoptions-20261018
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compile-and-package:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Verify approved historical overlays and apply in precedence order
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $overlays=@(
+            @('qa/postlaunch-source-overlay.zip','014a184df730aaf3ade26bd01fa8dd55e3aa68c2e07970a00f9aff6dcc87b164'),
+            @('qa/autonomous-extension-overlay.zip','38084c18d9a1effc30860a9d877ed929af87c5058179c18e9491ec94a46fd6a3'),
+            @('qa/options-direct-touch-fix.zip','eb4f77bc1acf364db4e57a24d0e33760c14774f955107ace9a09adf034c778a1')
+          )
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          foreach($pair in $overlays){
+            $zipPath=$pair[0];$expected=$pair[1]
+            $got=(Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if($got -ne $expected){ throw "Overlay mismatch $zipPath $got" }
+            $zip=[IO.Compression.ZipFile]::OpenRead((Resolve-Path $zipPath).Path)
+            try{
+              foreach($entry in $zip.Entries){
+                if($entry.FullName.Contains('..') -or $entry.FullName.StartsWith('/') -or $entry.FullName.Contains('\')){throw "Unsafe ZIP member $($entry.FullName)"}
+              }
+            } finally {$zip.Dispose()}
+            Expand-Archive -LiteralPath $zipPath -DestinationPath . -Force
+          }
+      - name: Apply current Drive code delta with exact SHA-256 checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $m=Get-Content 'qa/current-source/manifest.json' -Raw | ConvertFrom-Json
+          foreach($f in $m.files){
+            $stage=Join-Path 'qa/current-source/files' $f.path
+            if(-not (Test-Path -LiteralPath $stage)){throw "Missing current-source stage $stage"}
+            # Git checkout on Windows may convert staged LF text to CRLF.
+            # Normalize text to the original hashed LF bytes, then preserve them.
+            $data=[IO.File]::ReadAllText((Resolve-Path -LiteralPath $stage).Path).Replace("`r`n","`n")
+            $utf8=New-Object Text.UTF8Encoding($false)
+            $bytes=$utf8.GetBytes($data)
+            $actual=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            if($actual -ne $f.sha256){throw "Current-source mismatch $($f.path): $actual"}
+            $dest=$f.path
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+            [IO.File]::WriteAllText((Join-Path (Get-Location).Path $dest),$data,$utf8)
+          }
+          @("source_zip_drive_id=$($m.source_drive_id)","source_zip_sha256=$($m.source_zip_sha256)","applied_current_source_files=$($m.files.Count)") | Set-Content qa-current-source-receipt.txt
+      - name: Run current-source regression checks on exact applied code
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --quiet --disable-pip-version-check pillow==11.3.0
+          $tests=@('test_autonomous_integrity.py','test_cloud_merge_contract.py','test_cloud_operation_identity.py','test_cloud_optin_auth.py','test_cloud_transport_timeout.py','test_controller_topology.py','test_embed_paths.py','test_options_evidence_guard.py','test_options_touch.py','test_remaster_workpackage.py','validate_postlaunch.py')
+          foreach($test in $tests){python "qa/postlaunch/$test";if($LASTEXITCODE -ne 0){throw "Current-source test failed $test"}}
+      - name: Apply current four-track AS3 modifications and verify their exact hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $files=@(
+            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','b87246af10b039cac38a02c9d6e2a5bf5e5cb620b402c4fe7d11d85344d9079e'),
+            @('qa/fourtrack-impl/PCOptionsState.as','src/PCOptionsState.as','c695d8103fd0e52d59a3c2b72e660ab894ebab63539c57da63738ad0392b98b1')
+          )
+          foreach($row in $files){
+            $data=[IO.File]::ReadAllText((Resolve-Path -LiteralPath $row[0]).Path).Replace("`r`n","`n")
+            $utf8=New-Object System.Text.UTF8Encoding($false)
+            $bytes=$utf8.GetBytes($data)
+            $digest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            if($digest -ne $row[2]){throw "Fourtrack source SHA mismatch $($row[0]) : $digest"}
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $row[1]) | Out-Null
+            [IO.File]::WriteAllText((Join-Path (Get-Location).Path $row[1]),$data,$utf8)
+          }
+          'source_update=dual_controller_and_cloud_options' | Add-Content qa-current-source-receipt.txt
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17.0.20+8'
+      - uses: joshtynjala/setup-adobe-air-action@1613ab5edc56ebfbdcf8ff388e2da9aa887b71f1
+        with:
+          air-version: '51.3.4.3'
+          accept-license: true
+      - name: Install Android SDK 36
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if([string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)){$env:ANDROID_SDK_ROOT=$env:ANDROID_HOME}
+          $sdk=Get-Command sdkmanager.bat -ErrorAction SilentlyContinue
+          if($sdk){$sdkPath=$sdk.Source}else{$sdkPath=Join-Path $env:ANDROID_SDK_ROOT 'cmdline-tools/latest/bin/sdkmanager.bat'}
+          & $sdkPath 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          if($LASTEXITCODE -ne 0){throw 'Android SDK setup failed'}
+          Remove-Item -LiteralPath AIRSDK_Windows.zip -Force -ErrorAction SilentlyContinue
+      - name: Compile exact current ActionScript
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/postlaunch/compile_wip.ps1 *> qa-current-compile.log
+          $rc=$LASTEXITCODE
+          Get-Content qa-current-compile.log | Select-Object -Last 60
+          if($rc -ne 0 -or -not(Test-Path bin/SLFforOuya-postlaunch-wip.swf)){throw "AIR compilation failure: $rc"}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: limeade-fourtrack-exact-as3-air-compile-receipt
+          path: |
+            qa-current-source-receipt.txt
+            qa-current-compile.log
+            POSTLAUNCH_AIR_STDOUT.txt
+            POSTLAUNCH_AIR_STDERR.txt
+          if-no-files-found: warn
