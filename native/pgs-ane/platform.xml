@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<platform xmlns="http://ns.adobe.com/air/extension/4.0">
+  <packagedDependencies/>
+  <packagedResources/>
+  <!-- AIR 51+ resolves full PGS dependency graph in the host Android build.
+       Never silently ship only classes.jar without the transitive libraries. -->
+  <gradle>
+    <repositories>
+      <repository>google()</repository>
+      <repository>mavenCentral()</repository>
+    </repositories>
+    <dependencies>
+      <dependency>implementation 'com.google.android.gms:play-services-games-v2:22.1.0'</dependency>
+    </dependencies>
+  </gradle>
+</platform>
