@@ -30,12 +30,18 @@ try {
     $swc = Join-Path $tmp 'SLFPGSNative.swc'
     & $compiler '-swf-version=23' '-source-path=as3' '-include-classes=com.ramybaheeg.slfport.pgs.BridgeMarker' "-output=$swc"
     if ($LASTEXITCODE -ne 0 -or !(Test-Path $swc)) { throw 'Failed to build native extension SWC' }
+    # ADT requires the SWC's library.swf in each native platform folder.
+    Copy-Item $swc (Join-Path $tmp 'swc-payload.zip')
+    Expand-Archive -Path (Join-Path $tmp 'swc-payload.zip') -DestinationPath (Join-Path $tmp 'swc-payload') -Force
+    $platformSwf = Join-Path $tmp 'swc-payload/library.swf'
+    if (!(Test-Path $platformSwf)) { throw 'Missing library.swf in compiled SWC' }
+    Copy-Item $platformSwf (Join-Path $tmp 'library.swf')
     $absoluteOutput = Join-Path $root $OutputDirectory
     New-Item -ItemType Directory -Path $absoluteOutput -Force | Out-Null
     $ane = Join-Path $absoluteOutput 'SLFPGSSavedGames-dev.ane'
     & $adt -package -target ane $ane extension.xml -swc $swc `
-        -platform Android-ARM -platformoptions platform.xml -C $tmp SLFPGSNative.jar `
-        -platform Android-ARM64 -platformoptions platform.xml -C $tmp SLFPGSNative.jar
+        -platform Android-ARM -platformoptions platform.xml -C $tmp SLFPGSNative.jar library.swf `
+        -platform Android-ARM64 -platformoptions platform.xml -C $tmp SLFPGSNative.jar library.swf
     if ($LASTEXITCODE -ne 0 -or !(Test-Path $ane)) { throw 'ADT ANE packaging failed' }
     & python (Join-Path $root '../../qa/postlaunch/test_native_ane_packaging.py')
     if ($LASTEXITCODE -ne 0) { throw 'Native contract gate failed' }
