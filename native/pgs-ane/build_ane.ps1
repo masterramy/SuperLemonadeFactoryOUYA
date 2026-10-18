@@ -28,7 +28,7 @@ try {
     $lib = Join-Path $tmp 'SLFPGSNative.jar'
     Copy-Item $classes $lib
     $swc = Join-Path $tmp 'SLFPGSNative.swc'
-    & $compiler '-source-path=as3' '-include-classes=com.ramybaheeg.slfport.pgs.BridgeMarker' "-output=$swc"
+    & $compiler '-swf-version=23' '-source-path=as3' '-include-classes=com.ramybaheeg.slfport.pgs.BridgeMarker' "-output=$swc"
     if ($LASTEXITCODE -ne 0 -or !(Test-Path $swc)) { throw 'Failed to build native extension SWC' }
     $absoluteOutput = Join-Path $root $OutputDirectory
     New-Item -ItemType Directory -Path $absoluteOutput -Force | Out-Null
