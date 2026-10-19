@@ -19,7 +19,9 @@ jobs:
           Copy-Item -LiteralPath tools/postlaunch/build_disposable_android.ps1 -Destination qa-smoke-builder-preserved.ps1 -Force
           $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath qa-smoke-builder-preserved.ps1).Hash.ToLowerInvariant()
           Write-Host 'QA_BRANCH_BUILDER_ONLY_NOT_CANONICAL_DRIVE_SOURCE'
-          if($sha -ne '3b82b3b7c9895657128bab5005a46e209d3ff5674f4e2b6b5670620978f2b841'){throw "Unexpected QA branch developer builder: $sha"}
+          $blob=(& git rev-parse 'HEAD:tools/postlaunch/build_disposable_android.ps1').Trim()
+          if($blob -ne '0603fcabf6eaba94ab031c26777f45243931bf56'){throw "Unexpected developer builder Git blob: $blob"}
+          Write-Host "QA_BUILDER_GIT_BLOB=$blob SHA256=$sha; this is NOT the canonical Drive source"
       - name: Verify approved historical overlays and apply in precedence order
         shell: pwsh
         run: |
