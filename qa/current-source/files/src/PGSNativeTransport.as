@@ -150,7 +150,17 @@ package
 
         public function dispose():void
         {
-            if (pending != null) fail("error");
+            if (pending != null)
+            {
+                // A screen exit while native Google work is running must
+                // quarantine its pending request before a new sync context.
+                try {
+                    if (context != null) context.call("cancel", pendingId);
+                } catch (error:Error) { /* Continue local cleanup. */ }
+                ready = false;
+                extensionSupported = false;
+                fail("error");
+            }
             if (context != null)
             {
                 context.removeEventListener(StatusEvent.STATUS, onStatus);
