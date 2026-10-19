@@ -1,10 +1,10 @@
 {
   "source_drive_id": "13ZQxL3x4wUduzsAWTON7QUwubexT1VJ4",
-  "source_zip_sha256": "5a492bb235309529b585a7708c4b6b349b9de1b1a58f154943ef7b4f1d48f4fe",
+  "source_zip_sha256": "d7914ba1fa129792805c2ffc03a2d0927be7a1e4e2e202d14242108a7bdd6af0",
   "files": [
     {
       "path": "src/CloudSyncCoordinator.as",
-      "sha256": "f46689c527586569212394e6d73a6261bc43646608f4c2529f0a2470e35bd0d7"
+      "sha256": "375b5ea30bc8e8a1781383610c366c3fa7a011368e9b6509e5286e383f66c1b4"
     },
     {
       "path": "src/ICloudSaveTransport.as",
@@ -40,7 +40,7 @@
     },
     {
       "path": "qa/postlaunch/test_autonomous_integrity.py",
-      "sha256": "d9ab256df6a7c687f3108753054a968f01643d0b2666ff4514ac68f3750be134"
+      "sha256": "18ec5bd289242a3c8e0ea7380b7273b71d5cd8e479615e2f46e07c05da0c58a5"
     },
     {
       "path": "qa/postlaunch/test_cloud_merge_contract.py",
@@ -52,7 +52,7 @@
     },
     {
       "path": "qa/postlaunch/test_cloud_optin_auth.py",
-      "sha256": "ae41ad3de7b81ac3aa24b035b447aaf22d86d10118fb9e95a1b71f92d27f7d6b"
+      "sha256": "6bd4a3ba21e2ad15508c526b4840ea3e9d4c118eea3da13cc1295745221a7f09"
     },
     {
       "path": "qa/postlaunch/test_cloud_transport_timeout.py",
@@ -101,6 +101,10 @@
     {
       "path": "tools/postlaunch/prepare_semantic_remaster.py",
       "sha256": "5ec3413068849485971a45f0a8d491cd5360a7187e4614ffbfaa4d3e41b3b6a2"
+    },
+    {
+      "path": "qa/postlaunch/test_cloud_write_drift.py",
+      "sha256": "ac15849610b9c80f9233039b7d36c01240a1c032fe092183ac3f08848b87e688"
     }
   ]
 }
