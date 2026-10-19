@@ -94,10 +94,23 @@ public final class PGSExtension implements FREExtension {
         }
 
         /** Preserve both Google server snapshots; never use last-modified overwrite. */
+        private void discardStaleOpen(SnapshotsClient.DataOrConflict<Snapshot> result) {
+            if (result == null || snapshots == null) return;
+            try {
+                if (!result.isConflict()) {
+                    Snapshot handle = result.getData();
+                    if (handle != null) snapshots.discardAndClose(handle);
+                }
+            } catch (Exception | LinkageError ignored) { }
+        }
+
         private void handleOpenResult(SnapshotsClient.DataOrConflict<Snapshot> result,
                 String operation, long id, boolean resolvedConflict, int retries,
                 OpenedConsumer consumer) {
-            if (disposed) return;
+            if (!current(id)) {
+                discardStaleOpen(result);
+                return;
+            }
             if (result == null) { finish(operation,id,"error",null); return; }
             if (!result.isConflict()) {
                 Snapshot opened=result.getData();
@@ -126,7 +139,10 @@ public final class PGSExtension implements FREExtension {
                 snapshots.resolveConflict(conflict.getConflictId(),serverId,
                         new SnapshotMetadataChange.Builder().build(),contents)
                     .addOnCompleteListener(getActivity(),task -> {
-                        if(disposed)return;
+                        if (!current(id)) {
+                            if (task.isSuccessful()) discardStaleOpen(task.getResult());
+                            return;
+                        }
                         if(!task.isSuccessful()){
                             finish(operation,id,"error",null);return;
                         }
