@@ -28,7 +28,7 @@ try {
     $lib = Join-Path $tmp 'SLFPGSNative.jar'
     Copy-Item $classes $lib
     $swc = Join-Path $tmp 'SLFPGSNative.swc'
-    & $compiler '-swf-version=23' '-source-path=as3' '-include-classes=com.ramybaheeg.slfport.pgs.BridgeMarker' "-output=$swc"
+    & $compiler '-swf-version=21' '-source-path=as3' '-include-classes=com.ramybaheeg.slfport.pgs.BridgeMarker' "-output=$swc"
     if ($LASTEXITCODE -ne 0 -or !(Test-Path $swc)) { throw 'Failed to build native extension SWC' }
     # ADT requires the SWC's library.swf in each native platform folder.
     Copy-Item $swc (Join-Path $tmp 'swc-payload.zip')
@@ -45,5 +45,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or !(Test-Path $ane)) { throw 'ADT ANE packaging failed' }
     & python (Join-Path $root '../../qa/postlaunch/test_native_ane_packaging.py')
     if ($LASTEXITCODE -ne 0) { throw 'Native contract gate failed' }
+    & python (Join-Path $root 'test_swf_version.py') $ane
+    if ($LASTEXITCODE -ne 0) { throw 'ANE SWF/root compatibility failed' }
     Write-Host "DEV ANE assembled: $ane (requires app-specific PGS config and device QA)"
 } finally { Pop-Location }
