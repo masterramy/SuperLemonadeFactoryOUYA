@@ -237,13 +237,14 @@ public final class PGSExtension implements FREExtension {
                                 byte[] bytes = snapshot.getSnapshotContents().readFully();
                                 if (bytes == null) bytes = new byte[0];
                                 // Always close the opened snapshot even on reads.
-                                snapshots.discardAndClose(snapshot);
+                                operationClient.discardAndClose(snapshot);
                                 if (bytes.length > MAX_BYTES) { finish("read",id,"error",null);return; }
+                                if (!current(id)) return;
                                 lastRead.put(slot, bytes.clone());
                                 String payload = bytes.length == 0 ? null : new String(bytes, StandardCharsets.UTF_8);
                                 finish("read",id,bytes.length == 0 ? "empty" : "ok",payload);
                             } catch (IOException | RuntimeException e) {
-                                try { snapshots.discardAndClose(snapshot); } catch (Exception ignored) { }
+                                try { operationClient.discardAndClose(snapshot); } catch (Exception ignored) { }
                                 finish("read",id,"error",null);
                             }
                             });
@@ -277,7 +278,7 @@ public final class PGSExtension implements FREExtension {
                             handleOpenResult(task.getResult(),operationClient,"write",id,false,0,(snapshot,resolved) -> {
                                 if(resolved){
                                     // Fresh cloud monotonic merge requires a new AS3 local read.
-                                    snapshots.discardAndClose(snapshot);
+                                    operationClient.discardAndClose(snapshot);
                                     finish("write",id,"conflict",null);return;
                                 }
                             if (snapshot == null || snapshot.getSnapshotContents() == null) {
@@ -288,14 +289,18 @@ public final class PGSExtension implements FREExtension {
                                 byte[] remote = contents.readFully();
                                 if (remote == null) remote = new byte[0];
                                 if (!Arrays.equals(remote, expectedSnapshot)) {
-                                    snapshots.discardAndClose(snapshot);
+                                    operationClient.discardAndClose(snapshot);
                                     finish("write",id,"conflict",null);return;
                                 }
+                                if (!current(id)) {
+                                    operationClient.discardAndClose(snapshot);
+                                    return;
+                                }
                                 if (!contents.writeBytes(incoming)) {
-                                    snapshots.discardAndClose(snapshot);
+                                    operationClient.discardAndClose(snapshot);
                                     finish("write",id,"error",null);return;
                                 }
-                                snapshots.commitAndClose(snapshot,new SnapshotMetadataChange.Builder().build())
+                                operationClient.commitAndClose(snapshot,new SnapshotMetadataChange.Builder().build())
                                     .addOnCompleteListener(getActivity(), saved -> {
                                         if (!current(id)) return;
                                         if (!saved.isSuccessful()) { finish("write",id,"error",null);return; }
@@ -303,7 +308,7 @@ public final class PGSExtension implements FREExtension {
                                         finish("write",id,"ok",null);
                                     });
                             } catch (IOException | RuntimeException e) {
-                                try { snapshots.discardAndClose(snapshot); } catch (Exception ignored) { }
+                                try { operationClient.discardAndClose(snapshot); } catch (Exception ignored) { }
                                 finish("write",id,"error",null);
                             }
                             });
