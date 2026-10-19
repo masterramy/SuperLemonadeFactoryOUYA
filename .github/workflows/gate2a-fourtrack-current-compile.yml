@@ -60,14 +60,14 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           python -m pip install --quiet --disable-pip-version-check pillow==11.3.0
-          $tests=@('test_autonomous_integrity.py','test_cloud_merge_contract.py','test_cloud_operation_identity.py','test_cloud_optin_auth.py','test_cloud_write_drift.py','test_cloud_transport_timeout.py','test_controller_topology.py','test_embed_paths.py','test_options_evidence_guard.py','test_options_touch.py','test_remaster_workpackage.py','validate_postlaunch.py')
+          $tests=@('test_autonomous_integrity.py','test_cloud_merge_contract.py','test_cloud_operation_identity.py','test_cloud_optin_auth.py','test_cloud_write_drift.py','test_cloud_transport_timeout.py','test_controller_topology.py','test_controller_slot_retention.py','test_embed_paths.py','test_options_evidence_guard.py','test_options_touch.py','test_remaster_workpackage.py','validate_postlaunch.py')
           foreach($test in $tests){python "qa/postlaunch/$test";if($LASTEXITCODE -ne 0){throw "Current-source test failed $test"}}
       - name: Apply current four-track AS3 modifications and verify their exact hashes
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $files=@(
-            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','b87246af10b039cac38a02c9d6e2a5bf5e5cb620b402c4fe7d11d85344d9079e'),
+            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','3ec3448909a6c6bfd83004e790290a5558f96f6763efb95c91c1f0cd607ab8df'),
             @('qa/fourtrack-impl/PCOptionsState.as','src/PCOptionsState.as','c695d8103fd0e52d59a3c2b72e660ab894ebab63539c57da63738ad0392b98b1')
           )
           foreach($row in $files){
