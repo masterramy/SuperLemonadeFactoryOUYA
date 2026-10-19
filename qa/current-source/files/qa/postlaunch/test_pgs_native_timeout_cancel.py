@@ -3,7 +3,7 @@
 Source contract only; hardware/OAuth testing remains separate.
 """
 from pathlib import Path
-root=Path(__file__).resolve().parents[3]
+root=Path(__file__).resolve().parents[2]
 a=(root/'src/PGSNativeTransport.as').read_text()
 n=(root/'native/pgs-ane/src/main/java/com/ramybaheeg/slfport/pgs/PGSExtension.java').read_text()
 assert 'functions.put("cancel"' in n
