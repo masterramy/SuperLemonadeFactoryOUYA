@@ -503,7 +503,15 @@ package org.flixel.system.input
 		public function update():void
 		{
 			selectDevice();
-			if (active == null) { clearState(); clearSecondaryState(); return; }
+            // Player 2 remains independently playable if the Player 1 pad
+            // disconnects. Do not skip its polling or erase its held state.
+            if (active == null) clearState();
+            else updatePrimary();
+            updateSecondary();
+        }
+
+        private function updatePrimary():void
+        {
 			var a:Boolean = down(modernButtons ? ["BUTTON_96"] : ["BUTTON_4"]);
 			var b:Boolean = down(modernButtons ? ["BUTTON_97"] : ["BUTTON_5"]);
 			var x:Boolean = down(modernButtons ? ["BUTTON_99"] : ["BUTTON_6"]);
@@ -547,7 +555,6 @@ package org.flixel.system.input
             else if (j1ButtonBackJustPressed) noteQAEdge("BACK");
             lastA = a; lastB = b; lastX = x; lastY = y; lastStart = start; lastBack = back;
 			lastLeft = left; lastRight = right; lastUp = up; lastDown = downHeld;
-            updateSecondary();
 		}
 	}
 }
