@@ -340,21 +340,29 @@ package org.flixel.system.input
             var name:String = "";
             try
             {
+                var eligible:Array = [];
                 for (var i:int = 0; i < GameInput.numDevices; i++)
                 {
                     var d:GameInputDevice = GameInput.getDeviceAt(i);
-                    if (d == null || !isGamepadTopology(d)) continue;
-                    if (found == null)
-                    {
-                        found = d;
-                        name = d.name == null ? "unnamed" : d.name.toLowerCase();
-                    }
-                    else if (d != found)
-                    {
-                        foundSecondary = d;
-                        break;
-                    }
+                    if (d != null && isGamepadTopology(d)) eligible.push(d);
                 }
+                // Preserve physical identities regardless of enumeration order.
+                // If one controller disconnects, its surviving partner remains
+                // assigned to its original player, never silently promoted.
+                for each (d in eligible)
+                {
+                    if (d == active) found = d;
+                    else if (d == secondary) foundSecondary = d;
+                }
+                // Fill vacant slots only from devices not already assigned.
+                for each (d in eligible)
+                {
+                    if (d == found || d == foundSecondary) continue;
+                    if (found == null) found = d;
+                    else if (foundSecondary == null) foundSecondary = d;
+                }
+                if (found != null)
+                    name = found.name == null ? "unnamed" : found.name.toLowerCase();
             }
             catch (error:Error) { found = null; foundSecondary = null; }
             if (found != active)
