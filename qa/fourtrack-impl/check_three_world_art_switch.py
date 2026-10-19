@@ -52,15 +52,15 @@ for world,name in ((2,"level2_tank"),(3,"level3_desk1")):
 # here, but never claim the QA-generated pixels are the canonical art.
 replace_once("src/GraphicsMode.as",
     "        public static function choose(classicArt:Class, enhancedArt:Class):Class",
-    "        public static function chooseForItem(itemName:String, classicArt:Class):Class\\n"
-    "        {\\n"
-    "            return RemasteredItemCatalog.choose(itemName, classicArt);\\n"
-    "        }\\n"
+    "        public static function chooseForItem(itemName:String, classicArt:Class):Class\n"
+    "        {\n"
+    "            return RemasteredItemCatalog.choose(itemName, classicArt);\n"
+    "        }\n"
     "        public static function choose(classicArt:Class, enhancedArt:Class):Class")
 replace_once("src/PlayState.as",
-    "\\t\\t\\tif (item.@width!=undefined) {",
-    "\\t\\t\\timg = GraphicsMode.chooseForItem(toLoad, img);\\n"
-    "\\t\\t\\tif (item.@width!=undefined) {")
+    "\t\t\tif (item.@width!=undefined) {",
+    "\t\t\timg = GraphicsMode.chooseForItem(toLoad, img);\n"
+    "\t\t\tif (item.@width!=undefined) {")
 catalog="""// Staged QA compiler mirror of canonical generated RemasteredItemCatalog.as.
 package
 {
