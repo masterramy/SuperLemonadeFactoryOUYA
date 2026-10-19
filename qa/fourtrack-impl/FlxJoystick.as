@@ -212,6 +212,11 @@ package org.flixel.system.input
         private var qaLastInput:String = "none";
         private var qaLastInputTime:int = 0;
         private var qaEventCount:int = 0;
+        private var qaDevice2Name:String = "none";
+        private var qaMapping2:String = "unmapped";
+        private var qaLast2Input:String = "none";
+        private var qaLast2InputTime:int = 0;
+        private var qa2EventCount:int = 0;
         public function qaStatus():String
         {
             // Show latest recognized action even AFTER release so a screenshot
@@ -228,9 +233,22 @@ package org.flixel.system.input
             var last:String = qaLastInput;
             if (qaLastInputTime > 0 && getTimer() - qaLastInputTime > 120000)
                 last = "expired";
-            return "Pad: " + qaDeviceName + " / " + qaMapping + "\n" +
-                "Held: " + held + "\n" +
-                "Last: " + last + "  Count: " + qaEventCount;
+            var held2:String = (j2ButtonAPressed ? "A " : "") +
+                (j2ButtonBPressed ? "B " : "") +
+                (j2ButtonXPressed ? "X " : "") +
+                (j2ButtonYPressed ? "Y " : "") +
+                (j2Stick1LeftPressed ? "L " : "") +
+                (j2Stick1RightPressed ? "R " : "") +
+                (j2Stick1UpPressed ? "U " : "") +
+                (j2Stick1DownPressed ? "D " : "");
+            if (held2.length == 0) held2 = "none";
+            var last2:String = qaLast2Input;
+            if (qaLast2InputTime > 0 && getTimer() - qaLast2InputTime > 120000)
+                last2 = "expired";
+            return "P1: " + qaDeviceName + " / " + qaMapping + "\n" +
+                "Held: " + held + " Last: " + last + " (#" + qaEventCount + ")\n" +
+                "P2: " + qaDevice2Name + " / " + qaMapping2 + "\n" +
+                "Held: " + held2 + " Last: " + last2 + " (#" + qa2EventCount + ")";
         }
 
         private function noteQAEdge(key:String):void
@@ -238,6 +256,13 @@ package org.flixel.system.input
             qaLastInput = key;
             qaLastInputTime = getTimer();
             if (qaEventCount < 999999) qaEventCount++;
+        }
+
+        private function noteQAEdge2(key:String):void
+        {
+            qaLast2Input = key;
+            qaLast2InputTime = getTimer();
+            if (qa2EventCount < 999999) qa2EventCount++;
         }
 
 		public function FlxJoystick()
@@ -401,6 +426,11 @@ package org.flixel.system.input
                 secondary = foundSecondary;
                 secondaryControls = {};
                 clearSecondaryState();
+                if (secondary == null)
+                {
+                    qaDevice2Name = "none";
+                    qaMapping2 = "disconnected";
+                }
                 if (secondary != null) try
                 {
                     secondary.enabled = true;
@@ -410,11 +440,15 @@ package org.flixel.system.input
                         if (secondaryControl != null) secondaryControls[secondaryControl.id] = secondaryControl;
                     }
                     secondaryModernButtons = secondaryControls["BUTTON_96"] != null;
+                    qaDevice2Name = secondary.name == null ? "unnamed" : secondary.name.toLowerCase().substr(0, 18);
+                    qaMapping2 = secondaryModernButtons ? "android" : "legacy";
                 }
                 catch (error3:Error)
                 {
                     secondary = null;
                     secondaryControls = {};
+                    qaDevice2Name = "none";
+                    qaMapping2 = "device error";
                     clearSecondaryState();
                 }
             }
@@ -451,6 +485,16 @@ package org.flixel.system.input
             j2Stick1RightJustPressed = right && !last2Right;
             j2Stick1UpJustPressed = up && !last2Up;
             j2Stick1DownJustPressed = downHeld && !last2Down;
+            if (j2ButtonAJustPressed) noteQAEdge2("A");
+            else if (j2ButtonBJustPressed) noteQAEdge2("B");
+            else if (j2ButtonXJustPressed) noteQAEdge2("X");
+            else if (j2ButtonYJustPressed) noteQAEdge2("Y");
+            else if (j2Stick1LeftJustPressed) noteQAEdge2("LEFT");
+            else if (j2Stick1RightJustPressed) noteQAEdge2("RIGHT");
+            else if (j2Stick1UpJustPressed) noteQAEdge2("UP");
+            else if (j2Stick1DownJustPressed) noteQAEdge2("DOWN");
+            else if (j2ButtonStartJustPressed) noteQAEdge2("START");
+            else if (j2ButtonBackJustPressed) noteQAEdge2("BACK");
             last2A = a; last2B = b; last2X = x; last2Y = y;
             last2Start = start; last2Back = back;
             last2Left = left; last2Right = right; last2Up = up; last2Down = downHeld;
