@@ -100,6 +100,13 @@ package
             // was completed or cancelled on the same transport instance.
             if (pendingId != requestId || pending == null) return;
             requestTimeout = 0;
+            // Native Google SDK may still be committing this operation.
+            // Cancel under the matching request ID BEFORE failing the caller.
+            try {
+                if (context != null) context.call("cancel", requestId);
+            } catch (error:Error) { /* Native may already be unavailable. */ }
+            ready = false;
+            extensionSupported = false;
             fail("error");
         }
 
