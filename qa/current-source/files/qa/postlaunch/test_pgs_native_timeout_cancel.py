@@ -13,4 +13,7 @@ body=a[start:end]
 assert 'context.call("cancel", requestId)' in body
 assert 'extensionSupported = false;' in body and 'ready = false;' in body
 assert body.index('context.call("cancel", requestId)') < body.index('fail("error")')
-print('PASS timeout cancels native request and disables quarantined cloud provider')
+dispose=a[a.index('public function dispose():void'):]
+assert 'context.call("cancel", pendingId)' in dispose, 'Dispose must cancel active native request'
+assert dispose.index('context.call("cancel", pendingId)') < dispose.index('context.dispose()')
+print('PASS native cancellation on timeout and dispose')
