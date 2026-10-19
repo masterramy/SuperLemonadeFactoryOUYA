@@ -68,7 +68,7 @@ jobs:
           $ErrorActionPreference='Stop'
           $files=@(
             @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','f62cc7b92206ee000a0e873ed19a0c21b473fdf29c5ccb2e43eb21b1885ff723'),
-            @('qa/fourtrack-impl/PCOptionsState.as','src/PCOptionsState.as','c695d8103fd0e52d59a3c2b72e660ab894ebab63539c57da63738ad0392b98b1')
+            @('qa/fourtrack-impl/PCOptionsState.as','src/PCOptionsState.as','cfd103c5659651b4c43bea320da729afa0ececd8f3ed724f5e879fd3b9e7da40')
           )
           foreach($row in $files){
             $data=[IO.File]::ReadAllText((Resolve-Path -LiteralPath $row[0]).Path).Replace("`r`n","`n")
@@ -84,6 +84,11 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Physical controller slot retention regression failed'}
           python qa/postlaunch/test_secondary_diagnostics.py
           if($LASTEXITCODE -ne 0){throw 'Player 2 diagnostic regression failed'}
+      - name: Test Options native provider destruction on actual applied AS3
+        shell: pwsh
+        run: |
+          python qa/fourtrack-impl/test_cloud_options_lifecycle.py
+          if($LASTEXITCODE -ne 0){throw 'Options lifecycle regression failed'}
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
