@@ -60,7 +60,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           python -m pip install --quiet --disable-pip-version-check pillow==11.3.0
-          $tests=@('test_autonomous_integrity.py','test_cloud_merge_contract.py','test_cloud_operation_identity.py','test_cloud_optin_auth.py','test_cloud_write_drift.py','test_cloud_transport_timeout.py','test_controller_topology.py','test_embed_paths.py','test_options_evidence_guard.py','test_options_touch.py','test_remaster_workpackage.py','validate_postlaunch.py')
+          $tests=@('test_autonomous_integrity.py','test_cloud_merge_contract.py','test_cloud_operation_identity.py','test_cloud_optin_auth.py','test_cloud_write_drift.py','test_cloud_transport_timeout.py','test_pgs_native_timeout_cancel.py','test_controller_topology.py','test_embed_paths.py','test_options_evidence_guard.py','test_options_touch.py','test_remaster_workpackage.py','validate_postlaunch.py')
           foreach($test in $tests){python "qa/postlaunch/$test";if($LASTEXITCODE -ne 0){throw "Current-source test failed $test"}}
       - name: Apply current four-track AS3 modifications and verify their exact hashes
         shell: pwsh
