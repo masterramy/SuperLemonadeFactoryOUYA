@@ -102,6 +102,22 @@ public final class PGSExtension implements FREExtension {
                 if (!result.isConflict()) {
                     Snapshot handle = result.getData();
                     if (handle != null) client.discardAndClose(handle);
+                } else {
+                    // A manual conflict has server and device snapshot views.
+                    // A canceled request must discard both; never overwrite.
+                    SnapshotsClient.SnapshotConflict conflict = result.getConflict();
+                    if (conflict != null) {
+                        Snapshot server = conflict.getSnapshot();
+                        Snapshot device = conflict.getConflictingSnapshot();
+                        if (server != null) {
+                            try { client.discardAndClose(server); }
+                            catch (Exception | LinkageError ignored) { }
+                        }
+                        if (device != null && device != server) {
+                            try { client.discardAndClose(device); }
+                            catch (Exception | LinkageError ignored) { }
+                        }
+                    }
                 }
             } catch (Exception | LinkageError ignored) { }
         }
@@ -121,6 +137,7 @@ public final class PGSExtension implements FREExtension {
                 return;
             }
             if(retries>=MAX_NATIVE_CONFLICT_RETRIES){
+                discardStaleOpen(result, operationClient);
                 finish(operation,id,"error",null);return;
             }
             try {
