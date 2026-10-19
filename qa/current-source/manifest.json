@@ -12,7 +12,7 @@
     },
     {
       "path": "src/PGSNativeTransport.as",
-      "sha256": "46ee321d86990cf02ed2a9dace5e2122d8fb96f6b9e080847a3a289339c3aa50"
+      "sha256": "f4c311621ac690e68b7bf2e8d76a2a8d35e851e7b41416392adb45a5903cbc61"
     },
     {
       "path": "src/org/flixel/system/input/FlxJoystick.as",
@@ -105,6 +105,15 @@
     {
       "path": "qa/postlaunch/test_cloud_write_drift.py",
       "sha256": "ac15849610b9c80f9233039b7d36c01240a1c032fe092183ac3f08848b87e688"
+    },
+    {
+      "path": "qa/postlaunch/test_pgs_native_timeout_cancel.py",
+      "sha256": "0aa333d7f35795ae82e4e466870c772488eaef74a88a43b26c6d7009ddb47fbb"
     }
-  ]
+  ],
+  "reference_latest_canonical_drive_source": {
+    "drive_id": "13ZQxL3x4wUduzsAWTON7QUwubexT1VJ4",
+    "sha256": "2a9ff42f98ab379d601f65094f5c1674515a2e5c77547e10a19683936fa918fb",
+    "note": "Reference only; historical base overlays and staged file subset are not an exact full ZIP byte-for-byte input"
+  }
 }
