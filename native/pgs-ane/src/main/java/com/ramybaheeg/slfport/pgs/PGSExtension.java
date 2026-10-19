@@ -94,21 +94,23 @@ public final class PGSExtension implements FREExtension {
         }
 
         /** Preserve both Google server snapshots; never use last-modified overwrite. */
-        private void discardStaleOpen(SnapshotsClient.DataOrConflict<Snapshot> result) {
-            if (result == null || snapshots == null) return;
+        private void discardStaleOpen(SnapshotsClient.DataOrConflict<Snapshot> result, SnapshotsClient client) {
+            // FREContext.dispose() clears snapshots while asynchronous Google
+            // callbacks can still return opened native snapshot handles.
+            if (result == null || client == null) return;
             try {
                 if (!result.isConflict()) {
                     Snapshot handle = result.getData();
-                    if (handle != null) snapshots.discardAndClose(handle);
+                    if (handle != null) client.discardAndClose(handle);
                 }
             } catch (Exception | LinkageError ignored) { }
         }
 
         private void handleOpenResult(SnapshotsClient.DataOrConflict<Snapshot> result,
-                String operation, long id, boolean resolvedConflict, int retries,
+                SnapshotsClient operationClient, String operation, long id, boolean resolvedConflict, int retries,
                 OpenedConsumer consumer) {
             if (!current(id)) {
-                discardStaleOpen(result);
+                discardStaleOpen(result, operationClient);
                 return;
             }
             if (result == null) { finish(operation,id,"error",null); return; }
@@ -136,17 +138,17 @@ public final class PGSExtension implements FREExtension {
                     finish(operation,id,"error",null);return;
                 }
                 String serverId=conflict.getSnapshot().getMetadata().getSnapshotId();
-                snapshots.resolveConflict(conflict.getConflictId(),serverId,
+                operationClient.resolveConflict(conflict.getConflictId(),serverId,
                         new SnapshotMetadataChange.Builder().build(),contents)
                     .addOnCompleteListener(getActivity(),task -> {
                         if (!current(id)) {
-                            if (task.isSuccessful()) discardStaleOpen(task.getResult());
+                            if (task.isSuccessful()) discardStaleOpen(task.getResult(), operationClient);
                             return;
                         }
                         if(!task.isSuccessful()){
                             finish(operation,id,"error",null);return;
                         }
-                        handleOpenResult(task.getResult(),operation,id,true,retries+1,consumer);
+                        handleOpenResult(task.getResult(),operationClient,operation,id,true,retries+1,consumer);
                     });
             } catch(Exception | LinkageError ex){
                 // A malformed snapshot never grants permission to overwrite progress.
@@ -215,21 +217,19 @@ public final class PGSExtension implements FREExtension {
                 catch (Exception e) { return booleanResult(false); }
                 if (id == 0 || !validSlot(slot)) return booleanResult(false);
                 busy = true; activeRequestId = id;
+                final SnapshotsClient operationClient = snapshots;
                 try {
-                    snapshots.open(slot, true, SnapshotsClient.RESOLUTION_POLICY_MANUAL)
+                    operationClient.open(slot, true, SnapshotsClient.RESOLUTION_POLICY_MANUAL)
                         .addOnCompleteListener(getActivity(), task -> {
                             if (!current(id)) {
                                 // A timed-out open may still return a native handle.
-                                if (task.isSuccessful() && !task.getResult().isConflict()) {
-                                    Snapshot late = task.getResult().getData();
-                                    if (late != null) try { snapshots.discardAndClose(late); } catch (Exception ignored) { }
-                                }
+                                if (task.isSuccessful()) discardStaleOpen(task.getResult(), operationClient);
                                 return;
                             }
                             if (!task.isSuccessful()) {
                                 finish("read",id,"error",null); return;
                             }
-                            handleOpenResult(task.getResult(),"read",id,false,0,(snapshot,resolved) -> {
+                            handleOpenResult(task.getResult(),operationClient,"read",id,false,0,(snapshot,resolved) -> {
                             if (snapshot == null || snapshot.getSnapshotContents() == null) {
                                 finish("read",id,"error",null); return;
                             }
@@ -265,18 +265,16 @@ public final class PGSExtension implements FREExtension {
                 // The caller merged *fresh local* and the preceding remote state.
                 final byte[] expectedSnapshot = lastRead.get(slot).clone();
                 busy = true; activeRequestId = id;
+                final SnapshotsClient operationClient = snapshots;
                 try {
-                    snapshots.open(slot, true, SnapshotsClient.RESOLUTION_POLICY_MANUAL)
+                    operationClient.open(slot, true, SnapshotsClient.RESOLUTION_POLICY_MANUAL)
                         .addOnCompleteListener(getActivity(), task -> {
                             if (!current(id)) {
-                                if (task.isSuccessful() && !task.getResult().isConflict()) {
-                                    Snapshot late = task.getResult().getData();
-                                    if (late != null) try { snapshots.discardAndClose(late); } catch (Exception ignored) { }
-                                }
+                                if (task.isSuccessful()) discardStaleOpen(task.getResult(), operationClient);
                                 return;
                             }
                             if (!task.isSuccessful()) { finish("write",id,"error",null);return; }
-                            handleOpenResult(task.getResult(),"write",id,false,0,(snapshot,resolved) -> {
+                            handleOpenResult(task.getResult(),operationClient,"write",id,false,0,(snapshot,resolved) -> {
                                 if(resolved){
                                     // Fresh cloud monotonic merge requires a new AS3 local read.
                                     snapshots.discardAndClose(snapshot);
