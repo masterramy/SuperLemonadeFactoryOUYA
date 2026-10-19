@@ -37,6 +37,7 @@ public final class PGSExtension implements FREExtension {
         private static final int MAX_NATIVE_CONFLICT_RETRIES = 3;
         private interface OpenedConsumer { void onOpen(Snapshot snapshot, boolean resolvedConflict); }
         private static final String APP_ID_META = "com.google.android.gms.games.APP_ID";
+        private static final String APP_SMOKE_META = "com.ramybaheeg.slfport.pgs.QA_SMOKE_ONLY";
         // All operations are allowed only after the user presses Cloud Save.
         private volatile boolean authorized = false;
         private volatile boolean disposed = false;
@@ -58,6 +59,8 @@ public final class PGSExtension implements FREExtension {
                 ApplicationInfo info = activity.getPackageManager().getApplicationInfo(
                         activity.getPackageName(), PackageManager.GET_META_DATA);
                 Bundle data = info.metaData;
+                // Smoke-only developer APKs must never present unconfigured cloud saves as available.
+                if (data != null && data.getBoolean(APP_SMOKE_META, false)) return false;
                 // Numeric resources and resource-backed strings are both supported.
                 Object value = data == null ? null : data.get(APP_ID_META);
                 return value != null && !value.toString().trim().isEmpty() && !"0".equals(value.toString());
