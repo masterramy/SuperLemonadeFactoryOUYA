@@ -114,7 +114,7 @@ jobs:
           if($rc -ne 0 -or -not(Test-Path bin/SLFforOuya-postlaunch-wip.swf)){throw "AIR compilation failure: $rc"}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          run-id: 39179810068
+          run-id: 39204008391
           github-token: ${{ github.token }}
           name: gate2a-pgs-native-ane-raw-evidence
           path: qa-pgs-ane-artifact
@@ -125,7 +125,7 @@ jobs:
           $ane='qa-pgs-ane-artifact/native/pgs-ane/build/ane/SLFPGSSavedGames-dev.ane'
           if(-not(Test-Path -LiteralPath $ane)){throw 'Expected verified native ANE missing'}
           $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $ane).Hash.ToLowerInvariant()
-          if($sha -ne '2ebc9236eae91a4757fa894615098431ad5059bed2dd4fa9b77563db3524d2aa'){throw "Wrong or stale native ANE: $sha"}
+          if($sha -ne 'a42d137b4230878738b4109bb8cad0b6214cd43d51cc9768d3704ad1fc8e42b5'){throw "Wrong or stale native ANE: $sha"}
           New-Item -Path native/pgs-ane/build/ane -ItemType Directory -Force | Out-Null
           Copy-Item -LiteralPath $ane -Destination native/pgs-ane/build/ane/SLFPGSSavedGames-dev.ane -Force
           Copy-Item -LiteralPath qa-smoke-builder-preserved.ps1 -Destination tools/postlaunch/build_disposable_android.ps1 -Force
