@@ -67,7 +67,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $files=@(
-            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','f62cc7b92206ee000a0e873ed19a0c21b473fdf29c5ccb2e43eb21b1885ff723'),
+            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','a79bdd6ca0949a083053cd4f4fe58f9a294cac2900936ac9bb8c0d0414e6eaa9'),
             @('qa/fourtrack-impl/PCOptionsState.as','src/PCOptionsState.as','cfd103c5659651b4c43bea320da729afa0ececd8f3ed724f5e879fd3b9e7da40')
           )
           foreach($row in $files){
@@ -84,6 +84,8 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Physical controller slot retention regression failed'}
           python qa/postlaunch/test_secondary_diagnostics.py
           if($LASTEXITCODE -ne 0){throw 'Player 2 diagnostic regression failed'}
+          python qa/fourtrack-impl/test_secondary_survives_primary_disconnect.py
+          if($LASTEXITCODE -ne 0){throw 'Player 2 independent polling regression failed'}
       - name: Test Options native provider destruction on actual applied AS3
         shell: pwsh
         run: |
