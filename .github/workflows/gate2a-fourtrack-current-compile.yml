@@ -67,7 +67,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $files=@(
-            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','3ec3448909a6c6bfd83004e790290a5558f96f6763efb95c91c1f0cd607ab8df'),
+            @('qa/fourtrack-impl/FlxJoystick.as','src/org/flixel/system/input/FlxJoystick.as','f62cc7b92206ee000a0e873ed19a0c21b473fdf29c5ccb2e43eb21b1885ff723'),
             @('qa/fourtrack-impl/PCOptionsState.as','src/PCOptionsState.as','c695d8103fd0e52d59a3c2b72e660ab894ebab63539c57da63738ad0392b98b1')
           )
           foreach($row in $files){
@@ -82,6 +82,8 @@ jobs:
           'source_update=dual_controller_and_cloud_options' | Add-Content qa-current-source-receipt.txt
           python qa/postlaunch/test_controller_slot_retention.py
           if($LASTEXITCODE -ne 0){throw 'Physical controller slot retention regression failed'}
+          python qa/postlaunch/test_secondary_diagnostics.py
+          if($LASTEXITCODE -ne 0){throw 'Player 2 diagnostic regression failed'}
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
