@@ -82,6 +82,10 @@ $descriptor=$descriptor.Replace('<name>Super Limeade Factory</name>','<name>Supe
 if($IncludePGS){
     $open='<manifest android:installLocation="auto">'
     $app='<application android:appCategory="game" android:resizeableActivity="false">'
+    $oldSdk='<uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />'
+    $pgsSdk='<uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />'
+    if(-not $descriptor.Contains($oldSdk)){throw 'Unknown game SDK manifest; refusing PGS minSdk change.'}
+    $descriptor=$descriptor.Replace($oldSdk,$pgsSdk)
     if(-not $descriptor.Contains($open) -or -not $descriptor.Contains($app)){throw 'Unknown Android manifest, refusing PGS injection.'}
     $descriptor=$descriptor.Replace($open,$open+"`n"+'  <uses-permission android:name="android.permission.INTERNET"/>')
     $pgsValue='\u003'+$PgsGameId
@@ -140,6 +144,11 @@ try {
     if($LASTEXITCODE -ne 0 -or $badging -notmatch "package: name='com\.ramybaheeg\.slfport\.dev'"){
         Remove-Item -LiteralPath $apk -Force -ErrorAction SilentlyContinue
         throw 'APK is not isolated under expected .dev package name; deleted for safety.'
+    }
+    $minRequired=if($IncludePGS){'24'}else{'21'}
+    if($badging -notmatch "sdkVersion:'$minRequired'"){
+        Remove-Item -LiteralPath $apk -Force -ErrorAction SilentlyContinue
+        throw "DEV APK minSDK not $minRequired; refusing wrong compatibility build."
     }
     if($badging -notmatch "versionCode='1009001'" -or $badging -notmatch "versionName='1\.9\.1'" -or
        $badging -notmatch "targetSdkVersion:'36'") {
