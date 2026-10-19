@@ -47,7 +47,40 @@ for world,name in ((2,"level2_tank"),(3,"level3_desk1")):
     orig=f'[Embed(source = "../data/level{world}/{name}.png") ] public static var {name}:Class;'
     newer=orig+f'\n            [Embed(source = "../data/remastered/level{world}/{name}.png") ] public static var {name}Remastered:Class;'
     replace_once("src/Registry.as",orig,newer)
-    orig=f'else if (toLoad == "{name}") img = Registry.{name};'
-    newer=f'else if (toLoad == "{name}") img = GraphicsMode.choose(Registry.{name}, Registry.{name}Remastered);'
-    replace_once("src/PlayState.as",orig,newer)
-print("PASS isolated new-embed AIR compilation inputs for three worlds; candidate pixels here are smoke-only")
+# The canonical 1369-source implementation resolves approved map props once,
+# after the authored item's original mapping. Compile the *same* source shape
+# here, but never claim the QA-generated pixels are the canonical art.
+replace_once("src/GraphicsMode.as",
+    "        public static function choose(classicArt:Class, enhancedArt:Class):Class",
+    "        public static function chooseForItem(itemName:String, classicArt:Class):Class\\n"
+    "        {\\n"
+    "            return RemasteredItemCatalog.choose(itemName, classicArt);\\n"
+    "        }\\n"
+    "        public static function choose(classicArt:Class, enhancedArt:Class):Class")
+replace_once("src/PlayState.as",
+    "\\t\\t\\tif (item.@width!=undefined) {",
+    "\\t\\t\\timg = GraphicsMode.chooseForItem(toLoad, img);\\n"
+    "\\t\\t\\tif (item.@width!=undefined) {")
+catalog="""// Staged QA compiler mirror of canonical generated RemasteredItemCatalog.as.
+package
+{
+    public class RemasteredItemCatalog
+    {
+        public static function choose(itemName:String, classicArt:Class):Class
+        {
+            if (!GraphicsMode.remastered) return classicArt;
+            switch (itemName)
+            {
+                case "level2_tank":
+                    return Registry.level2_tankRemastered == null ? classicArt : Registry.level2_tankRemastered;
+                case "level3_desk1":
+                    return Registry.level3_desk1Remastered == null ? classicArt : Registry.level3_desk1Remastered;
+                default: return classicArt;
+            }
+        }
+    }
+}
+"""
+(R/"src/RemasteredItemCatalog.as").write_text(catalog)
+assert (R/"src/RemasteredItemCatalog.as").is_file()
+print("PASS staged AIR compiler mirror of 1369 catalog selection with 3 QA-only art props")
