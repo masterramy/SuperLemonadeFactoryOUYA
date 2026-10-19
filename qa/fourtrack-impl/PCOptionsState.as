@@ -236,6 +236,22 @@ override public function create():void
 
 		}
 		
+        override public function destroy():void
+        {
+            // FlxGame destroys the old state during switchState(). Pending
+            // Google Save requests must be cancelled *before* leaving Options,
+            // not merely abandoned with their callback still holding UI state.
+            cloudStatusText = null;
+            cloudButton = null;
+            if (cloudProvider != null)
+            {
+                cloudProvider.dispose();
+                cloudProvider = null;
+            }
+            cloudSyncContract = null;
+            super.destroy();
+        }
+
 		protected function onQuit():void
 		{
 			FlxG.switchState(new PCMenuState());
