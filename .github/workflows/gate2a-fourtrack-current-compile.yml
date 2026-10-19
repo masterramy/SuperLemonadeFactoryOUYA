@@ -86,6 +86,15 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'Player 2 diagnostic regression failed'}
           python qa/fourtrack-impl/test_secondary_survives_primary_disconnect.py
           if($LASTEXITCODE -ne 0){throw 'Player 2 independent polling regression failed'}
+      - name: Stage three-world gameplay GraphicsMode remaster embed smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python qa/fourtrack-impl/check_three_world_art_switch.py
+          if($LASTEXITCODE -ne 0){throw 'Three-world remaster embed source staging failed'}
+          @('remaster_test=THREE_WORLD_GRAPHICSMODE_AIR_SMOKE_ONLY',
+            'art=QA_PIXELS_NOT_CANONICAL_ART',
+            'source_scope=GITHUB_STAGED_NOT_EXACT_FULL_DRIVE_ZIP') | Set-Content qa-art-embed-scope.txt
       - name: Test Options native provider destruction on actual applied AS3
         shell: pwsh
         run: |
@@ -123,6 +132,7 @@ jobs:
           path: |
             qa-current-source-receipt.txt
             qa-current-compile.log
+            qa-art-embed-scope.txt
             POSTLAUNCH_AIR_STDOUT.txt
             POSTLAUNCH_AIR_STDERR.txt
           if-no-files-found: warn
